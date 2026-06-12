@@ -1,9 +1,11 @@
 #include "libreshockwave/player/render/pipeline/SpriteBaker.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -338,6 +340,186 @@ std::shared_ptr<bitmap::Bitmap> shiftBitmapDown(std::shared_ptr<bitmap::Bitmap> 
     return std::make_shared<bitmap::Bitmap>(std::move(shifted));
 }
 
+struct ProjectedW3DVertex {
+    float x = 0.0F;
+    float y = 0.0F;
+};
+
+struct W3DProjection {
+    float minX = 0.0F;
+    float minY = 0.0F;
+    float maxX = 0.0F;
+    float maxY = 0.0F;
+    float scale = 1.0F;
+    float offsetX = 0.0F;
+    float offsetY = 0.0F;
+    int margin = 0;
+    bool valid = false;
+};
+
+::libreshockwave::w3d::W3DVertex transformW3DVertex(
+    const ::libreshockwave::w3d::W3DVertex& vertex,
+    const std::array<float, 16>& transform) {
+    return ::libreshockwave::w3d::W3DVertex{
+        transform[0] * vertex.x + transform[4] * vertex.y + transform[8] * vertex.z + transform[12],
+        transform[1] * vertex.x + transform[5] * vertex.y + transform[9] * vertex.z + transform[13],
+        transform[2] * vertex.x + transform[6] * vertex.y + transform[10] * vertex.z + transform[14]
+    };
+}
+
+W3DProjection buildW3DProjection(const std::vector<W3DRenderableMesh>& meshes, int width, int height) {
+    W3DProjection projection;
+    if (width <= 0 || height <= 0) {
+        return projection;
+    }
+
+    projection.minX = std::numeric_limits<float>::max();
+    projection.minY = std::numeric_limits<float>::max();
+    projection.maxX = std::numeric_limits<float>::lowest();
+    projection.maxY = std::numeric_limits<float>::lowest();
+
+    bool sawVertex = false;
+    for (const auto& mesh : meshes) {
+        for (const auto& vertex : mesh.mesh.vertices) {
+            const auto world = transformW3DVertex(vertex, mesh.worldTransform);
+            projection.minX = std::min(projection.minX, world.x);
+            projection.minY = std::min(projection.minY, world.y);
+            projection.maxX = std::max(projection.maxX, world.x);
+            projection.maxY = std::max(projection.maxY, world.y);
+            sawVertex = true;
+        }
+    }
+    if (!sawVertex) {
+        return projection;
+    }
+
+    if (std::fabs(projection.maxX - projection.minX) < 0.0001F) {
+        projection.minX -= 0.5F;
+        projection.maxX += 0.5F;
+    }
+    if (std::fabs(projection.maxY - projection.minY) < 0.0001F) {
+        projection.minY -= 0.5F;
+        projection.maxY += 0.5F;
+    }
+
+    projection.margin = width > 8 && height > 8 ? 2 : 0;
+    const float drawableWidth = static_cast<float>(std::max(1, width - 1 - projection.margin * 2));
+    const float drawableHeight = static_cast<float>(std::max(1, height - 1 - projection.margin * 2));
+    const float rangeX = projection.maxX - projection.minX;
+    const float rangeY = projection.maxY - projection.minY;
+    projection.scale = std::min(drawableWidth / rangeX, drawableHeight / rangeY);
+    projection.offsetX = (drawableWidth - rangeX * projection.scale) * 0.5F;
+    projection.offsetY = (drawableHeight - rangeY * projection.scale) * 0.5F;
+    projection.valid = projection.scale > 0.0F;
+    return projection;
+}
+
+ProjectedW3DVertex projectW3DVertex(const ::libreshockwave::w3d::W3DVertex& vertex,
+                                    const W3DProjection& projection) {
+    return ProjectedW3DVertex{
+        static_cast<float>(projection.margin) + projection.offsetX + (vertex.x - projection.minX) * projection.scale,
+        static_cast<float>(projection.margin) + projection.offsetY + (projection.maxY - vertex.y) * projection.scale
+    };
+}
+
+int diffuseChannel(float value) {
+    return std::clamp(static_cast<int>(std::round(value * 255.0F)), 0, 255);
+}
+
+std::uint32_t w3dPaintColor(const W3DRenderableMesh& mesh, const RenderSprite& sprite) {
+    if (mesh.material.has_value() && mesh.material->diffuseColor.has_value()) {
+        const auto& diffuse = *mesh.material->diffuseColor;
+        return 0xFF000000U |
+               (static_cast<std::uint32_t>(diffuseChannel(diffuse[0])) << 16U) |
+               (static_cast<std::uint32_t>(diffuseChannel(diffuse[1])) << 8U) |
+               static_cast<std::uint32_t>(diffuseChannel(diffuse[2]));
+    }
+    const int rgb = sprite.hasForeColor() ? sprite.foreColor() : 0xB0B0B0;
+    return opaqueArgb(rgb);
+}
+
+float triangleEdge(const ProjectedW3DVertex& a,
+                   const ProjectedW3DVertex& b,
+                   float x,
+                   float y) {
+    return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
+}
+
+bool drawProjectedLine(bitmap::Bitmap& bitmap,
+                       ProjectedW3DVertex a,
+                       ProjectedW3DVertex b,
+                       std::uint32_t color) {
+    int x0 = static_cast<int>(std::round(a.x));
+    int y0 = static_cast<int>(std::round(a.y));
+    const int x1 = static_cast<int>(std::round(b.x));
+    const int y1 = static_cast<int>(std::round(b.y));
+    const int dx = std::abs(x1 - x0);
+    const int sx = x0 < x1 ? 1 : -1;
+    const int dy = -std::abs(y1 - y0);
+    const int sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy;
+    bool painted = false;
+
+    while (true) {
+        if (x0 >= 0 && x0 < bitmap.width() && y0 >= 0 && y0 < bitmap.height()) {
+            bitmap.setPixel(x0, y0, alphaComposite(bitmap.getPixel(x0, y0), color));
+            painted = true;
+        }
+        if (x0 == x1 && y0 == y1) {
+            break;
+        }
+        const int e2 = err * 2;
+        if (e2 >= dy) {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+    return painted;
+}
+
+bool fillProjectedTriangle(bitmap::Bitmap& bitmap,
+                           ProjectedW3DVertex a,
+                           ProjectedW3DVertex b,
+                           ProjectedW3DVertex c,
+                           std::uint32_t color) {
+    const float area = triangleEdge(a, b, c.x, c.y);
+    if (std::fabs(area) < 0.0001F) {
+        bool painted = drawProjectedLine(bitmap, a, b, color);
+        painted = drawProjectedLine(bitmap, b, c, color) || painted;
+        painted = drawProjectedLine(bitmap, c, a, color) || painted;
+        return painted;
+    }
+
+    const int minX = std::max(0, static_cast<int>(std::floor(std::min({a.x, b.x, c.x}))));
+    const int maxX = std::min(bitmap.width() - 1, static_cast<int>(std::ceil(std::max({a.x, b.x, c.x}))));
+    const int minY = std::max(0, static_cast<int>(std::floor(std::min({a.y, b.y, c.y}))));
+    const int maxY = std::min(bitmap.height() - 1, static_cast<int>(std::ceil(std::max({a.y, b.y, c.y}))));
+    if (minX > maxX || minY > maxY) {
+        return false;
+    }
+
+    bool painted = false;
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            const float px = static_cast<float>(x) + 0.5F;
+            const float py = static_cast<float>(y) + 0.5F;
+            const float w0 = triangleEdge(b, c, px, py);
+            const float w1 = triangleEdge(c, a, px, py);
+            const float w2 = triangleEdge(a, b, px, py);
+            if ((w0 >= 0.0F && w1 >= 0.0F && w2 >= 0.0F) ||
+                (w0 <= 0.0F && w1 <= 0.0F && w2 <= 0.0F)) {
+                bitmap.setPixel(x, y, alphaComposite(bitmap.getPixel(x, y), color));
+                painted = true;
+            }
+        }
+    }
+    return painted;
+}
+
 } // namespace
 
 SpriteBaker::SpriteBaker(BitmapCache* bitmapCache)
@@ -451,6 +633,11 @@ void SpriteBaker::registerDefaultSteps() {
         [this](const RenderSprite& sprite) { return bakeFilmLoop(sprite); }
     });
     registerBakeStep(SpriteBakeStep{
+        "shockwave3d",
+        [](const RenderSprite& sprite) { return sprite.type() == SpriteType::Shockwave3D; },
+        [this](const RenderSprite& sprite) { return bakeShockwave3D(sprite); }
+    });
+    registerBakeStep(SpriteBakeStep{
         "unsupported",
         [](const RenderSprite&) { return true; },
         [](const RenderSprite&) -> std::shared_ptr<const bitmap::Bitmap> { return nullptr; }
@@ -528,6 +715,78 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSpri
 
     return std::make_shared<bitmap::Bitmap>(
         InkProcessor::applyInk(*loop, sprite.inkMode(), sprite.backColor(), false, loop->imagePalette().get()));
+}
+
+std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShockwave3D(const RenderSprite& sprite) {
+    const auto member = sprite.castMember();
+    auto* file = mutableFileFor(member);
+    if (member == nullptr || file == nullptr) {
+        return nullptr;
+    }
+
+    auto w3d = file->getW3DFileForMember(std::const_pointer_cast<chunks::CastMemberChunk>(member));
+    if (!w3d.has_value()) {
+        return nullptr;
+    }
+
+    auto meshes = w3d->renderableMeshes();
+    if (meshes.empty()) {
+        return nullptr;
+    }
+
+    const int width = sprite.width() > 0 ? sprite.width() : 64;
+    const int height = sprite.height() > 0 ? sprite.height() : 64;
+    if (width <= 0 || height <= 0) {
+        return nullptr;
+    }
+
+    const auto projection = buildW3DProjection(meshes, width, height);
+    if (!projection.valid) {
+        return nullptr;
+    }
+
+    bitmap::Bitmap bitmap(width, height, 32);
+    bitmap.setNativeAlpha(true);
+
+    bool painted = false;
+    for (const auto& mesh : meshes) {
+        if (mesh.mesh.vertices.empty()) {
+            continue;
+        }
+        std::vector<ProjectedW3DVertex> projected;
+        projected.reserve(mesh.mesh.vertices.size());
+        for (const auto& vertex : mesh.mesh.vertices) {
+            projected.push_back(projectW3DVertex(transformW3DVertex(vertex, mesh.worldTransform), projection));
+        }
+
+        const auto color = w3dPaintColor(mesh, sprite);
+        for (const auto& face : mesh.mesh.faces) {
+            if (face.a < 0 || face.b < 0 || face.c < 0 ||
+                face.a >= static_cast<int>(projected.size()) ||
+                face.b >= static_cast<int>(projected.size()) ||
+                face.c >= static_cast<int>(projected.size())) {
+                continue;
+            }
+            painted = fillProjectedTriangle(bitmap,
+                                            projected[static_cast<std::size_t>(face.a)],
+                                            projected[static_cast<std::size_t>(face.b)],
+                                            projected[static_cast<std::size_t>(face.c)],
+                                            color) || painted;
+        }
+    }
+
+    if (!painted) {
+        return nullptr;
+    }
+
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        bitmap = InkProcessor::applyInk(bitmap,
+                                        sprite.inkMode(),
+                                        sprite.backColor(),
+                                        true,
+                                        bitmap.imagePalette().get());
+    }
+    return std::make_shared<bitmap::Bitmap>(std::move(bitmap));
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeDynamicText(const RenderSprite& sprite) {

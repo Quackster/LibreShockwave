@@ -70,6 +70,7 @@ private:
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeText(const RenderSprite& sprite);
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeShape(const RenderSprite& sprite);
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFilmLoop(const RenderSprite& sprite);
+    [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeShockwave3D(const RenderSprite& sprite);
 
     [[nodiscard]] bitmap::Bitmap processDecodedBitmap(const bitmap::Bitmap& raw, const RenderSprite& sprite) const;
     [[nodiscard]] bitmap::Bitmap processLiveBitmap(const bitmap::Bitmap& live, const RenderSprite& sprite) const;

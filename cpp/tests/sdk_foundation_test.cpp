@@ -20020,13 +20020,14 @@ void testSpriteBakerFoundation() {
     BitmapCache cache;
     SpriteBaker baker(&cache);
     assert(baker.tickCounter() == 0);
-    assert(baker.bakeStepCount() == 5);
+    assert(baker.bakeStepCount() == 6);
     assert(&baker.bitmapCache() == &cache);
     assert(baker.bakeSteps()[0].name == "bitmap");
     assert(baker.bakeSteps()[1].name == "text");
     assert(baker.bakeSteps()[2].name == "shape");
     assert(baker.bakeSteps()[3].name == "film-loop");
-    assert(baker.bakeSteps()[4].name == "unsupported");
+    assert(baker.bakeSteps()[4].name == "shockwave3d");
+    assert(baker.bakeSteps()[5].name == "unsupported");
 
     int decodeCalls = 0;
     baker.setBitmapDecodeProvider([&decodeCalls](const CastMemberChunk& member, const Palette*) {
@@ -21448,9 +21449,9 @@ void testSpriteBakerFoundation() {
             return std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFABCDEFU});
         }
     });
-    assert(baker.bakeStepCount() == 6);
-    assert(baker.bakeSteps()[4].name == "unknown-test");
-    assert(baker.bakeSteps()[5].name == "unsupported");
+    assert(baker.bakeStepCount() == 7);
+    assert(baker.bakeSteps()[5].name == "unknown-test");
+    assert(baker.bakeSteps()[6].name == "unsupported");
     auto customUnknown = baker.bake(unsupported);
     assert(customUnknown.bakedBitmap() != nullptr);
     assert(customUnknown.bakedBitmap()->getPixel(0, 0) == 0xFFABCDEFU);
@@ -27252,6 +27253,37 @@ void testDirectorFileRifxLoader() {
     assert(linkedW3D->nodes().size() == 1);
     assert(linkedW3D->meshResources().size() == 1);
     assert(linkedW3D->renderableMeshes().size() == 1);
+    SpriteBaker w3dBaker;
+    RenderSprite w3dSprite(14,
+                           0,
+                           0,
+                           32,
+                           24,
+                           0,
+                           true,
+                           SpriteType::Shockwave3D,
+                           shockwave3DMember,
+                           nullptr,
+                           0x336699,
+                           0,
+                           true,
+                           false,
+                           0,
+                           100,
+                           false,
+                           false,
+                           nullptr,
+                           false);
+    auto bakedW3D = w3dBaker.bake(w3dSprite);
+    assert(bakedW3D.bakedBitmap() != nullptr);
+    assert(bakedW3D.bakedBitmap()->width() == 32);
+    assert(bakedW3D.bakedBitmap()->height() == 24);
+    assert(bakedW3D.bakedBitmap()->bitDepth() == 32);
+    assert(bakedW3D.bakedBitmap()->isNativeAlpha());
+    assert(bakedW3D.bakedBitmap()->hasTransparentPixels());
+    assert(std::any_of(bakedW3D.bakedBitmap()->pixels().begin(),
+                       bakedW3D.bakedBitmap()->pixels().end(),
+                       [](std::uint32_t pixel) { return (pixel >> 24U) != 0; }));
     assert(!file->getW3DFileForMember(member7).has_value());
     auto directTextMember = std::make_shared<CastMemberChunk>(file.get(),
                                                               ChunkId(4),
