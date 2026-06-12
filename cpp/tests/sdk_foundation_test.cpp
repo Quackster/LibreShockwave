@@ -25581,6 +25581,7 @@ void testW3DFileParser() {
 
     W3DFile file = W3DFile::load(data);
     assert(file.version() == 0x01020304);
+    assert(file.hasSceneData());
     assert(file.entries().size() == 9);
     assert(file.entries()[1].type == W3DEntryType::Node);
     assert(file.entries()[1].parentRef == 1);
@@ -26925,6 +26926,33 @@ void testDirectorFileRifxLoader() {
         data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
         data.push_back(static_cast<std::uint8_t>(value & 0xFF));
     };
+    auto appendU16LE = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+    };
+    auto appendI32LE = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+    };
+    auto appendF32LE = [&](std::vector<std::uint8_t>& data, float value) {
+        appendI32LE(data, std::bit_cast<std::uint32_t>(value));
+    };
+    auto appendPString16LE = [&](std::vector<std::uint8_t>& data, const std::string& value) {
+        appendU16LE(data, static_cast<int>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendW3DEntry = [&](std::vector<std::uint8_t>& data,
+                              int type,
+                              int parentRef,
+                              const std::vector<std::uint8_t>& payload) {
+        appendU16LE(data, type);
+        appendI32LE(data, static_cast<std::uint32_t>(payload.size()));
+        appendI32LE(data, static_cast<std::uint32_t>(parentRef));
+        data.insert(data.end(), payload.begin(), payload.end());
+    };
     auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
         data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
         data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
@@ -26965,8 +26993,8 @@ void testDirectorFileRifxLoader() {
     std::vector<std::uint8_t> keyData;
     appendI16(keyData, 12);
     appendI16(keyData, 12);
-    appendI32(keyData, 4);
-    appendI32(keyData, 4);
+    appendI32(keyData, 5);
+    appendI32(keyData, 5);
     appendI32(keyData, 4);
     appendI32(keyData, 7);
     appendI32(keyData, BinaryReader::fourCC("STXT"));
@@ -26979,6 +27007,9 @@ void testDirectorFileRifxLoader() {
     appendI32(keyData, 7);
     appendI32(keyData, 7);
     appendI32(keyData, BinaryReader::fourCC("snd "));
+    appendI32(keyData, 8);
+    appendI32(keyData, 8);
+    appendI32(keyData, BinaryReader::fourCC("XMED"));
     std::vector<std::uint8_t> textData;
     appendI32(textData, 8);
     appendI32(textData, 5);
@@ -26990,9 +27021,41 @@ void testDirectorFileRifxLoader() {
     soundChunkData[0x17] = 0x22;
     soundChunkData[64] = 0x12;
     soundChunkData[65] = 0x34;
+    std::vector<std::uint8_t> w3dData;
+    std::vector<std::uint8_t> w3dVersion;
+    appendI32LE(w3dVersion, 0x01020304);
+    appendW3DEntry(w3dData, 0x02, 0, w3dVersion);
+    std::vector<std::uint8_t> w3dNode;
+    appendPString16LE(w3dNode, "DisplayNode");
+    appendPString16LE(w3dNode, "Scene");
+    appendI32LE(w3dNode, 0);
+    for (int index = 0; index < 16; ++index) {
+        appendF32LE(w3dNode, index == 0 || index == 5 || index == 10 || index == 15 ? 1.0F : 0.0F);
+    }
+    appendPString16LE(w3dNode, "DisplayMesh");
+    appendPString16LE(w3dNode, "");
+    appendPString16LE(w3dNode, "");
+    appendW3DEntry(w3dData, 0x72, 1, w3dNode);
+    std::vector<std::uint8_t> w3dMesh;
+    appendPString16LE(w3dMesh, "DisplayMesh");
+    appendI32LE(w3dMesh, 3);
+    appendI32LE(w3dMesh, 1);
+    appendF32LE(w3dMesh, -1.0F);
+    appendF32LE(w3dMesh, -1.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 1.0F);
+    appendF32LE(w3dMesh, -1.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 1.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendU16LE(w3dMesh, 0);
+    appendU16LE(w3dMesh, 1);
+    appendU16LE(w3dMesh, 2);
+    appendW3DEntry(w3dData, 0x73, 2, w3dMesh);
 
     constexpr int mmapOffset = 32;
-    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 160;
+    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 180;
     const int configOffset = mmapDataStart - 8;
     const int namesDataStart = mmapDataStart + static_cast<int>(configData.size());
     const int namesOffset = namesDataStart - 8;
@@ -27008,6 +27071,8 @@ void testDirectorFileRifxLoader() {
     const int bitdOffset = bitdDataStart - 8;
     const int soundDataStart = bitdDataStart + static_cast<int>(bitdData.size());
     const int soundOffset = soundDataStart - 8;
+    const int w3dDataStart = soundDataStart + static_cast<int>(soundChunkData.size());
+    const int w3dOffset = w3dDataStart - 8;
 
     std::vector<std::uint8_t> fileData;
     appendFourCC(fileData, "RIFX");
@@ -27019,11 +27084,11 @@ void testDirectorFileRifxLoader() {
     appendI32(fileData, mmapOffset);
     appendI32(fileData, 0x0207);
     appendFourCC(fileData, "mmap");
-    appendI32(fileData, 24 + 160);
+    appendI32(fileData, 24 + 180);
     appendI16(fileData, 24);
     appendI16(fileData, 20);
-    appendI32(fileData, 8);
-    appendI32(fileData, 8);
+    appendI32(fileData, 9);
+    appendI32(fileData, 9);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
@@ -27075,6 +27140,12 @@ void testDirectorFileRifxLoader() {
     appendI16(fileData, 0);
     appendI16(fileData, 0);
     appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("XMED"));
+    appendI32(fileData, static_cast<std::uint32_t>(w3dData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(w3dOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
     fileData.insert(fileData.end(), configData.begin(), configData.end());
     fileData.insert(fileData.end(), namesData.begin(), namesData.end());
     fileData.insert(fileData.end(), rawData.begin(), rawData.end());
@@ -27083,6 +27154,7 @@ void testDirectorFileRifxLoader() {
     fileData.insert(fileData.end(), scoreData.begin(), scoreData.end());
     fileData.insert(fileData.end(), bitdData.begin(), bitdData.end());
     fileData.insert(fileData.end(), soundChunkData.begin(), soundChunkData.end());
+    fileData.insert(fileData.end(), w3dData.begin(), w3dData.end());
     putI32(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
 
     auto file = DirectorFile::load(fileData);
@@ -27090,8 +27162,8 @@ void testDirectorFileRifxLoader() {
     assert(!file->isAfterburner());
     assert(file->movieType() == ChunkType::MV93);
     assert(file->version() == 0x0207);
-    assert(file->chunkInfo().size() == 8);
-    assert(file->chunks().size() == 8);
+    assert(file->chunkInfo().size() == 9);
+    assert(file->chunks().size() == 9);
     assert(file->config().get() != nullptr);
     assert(file->config()->file() == file.get());
     assert(file->config()->stageWidth() == 320);
@@ -27118,6 +27190,7 @@ void testDirectorFileRifxLoader() {
     assert(file->getChunk(ChunkId(5))->type() == ChunkType::VWSC);
     assert(file->getChunk(ChunkId(6))->type() == ChunkType::BITD);
     assert(file->getChunk(ChunkId(7))->type() == ChunkType::snd_);
+    assert(file->getChunk(ChunkId(8))->type() == ChunkType::XMED);
     auto member7 = std::make_shared<CastMemberChunk>(file.get(),
                                                      ChunkId(7),
                                                      MemberType::FilmLoop,
@@ -27158,6 +27231,28 @@ void testDirectorFileRifxLoader() {
     auto memberPlayable = SoundManager::convertSoundToPlayable(*memberSound);
     assert(memberPlayable.has_value());
     assert(SoundManager::detectFormat(*memberPlayable) == "wav");
+    auto shockwave3DMember = std::make_shared<CastMemberChunk>(file.get(),
+                                                               ChunkId(8),
+                                                               MemberType::Shockwave3D,
+                                                               0,
+                                                               40,
+                                                               std::vector<std::uint8_t>{},
+                                                               std::vector<std::uint8_t>(40, 0),
+                                                               "3D",
+                                                               0,
+                                                               0,
+                                                               0);
+    auto linkedW3DInfo = file->getLinkedChunkInfoForMember(shockwave3DMember, BinaryReader::fourCC("XMED"));
+    assert(linkedW3DInfo.size() == 1);
+    assert(linkedW3DInfo.front().id == ChunkId(8));
+    auto linkedW3D = file->getW3DFileForMember(shockwave3DMember);
+    assert(linkedW3D.has_value());
+    assert(linkedW3D->version() == 0x01020304);
+    assert(linkedW3D->hasSceneData());
+    assert(linkedW3D->nodes().size() == 1);
+    assert(linkedW3D->meshResources().size() == 1);
+    assert(linkedW3D->renderableMeshes().size() == 1);
+    assert(!file->getW3DFileForMember(member7).has_value());
     auto directTextMember = std::make_shared<CastMemberChunk>(file.get(),
                                                               ChunkId(4),
                                                               MemberType::Text,
@@ -27209,14 +27304,18 @@ void testDirectorFileRifxLoader() {
     assert(decodedBitmap->imagePalette().get() == &decodePalette);
     file->releaseNonEssentialChunks();
     assert(file->chunks().size() == 6);
+    auto reparsedW3D = file->getW3DFileForMember(shockwave3DMember);
+    assert(reparsedW3D.has_value());
+    assert(reparsedW3D->renderableMeshes().size() == 1);
+    assert(file->chunks().size() == 7);
     auto reparsedSoundLinks = file->getLinkedChunksForMember(member7, BinaryReader::fourCC("snd "));
     assert(reparsedSoundLinks.size() == 1);
     assert(reparsedSoundLinks.front()->type() == ChunkType::snd_);
-    assert(file->chunks().size() == 7);
+    assert(file->chunks().size() == 8);
     auto reparsedRaw = file->getChunk(ChunkId(2));
     assert(reparsedRaw.get() != nullptr);
     assert(reparsedRaw->type() == ChunkType::JUNK);
-    assert(file->chunks().size() == 8);
+    assert(file->chunks().size() == 9);
 }
 
 void testDirectorFileXfirLoader() {

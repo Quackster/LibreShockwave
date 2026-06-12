@@ -34,6 +34,7 @@ public:
     [[nodiscard]] static W3DFile load(const std::filesystem::path& path);
 
     [[nodiscard]] int version() const;
+    [[nodiscard]] bool hasSceneData() const;
     [[nodiscard]] const std::vector<w3d::W3DEntry>& entries() const;
     [[nodiscard]] const std::vector<w3d::W3DNode>& nodes() const;
     [[nodiscard]] const std::vector<w3d::W3DShape>& shapes() const;

@@ -499,6 +499,34 @@ std::vector<std::shared_ptr<chunks::Chunk>> DirectorFile::getLinkedChunksForMemb
     return result;
 }
 
+std::optional<W3DFile> DirectorFile::getW3DFileForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    if (!member || !member->isShockwave3D()) {
+        return std::nullopt;
+    }
+
+    for (const auto& chunk : getLinkedChunksForMember(member)) {
+        const std::vector<std::uint8_t>* data = nullptr;
+        if (const auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
+            data = &raw->data();
+        } else if (const auto media = std::dynamic_pointer_cast<chunks::MediaChunk>(chunk)) {
+            data = &media->audioData();
+        }
+        if (data == nullptr || data->empty()) {
+            continue;
+        }
+
+        try {
+            auto w3d = W3DFile::load(*data);
+            if (w3d.hasSceneData()) {
+                return w3d;
+            }
+        } catch (const std::exception&) {
+        }
+    }
+    return std::nullopt;
+}
+
 std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(
     const std::shared_ptr<chunks::CastMemberChunk>& member) {
     for (const auto& chunk : getLinkedChunksForMember(member)) {

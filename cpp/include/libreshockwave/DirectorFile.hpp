@@ -12,6 +12,7 @@
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
+#include "libreshockwave/W3DFile.hpp"
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/XmedStyledText.hpp"
@@ -154,6 +155,8 @@ public:
     [[nodiscard]] std::vector<std::shared_ptr<chunks::Chunk>> getLinkedChunksForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member,
         std::uint32_t fourcc);
+    [[nodiscard]] std::optional<W3DFile> getW3DFileForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> getScoreForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::TextChunk>> getTextChunksForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member);

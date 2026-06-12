@@ -136,6 +136,11 @@ int W3DFile::version() const {
     return version_;
 }
 
+bool W3DFile::hasSceneData() const {
+    return !nodes_.empty() || !shapes_.empty() || !meshResources_.empty() ||
+           !textures_.empty() || !materials_.empty() || !resourceRefs_.empty();
+}
+
 const std::vector<w3d::W3DEntry>& W3DFile::entries() const {
     return entries_;
 }
