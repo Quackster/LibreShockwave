@@ -6,7 +6,7 @@ Objective: port LibreShockwave's non-editor runtime/player stack to C++ while ke
 
 Started. The Java/Gradle project remains the authoritative implementation for behavior that has not yet reached C++ parity. A first-party CMake/C++ port exists under `cpp/` and is being expanded from reusable SDK foundations upward. Existing editor scaffolding is not being advanced as part of the current port objective.
 
-Shockwave3D/W3D is not a parity blocker for the current C++ port objective because it was never completed in the existing LibreShockwave Java runtime. Existing C++ W3D parsing and preliminary bake work is useful opportunistic coverage, but deeper W3D renderer parity can be ignored until after the Java-equivalent non-editor runtime/player behavior is complete.
+Shockwave3D/W3D can be ignored for the current C++ parity objective because it was never completed in the existing LibreShockwave Java runtime. Existing C++ W3D parsing and preliminary bake work is useful opportunistic coverage, but deeper W3D renderer parity is not required until after the Java-equivalent non-editor runtime/player behavior is complete.
 
 This file tracks the current state and remaining work only. Detailed chronological changes live in git.
 
