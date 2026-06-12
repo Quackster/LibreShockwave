@@ -1671,6 +1671,13 @@ bool isBootstrapScriptMember(const builtin::BuiltinContext* builtinContext, int 
     return (memberType.isString() || memberType.isSymbol()) && equalsIgnoreCase(memberType.stringValue(), "script");
 }
 
+bool shouldSkipMemberRegistryFallbackLookup(std::string_view memberName) {
+    return memberName.find("://") != std::string_view::npos ||
+           memberName.find('/') != std::string_view::npos ||
+           memberName.find('\\') != std::string_view::npos ||
+           memberName.find('?') != std::string_view::npos;
+}
+
 int resolveScriptInstanceMemberSlotByName(const builtin::BuiltinContext* builtinContext,
                                           std::string_view memberName,
                                           bool allowDefinitionBootstrapLookup) {
@@ -1679,6 +1686,10 @@ int resolveScriptInstanceMemberSlotByName(const builtin::BuiltinContext* builtin
     }
 
     const std::string name(memberName);
+    if (shouldSkipMemberRegistryFallbackLookup(name)) {
+        return 0;
+    }
+
     if (builtinContext->registryCastMemberNameResolver) {
         if (const auto slot = slotValueFromCastMemberRef(builtinContext->registryCastMemberNameResolver(0, name))) {
             return *slot;

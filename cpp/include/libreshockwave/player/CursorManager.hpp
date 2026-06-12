@@ -49,6 +49,7 @@ public:
     [[nodiscard]] std::optional<std::array<int, 2>> getCursorRegPoint() const;
 
     [[nodiscard]] static bitmap::Bitmap applyCursorMask(const bitmap::Bitmap& cursor, const bitmap::Bitmap& mask);
+    [[nodiscard]] static int cursorCodeFromDatum(const lingo::Datum& datum);
     [[nodiscard]] static int encodeCursorMember(const lingo::Datum& datum);
     [[nodiscard]] static bool isNearWhite(std::uint32_t pixel);
 

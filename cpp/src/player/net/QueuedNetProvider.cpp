@@ -40,6 +40,12 @@ std::string toLower(std::string_view value) {
     return lowered;
 }
 
+bool isCastLikeFileName(std::string_view fileName) {
+    const std::string lowerName = toLower(fileName);
+    return lowerName.ends_with(".cct") || lowerName.ends_with(".cst") ||
+           lowerName.find('.') == std::string::npos;
+}
+
 void addUnique(std::vector<std::string>& values, std::string value) {
     if (!value.empty() && std::find(values.begin(), values.end(), value) == values.end()) {
         values.push_back(std::move(value));
@@ -100,11 +106,6 @@ int QueuedNetProvider::preloadNetThing(std::string url) {
     auto& task = inserted->second;
     task.fallbackUrls = fallbacks;
 
-    if (isFetchAlreadySatisfied(url, resolvedUrl, fallbacks)) {
-        task.done = true;
-        return taskId;
-    }
-
     if (auto cached = findCachedData(url, resolvedUrl); cached.has_value()) {
         task.data = *cached;
         task.byteCount = static_cast<int>(cached->size());
@@ -112,6 +113,12 @@ int QueuedNetProvider::preloadNetThing(std::string url) {
         if (fetchCompleteCallback_) {
             fetchCompleteCallback_(task.url, *cached);
         }
+        return taskId;
+    }
+
+    if (isFetchAlreadySatisfied(url, resolvedUrl, fallbacks)) {
+        task.byteCount = 1;
+        task.done = true;
         return taskId;
     }
 
@@ -470,7 +477,7 @@ void QueuedNetProvider::addCacheKeys(std::vector<std::string>& keys, std::string
     }
     addUnique(keys, toLower(fileName));
     const std::string baseName = util::getFileNameWithoutExtension(fileName);
-    if (!baseName.empty()) {
+    if (!baseName.empty() && isCastLikeFileName(fileName)) {
         addUnique(keys, toLower(baseName));
     }
 }
@@ -580,8 +587,7 @@ std::vector<std::string> QueuedNetProvider::withMovieDirectoryCastFallbacks(
     if (fileName.empty()) {
         return fallbacks;
     }
-    const std::string lowerName = toLower(fileName);
-    if (!(lowerName.ends_with(".cct") || lowerName.ends_with(".cst") || lowerName.find('.') == std::string::npos)) {
+    if (!isCastLikeFileName(fileName)) {
         return fallbacks;
     }
 

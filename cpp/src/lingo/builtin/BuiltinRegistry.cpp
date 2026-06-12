@@ -2474,6 +2474,13 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
         }
         return Datum::voidValue();
     }
+    if (const auto* typeSymbol = target.asSymbol();
+        typeSymbol != nullptr && !constructorArgs.empty() && constructorArgs.front().isVoid()) {
+        if (context.castMemberCreator) {
+            return context.castMemberCreator(1, typeSymbol->name);
+        }
+        return Datum::voidValue();
+    }
 
     if (context.newInstanceHandler) {
         return context.newInstanceHandler(target, constructorArgs);

@@ -261,6 +261,14 @@ bool WasmPlayer::isAlreadyLoadedCastRequest(std::string_view url) const {
     }
 
     const std::string fileName = util::getFileName(url);
+    const std::string lowerFileName = toLower(fileName);
+    const bool castLikeRequest = lowerFileName.ends_with(".cct") ||
+                                 lowerFileName.ends_with(".cst") ||
+                                 lowerFileName.find('.') == std::string::npos;
+    if (!castLikeRequest) {
+        return false;
+    }
+
     const std::string baseName = util::getFileNameWithoutExtension(fileName);
     if (baseName.empty()) {
         return false;

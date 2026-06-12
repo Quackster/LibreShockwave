@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "libreshockwave/id/Ids.hpp"
+#include "libreshockwave/player/CursorManager.hpp"
 
 namespace libreshockwave::player {
 namespace {
@@ -432,7 +433,7 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
             const auto& items = value.listValue().items();
             sprite->setCursorMembers(encodeCursorMember(items[0]), encodeCursorMember(items[1]));
         } else {
-            sprite->setCursor(value.intValue());
+            sprite->setCursor(CursorManager::cursorCodeFromDatum(value));
         }
         return true;
     }

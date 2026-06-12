@@ -11609,6 +11609,13 @@ void testBuiltinRegistryFoundation() {
     assert(createdCastLib == 3);
     assert(createdMemberType == "bitmap");
     assert(createdMember.asCastMemberRef()->memberNum() == 42);
+    createdCastLib = 0;
+    createdMemberType.clear();
+    const auto fallbackCastMember = registry.invoke("new", context, {Datum::symbol("text"), Datum::voidValue()});
+    assert(createdCastLib == 1);
+    assert(createdMemberType == "text");
+    assert(fallbackCastMember.asCastMemberRef()->castLib == 1);
+    assert(fallbackCastMember.asCastMemberRef()->memberNum() == 42);
 
     int genericNewCalls = 0;
     context.newInstanceHandler = [&genericNewCalls](const Datum& target, const std::vector<Datum>& args) {
@@ -15089,6 +15096,50 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .propListValue()
                .get(Datum::of(std::string("Object Base Class")))
                .intValue() == SlotId::of(2, 74).value());
+
+    const std::string externalVariablesUrl =
+        "https://images.classichabbo.com/gamedata/external_variables.txt?hash=x";
+    bool externalDownloadFallbackCalled = false;
+    builtinContext.registryCastMemberNameResolver = [&](int castLib, const std::string& memberName) {
+        assert(castLib == 0);
+        externalDownloadFallbackCalled = true;
+        if (memberName == externalVariablesUrl) {
+            return Datum::castMemberRef(CastLibId(2), MemberId(74));
+        }
+        return Datum::voidValue();
+    };
+    auto externalDownloadRegistryInstance = Datum::scriptInstance("externalDownloadRegistry");
+    externalDownloadRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
+    auto externalDownloadPrefillResult = MemberRegistryMethodDispatcher::prefill(
+        externalDownloadRegistryInstance.scriptInstanceValue(),
+        "getMemNum",
+        {Datum::of(externalVariablesUrl)},
+        &builtinContext);
+    assert(externalDownloadPrefillResult.handled);
+    assert(externalDownloadPrefillResult.value.intValue() == 0);
+    assert(!externalDownloadFallbackCalled);
+    assert(externalDownloadRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(externalVariablesUrl))
+               .isVoid());
+
+    auto registeredExternalDownloadList = Datum::propList();
+    registeredExternalDownloadList.propListValue().put(
+        Datum::of(externalVariablesUrl),
+        Datum::of(SlotId::of(1, 10001).value()));
+    externalDownloadRegistryInstance.scriptInstanceValue().setProperty(
+        "pAllMemNumList",
+        registeredExternalDownloadList);
+    externalDownloadFallbackCalled = false;
+    auto registeredExternalDownloadPrefillResult = MemberRegistryMethodDispatcher::prefill(
+        externalDownloadRegistryInstance.scriptInstanceValue(),
+        "getMemNum",
+        {Datum::of(externalVariablesUrl)},
+        &builtinContext);
+    assert(registeredExternalDownloadPrefillResult.handled);
+    assert(registeredExternalDownloadPrefillResult.value.intValue() == SlotId::of(1, 10001).value());
+    assert(!externalDownloadFallbackCalled);
     builtinContext.registryCastMemberNameResolver = {};
 
     builtinContext.castMemberNameResolver = [](int castLib, const std::string& memberName) {
@@ -18404,6 +18455,8 @@ void testSpritePropertiesFoundation() {
     assert(!sprite->isVisible());
     assert(props.setSpriteProp(3, "ink", Datum::symbol("matte")));
     assert(sprite->inkMode() == InkMode::MATTE);
+    assert(props.setSpriteProp(3, "cursor", Datum::symbol("arrow")));
+    assert(sprite->cursor() == CursorManager::ARROW_CURSOR);
     assert(props.setSpriteProp(3, "blend", Datum::of(72)));
     assert(props.setSpriteProp(3, "blend", Datum::voidValue()));
     assert(sprite->blend() == 72);
@@ -18731,6 +18784,8 @@ void testSpritePropertiesFoundation() {
     assert(props.callSpriteMethod(19, "getMember", {}).asCastMemberRef()->memberNum() == 42);
     assert(props.callSpriteMethod(19, "setCursor", {Datum::of(17)}).boolValue());
     assert(props.callSpriteMethod(19, "getCursor", {}).intValue() == 17);
+    assert(props.callSpriteMethod(19, "setCursor", {Datum::symbol("arrow")}).boolValue());
+    assert(props.callSpriteMethod(19, "getCursor", {}).intValue() == CursorManager::ARROW_CURSOR);
 
     assert(props.setSpriteProp(7, "member", Datum::of(std::string("logo"))));
     auto namedSprite = registry.get(7);
@@ -23035,6 +23090,18 @@ void testQueuedNetProviderFoundation() {
     assert(provider.netTextResult(cachedCastTask) == "CAST");
     assert(completedUrls.back() == "https://example.invalid/movies/ROOM.CST");
 
+    QueuedNetProvider cacheCollisionProvider("https://example.invalid/movies/entry.dcr");
+    const int collisionCastTask = cacheCollisionProvider.preloadNetThing("external_variables");
+    assert(cacheCollisionProvider.pendingRequests().size() == 1);
+    cacheCollisionProvider.drainPendingRequests();
+    cacheCollisionProvider.onFetchComplete(collisionCastTask, {'C', 'A', 'S', 'T'});
+    assert(cacheCollisionProvider.netTextResult(collisionCastTask) == "CAST");
+    const int collisionTextTask = cacheCollisionProvider.preloadNetThing("external_variables.txt?hash=x");
+    assert(!cacheCollisionProvider.netDone(collisionTextTask));
+    assert(cacheCollisionProvider.pendingRequests().size() == 1);
+    assert(cacheCollisionProvider.getRequest(0)->url ==
+           "https://example.invalid/movies/external_variables.txt?hash=x");
+
     const int postTask = provider.postNetText("submit", "a=b");
     assert(postTask == 4);
     assert(provider.pendingRequests().back().taskId == postTask);
@@ -23062,6 +23129,7 @@ void testQueuedNetProviderFoundation() {
     const int satisfiedTask = satisfiedProvider.preloadNetThing("already.cct");
     assert(satisfiedProvider.netDone(satisfiedTask));
     assert(satisfiedProvider.pendingRequests().empty());
+    assert(statusProp(satisfiedProvider.getStreamStatusDatum(satisfiedTask), "bytesTotal").intValue() == 1);
 
     const int emptyTask = satisfiedProvider.preloadNetThing("");
     assert(satisfiedProvider.netDone(emptyTask));
@@ -23411,6 +23479,22 @@ void testWasmPlayerWrapperFoundation() {
     assert(wrapper.netProvider()->netTextResult(fetchTask) == "OK");
     wrapper.netProvider()->drainPendingRequests();
     assert(wrapper.netProvider()->pendingRequests().empty());
+
+    auto loadedExternalVariablesCast = std::make_shared<CastLib>(9, nullptr);
+    loadedExternalVariablesCast->setName("external_variables");
+    loadedExternalVariablesCast->load();
+    wrapper.player()->castLibManager().castLibs()[9] = loadedExternalVariablesCast;
+    const int satisfiedCastTask = wrapper.netProvider()->preloadNetThing("external_variables");
+    assert(wrapper.netProvider()->netDone(satisfiedCastTask));
+    assert(wrapper.netProvider()->pendingRequests().empty());
+    const int textCollisionTask = wrapper.netProvider()->preloadNetThing("external_variables.txt?hash=x");
+    assert(!wrapper.netProvider()->netDone(textCollisionTask));
+    assert(wrapper.netProvider()->pendingRequests().size() == 1);
+    assert(wrapper.netProvider()->getRequest(0)->url ==
+           "https://example.invalid/movies/external_variables.txt?hash=x");
+    wrapper.netProvider()->drainPendingRequests();
+    wrapper.netProvider()->onFetchComplete(textCollisionTask, {'V'});
+    assert(wrapper.netProvider()->netTextResult(textCollisionTask) == "V");
 
     wrapper.audioBackend()->play(1, {'R', 'I', 'F', 'F'}, "wav", 1);
     assert(wrapper.audioBackend()->pendingCount() == 1);
@@ -24354,7 +24438,7 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("_diagnosticDepth") != std::string::npos);
     assert(worker.find("_diagnosticActive") != std::string::npos);
     assert(worker.find("_runExclusiveDiagnostic") != std::string::npos);
-    assert(worker.find("if (!_ready || _diagnosticActive())") != std::string::npos);
+    assert(worker.find("if (!_ready || _loadInProgress || _tickInProgress || _diagnosticActive())") != std::string::npos);
     assert(worker.find("_runMusWebSocketSelfTest") != std::string::npos);
     assert(worker.find("runMusWebSocketSelfTest") != std::string::npos);
     assert(worker.find("musWebSocketSelfTest") != std::string::npos);

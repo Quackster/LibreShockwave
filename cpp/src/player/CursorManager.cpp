@@ -1,11 +1,41 @@
 #include "libreshockwave/player/CursorManager.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "libreshockwave/player/input/HitTester.hpp"
 
 namespace libreshockwave::player {
+namespace {
+
+std::string normalizedCursorName(std::string_view value) {
+    std::string result;
+    result.reserve(value.size());
+    for (const char ch : value) {
+        if (ch == '#' || ch == ' ' || ch == '_' || ch == '-') {
+            continue;
+        }
+        result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    return result;
+}
+
+std::optional<int> symbolicCursorCode(std::string_view value) {
+    const std::string name = normalizedCursorName(value);
+    if (name == "arrow") return CursorManager::ARROW_CURSOR;
+    if (name == "default" || name == "none") return CursorManager::DEFAULT_CURSOR;
+    if (name == "ibeam" || name == "i") return CursorManager::IBEAM_CURSOR;
+    if (name == "wait" || name == "watch" || name == "hourglass") return CursorManager::WAIT_CURSOR;
+    if (name == "pointer" || name == "hand" || name == "finger" || name == "pointingfinger") {
+        return CursorManager::POINTER_CURSOR;
+    }
+    return std::nullopt;
+}
+
+} // namespace
 
 CursorManager::CursorManager(input::InputState* inputState, render::SpriteRegistry* spriteRegistry)
     : inputState_(inputState), spriteRegistry_(spriteRegistry) {}
@@ -165,6 +195,21 @@ int CursorManager::encodeCursorMember(const lingo::Datum& datum) {
     return datum.intValue();
 }
 
+int CursorManager::cursorCodeFromDatum(const lingo::Datum& datum) {
+    if (const auto* symbol = datum.asSymbol()) {
+        if (const auto cursor = symbolicCursorCode(symbol->name)) {
+            return *cursor;
+        }
+        return DEFAULT_CURSOR;
+    }
+    if (datum.isString()) {
+        if (const auto cursor = symbolicCursorCode(datum.stringValue())) {
+            return *cursor;
+        }
+    }
+    return datum.intValue();
+}
+
 bool CursorManager::isNearWhite(std::uint32_t pixel) {
     const int red = static_cast<int>((pixel >> 16) & 0xFFU);
     const int green = static_cast<int>((pixel >> 8) & 0xFFU);
@@ -234,7 +279,7 @@ int CursorManager::getGlobalCursorCode() const {
         return CUSTOM_BITMAP_CURSOR;
     }
     if (!globalCursor.isVoid()) {
-        return globalCursor.intValue();
+        return cursorCodeFromDatum(globalCursor);
     }
     return DEFAULT_CURSOR;
 }
