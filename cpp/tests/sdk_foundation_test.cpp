@@ -26954,6 +26954,38 @@ void testDirectorFileRifxLoader() {
         appendI32LE(data, static_cast<std::uint32_t>(parentRef));
         data.insert(data.end(), payload.begin(), payload.end());
     };
+    auto appendW3DTransformLE = [&](std::vector<std::uint8_t>& data, float tx, float ty, float tz) {
+        for (int index = 0; index < 16; ++index) {
+            float value = 0.0F;
+            if (index == 0 || index == 5 || index == 10 || index == 15) {
+                value = 1.0F;
+            } else if (index == 12) {
+                value = tx;
+            } else if (index == 13) {
+                value = ty;
+            } else if (index == 14) {
+                value = tz;
+            }
+            appendF32LE(data, value);
+        }
+    };
+    auto appendW3DMaterialPayload = [&](std::vector<std::uint8_t>& data,
+                                        const std::string& name,
+                                        float red,
+                                        float green,
+                                        float blue,
+                                        float alpha) {
+        appendPString16LE(data, name);
+        appendF32LE(data, red);
+        appendF32LE(data, green);
+        appendF32LE(data, blue);
+        appendF32LE(data, alpha);
+        for (int index = 0; index < 8; ++index) {
+            appendF32LE(data, index == 3 || index == 7 ? alpha : 0.0F);
+        }
+        appendF32LE(data, 16.0F);
+        appendPString16LE(data, "");
+    };
     auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
         data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
         data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
@@ -27026,17 +27058,24 @@ void testDirectorFileRifxLoader() {
     std::vector<std::uint8_t> w3dVersion;
     appendI32LE(w3dVersion, 0x01020304);
     appendW3DEntry(w3dData, 0x02, 0, w3dVersion);
-    std::vector<std::uint8_t> w3dNode;
-    appendPString16LE(w3dNode, "DisplayNode");
-    appendPString16LE(w3dNode, "Scene");
-    appendI32LE(w3dNode, 0);
-    for (int index = 0; index < 16; ++index) {
-        appendF32LE(w3dNode, index == 0 || index == 5 || index == 10 || index == 15 ? 1.0F : 0.0F);
-    }
-    appendPString16LE(w3dNode, "DisplayMesh");
-    appendPString16LE(w3dNode, "");
-    appendPString16LE(w3dNode, "");
-    appendW3DEntry(w3dData, 0x72, 1, w3dNode);
+    std::vector<std::uint8_t> w3dFrontNode;
+    appendPString16LE(w3dFrontNode, "FrontNode");
+    appendPString16LE(w3dFrontNode, "Scene");
+    appendI32LE(w3dFrontNode, 0);
+    appendW3DTransformLE(w3dFrontNode, 0.0F, 0.0F, 1.0F);
+    appendPString16LE(w3dFrontNode, "DisplayMesh");
+    appendPString16LE(w3dFrontNode, "");
+    appendPString16LE(w3dFrontNode, "BlueAlpha");
+    appendW3DEntry(w3dData, 0x72, 1, w3dFrontNode);
+    std::vector<std::uint8_t> w3dBackNode;
+    appendPString16LE(w3dBackNode, "BackNode");
+    appendPString16LE(w3dBackNode, "Scene");
+    appendI32LE(w3dBackNode, 0);
+    appendW3DTransformLE(w3dBackNode, 0.0F, 0.0F, 0.0F);
+    appendPString16LE(w3dBackNode, "DisplayMesh");
+    appendPString16LE(w3dBackNode, "");
+    appendPString16LE(w3dBackNode, "RedOpaque");
+    appendW3DEntry(w3dData, 0x72, 1, w3dBackNode);
     std::vector<std::uint8_t> w3dMesh;
     appendPString16LE(w3dMesh, "DisplayMesh");
     appendI32LE(w3dMesh, 3);
@@ -27054,6 +27093,12 @@ void testDirectorFileRifxLoader() {
     appendU16LE(w3dMesh, 1);
     appendU16LE(w3dMesh, 2);
     appendW3DEntry(w3dData, 0x73, 2, w3dMesh);
+    std::vector<std::uint8_t> redMaterial;
+    appendW3DMaterialPayload(redMaterial, "RedOpaque", 1.0F, 0.0F, 0.0F, 1.0F);
+    appendW3DEntry(w3dData, 0x49, 2, redMaterial);
+    std::vector<std::uint8_t> blueMaterial;
+    appendW3DMaterialPayload(blueMaterial, "BlueAlpha", 0.0F, 0.0F, 1.0F, 0.5F);
+    appendW3DEntry(w3dData, 0x49, 2, blueMaterial);
 
     constexpr int mmapOffset = 32;
     constexpr int mmapDataStart = mmapOffset + 8 + 24 + 180;
@@ -27250,9 +27295,10 @@ void testDirectorFileRifxLoader() {
     assert(linkedW3D.has_value());
     assert(linkedW3D->version() == 0x01020304);
     assert(linkedW3D->hasSceneData());
-    assert(linkedW3D->nodes().size() == 1);
+    assert(linkedW3D->nodes().size() == 2);
     assert(linkedW3D->meshResources().size() == 1);
-    assert(linkedW3D->renderableMeshes().size() == 1);
+    assert(linkedW3D->materials().size() == 2);
+    assert(linkedW3D->renderableMeshes().size() == 2);
     SpriteBaker w3dBaker;
     RenderSprite w3dSprite(14,
                            0,
@@ -27284,6 +27330,14 @@ void testDirectorFileRifxLoader() {
     assert(std::any_of(bakedW3D.bakedBitmap()->pixels().begin(),
                        bakedW3D.bakedBitmap()->pixels().end(),
                        [](std::uint32_t pixel) { return (pixel >> 24U) != 0; }));
+    assert(std::any_of(bakedW3D.bakedBitmap()->pixels().begin(),
+                       bakedW3D.bakedBitmap()->pixels().end(),
+                       [](std::uint32_t pixel) {
+                           const auto alpha = (pixel >> 24U) & 0xFFU;
+                           const auto red = (pixel >> 16U) & 0xFFU;
+                           const auto blue = pixel & 0xFFU;
+                           return alpha == 0xFFU && red > 0 && red < 0xFFU && blue > 0 && blue < 0xFFU;
+                       }));
     assert(!file->getW3DFileForMember(member7).has_value());
     auto directTextMember = std::make_shared<CastMemberChunk>(file.get(),
                                                               ChunkId(4),
@@ -27338,7 +27392,7 @@ void testDirectorFileRifxLoader() {
     assert(file->chunks().size() == 6);
     auto reparsedW3D = file->getW3DFileForMember(shockwave3DMember);
     assert(reparsedW3D.has_value());
-    assert(reparsedW3D->renderableMeshes().size() == 1);
+    assert(reparsedW3D->renderableMeshes().size() == 2);
     assert(file->chunks().size() == 7);
     auto reparsedSoundLinks = file->getLinkedChunksForMember(member7, BinaryReader::fourCC("snd "));
     assert(reparsedSoundLinks.size() == 1);

@@ -429,13 +429,25 @@ int diffuseChannel(float value) {
 std::uint32_t w3dPaintColor(const W3DRenderableMesh& mesh, const RenderSprite& sprite) {
     if (mesh.material.has_value() && mesh.material->diffuseColor.has_value()) {
         const auto& diffuse = *mesh.material->diffuseColor;
-        return 0xFF000000U |
+        return (static_cast<std::uint32_t>(diffuseChannel(diffuse[3])) << 24U) |
                (static_cast<std::uint32_t>(diffuseChannel(diffuse[0])) << 16U) |
                (static_cast<std::uint32_t>(diffuseChannel(diffuse[1])) << 8U) |
                static_cast<std::uint32_t>(diffuseChannel(diffuse[2]));
     }
     const int rgb = sprite.hasForeColor() ? sprite.foreColor() : 0xB0B0B0;
     return opaqueArgb(rgb);
+}
+
+float averageW3DWorldZ(const W3DRenderableMesh& mesh) {
+    if (mesh.mesh.vertices.empty()) {
+        return 0.0F;
+    }
+
+    float sum = 0.0F;
+    for (const auto& vertex : mesh.mesh.vertices) {
+        sum += transformW3DVertex(vertex, mesh.worldTransform).z;
+    }
+    return sum / static_cast<float>(mesh.mesh.vertices.size());
 }
 
 float triangleEdge(const ProjectedW3DVertex& a,
@@ -744,6 +756,9 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShockwave3D(const RenderS
     if (!projection.valid) {
         return nullptr;
     }
+    std::stable_sort(meshes.begin(), meshes.end(), [](const auto& left, const auto& right) {
+        return averageW3DWorldZ(left) < averageW3DWorldZ(right);
+    });
 
     bitmap::Bitmap bitmap(width, height, 32);
     bitmap.setNativeAlpha(true);
