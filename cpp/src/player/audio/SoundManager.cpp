@@ -121,6 +121,7 @@ void SoundManager::play(int channelNum, const lingo::Datum& args) {
         return;
     }
 
+    setMember(channelNum, *parsed.memberRef);
     const int loopCount = parsed.loopCount.value_or(getLoopCount(channelNum));
     backend_->play(channelNum, *audioData, detectFormat(*audioData), loopCount);
     applyVolume(channelNum);
@@ -217,6 +218,16 @@ void SoundManager::setLoopEndTime(int channelNum, int loopEndTime) {
 
 int SoundManager::getLoopEndTime(int channelNum) const {
     return isValidChannel(channelNum) ? loopEndTimes_[static_cast<std::size_t>(channelNum)] : 0;
+}
+
+void SoundManager::setMember(int channelNum, const lingo::Datum::CastMemberRef& memberRef) {
+    if (isValidChannel(channelNum)) {
+        memberRefs_[static_cast<std::size_t>(channelNum)] = memberRef;
+    }
+}
+
+std::optional<lingo::Datum::CastMemberRef> SoundManager::getMember(int channelNum) const {
+    return isValidChannel(channelNum) ? memberRefs_[static_cast<std::size_t>(channelNum)] : std::nullopt;
 }
 
 bool SoundManager::isPlaying(int channelNum) const {

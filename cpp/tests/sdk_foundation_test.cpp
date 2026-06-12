@@ -11377,6 +11377,14 @@ void testBuiltinRegistryFoundation() {
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "pan", {Datum::of(-12)}).isVoid());
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "pan", {}).intValue() == -12);
     assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "pan").intValue() == -12);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "member", {}).asCastMemberRef()->memberNum() == 8);
+    assert(SoundChannelMethodDispatcher::setProperty(&context,
+                                                     *builtinSoundChannel,
+                                                     "member",
+                                                     Datum::castMemberRef(CastLibId(1), MemberId(9))));
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "member").asCastMemberRef()->memberNum() == 9);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "member", {}).asCastMemberRef()->memberNum() == 9);
+    assert(!SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "member", Datum::of(7)));
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "ilk", {}).asSymbol()->name == "instance");
     assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopCount").intValue() == 1);
@@ -11397,12 +11405,18 @@ void testBuiltinRegistryFoundation() {
     assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "pan").intValue() == 42);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context,
                                                                        *builtinSoundChannel,
+                                                                       "member",
+                                                                       {Datum::castMemberRef(CastLibId(1), MemberId(10))}).isVoid());
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "member", {}).asCastMemberRef()->memberNum() == 10);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context,
+                                                                       *builtinSoundChannel,
                                                                        "play",
                                                                        {Datum::castMemberRef(CastLibId(1), MemberId(8))}).isVoid());
     assert(builtinSoundBackend.playCount == 1);
     assert(builtinSoundBackend.lastPlayChannel == 2);
     assert(builtinSoundBackend.lastFormat == "wav");
     assert(builtinSoundBackend.lastLoopCount == 1);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "member").asCastMemberRef()->memberNum() == 8);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "isBusy", {}).boolValue());
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "status", {}).intValue() == 1);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "elapsedTime", {}).intValue() == 37);
@@ -24774,6 +24788,8 @@ void testSoundManagerFoundation() {
     assert(manager.getEndTime(1) == 0);
     assert(manager.getLoopStartTime(1) == 0);
     assert(manager.getLoopEndTime(1) == 0);
+    assert(!manager.getMember(1).has_value());
+    assert(!manager.getMember(9).has_value());
     assert(manager.getSoundLevel() == 7);
     assert(manager.soundKeepDevice());
     assert(manager.soundMixMedia());
@@ -24800,11 +24816,15 @@ void testSoundManagerFoundation() {
     manager.setEndTime(2, 900);
     manager.setLoopStartTime(2, 200);
     manager.setLoopEndTime(2, 800);
+    manager.setMember(2, Datum::CastMemberRef::of(CastLibId(2), MemberId(9)));
     assert(manager.getPan(2) == -35);
     assert(manager.getStartTime(2) == 120);
     assert(manager.getEndTime(2) == 900);
     assert(manager.getLoopStartTime(2) == 200);
     assert(manager.getLoopEndTime(2) == 800);
+    assert(manager.getMember(2).has_value());
+    assert(manager.getMember(2)->castLib == 2);
+    assert(manager.getMember(2)->memberNum() == 9);
     assert(!manager.isPlaying(2));
     assert(manager.getElapsedTime(2) == 0);
 
@@ -24844,6 +24864,9 @@ void testSoundManagerFoundation() {
     assert(backend.lastLoopCount == 1);
     assert(backend.lastVolumeChannel == 2);
     assert(backend.lastVolume == 128);
+    assert(manager.getMember(2).has_value());
+    assert(manager.getMember(2)->castLib == 2);
+    assert(manager.getMember(2)->memberNum() == 5);
     assert(manager.isPlaying(2));
     assert(manager.getElapsedTime(2) == 345);
     manager.setSoundLevel(3);
@@ -24873,6 +24896,8 @@ void testSoundManagerFoundation() {
     assert(backend.lastFormat == "mp3");
     assert(backend.lastLoopCount == 0);
     assert(backend.lastVolume == 255);
+    assert(manager.getMember(3).has_value());
+    assert(manager.getMember(3)->memberNum() == 6);
 
     auto stringKeyArgs = Datum::propList();
     stringKeyArgs.propListValue().put(Datum::of(std::string("member")), Datum::castMemberRef(CastLibId(2), MemberId(5)));
@@ -24881,6 +24906,8 @@ void testSoundManagerFoundation() {
     assert(backend.playCount == 3);
     assert(backend.lastPlayChannel == 4);
     assert(backend.lastLoopCount == 2);
+    assert(manager.getMember(4).has_value());
+    assert(manager.getMember(4)->memberNum() == 5);
 
     auto unresolved = manager.resolveAudioData(Datum::castMemberRef(CastLibId(99), MemberId(1)));
     assert(!unresolved.has_value());

@@ -1776,6 +1776,19 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         return Datum::of(manager != nullptr ? manager->getPan(channelNum) : 0);
     }
     if (method == "member") {
+        if (!args.empty()) {
+            if (manager != nullptr) {
+                if (const auto* member = args[0].asCastMemberRef()) {
+                    manager->setMember(channelNum, *member);
+                }
+            }
+            return Datum::voidValue();
+        }
+        if (manager != nullptr) {
+            if (auto member = manager->getMember(channelNum)) {
+                return Datum::castMemberRef(*member);
+            }
+        }
         return Datum::voidValue();
     }
     if (method == "ilk") {
@@ -1801,6 +1814,11 @@ Datum SoundBuiltins::getProperty(BuiltinContext& context,
         return Datum::of(manager != nullptr && manager->isPlaying(channelNum) ? 1 : 0);
     }
     if (prop == "member") {
+        if (manager != nullptr) {
+            if (auto member = manager->getMember(channelNum)) {
+                return Datum::castMemberRef(*member);
+            }
+        }
         return Datum::voidValue();
     }
     if (prop == "loopcount") {
@@ -1844,6 +1862,16 @@ bool SoundBuiltins::setProperty(BuiltinContext& context,
     if (prop == "pan") {
         if (context.soundManager != nullptr) {
             context.soundManager->setPan(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "member") {
+        const auto* member = value.asCastMemberRef();
+        if (member == nullptr) {
+            return false;
+        }
+        if (context.soundManager != nullptr) {
+            context.soundManager->setMember(channel.channel, *member);
         }
         return true;
     }

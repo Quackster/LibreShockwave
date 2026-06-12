@@ -65,6 +65,8 @@ public:
     [[nodiscard]] int getLoopStartTime(int channelNum) const;
     void setLoopEndTime(int channelNum, int loopEndTime);
     [[nodiscard]] int getLoopEndTime(int channelNum) const;
+    void setMember(int channelNum, const lingo::Datum::CastMemberRef& memberRef);
+    [[nodiscard]] std::optional<lingo::Datum::CastMemberRef> getMember(int channelNum) const;
     [[nodiscard]] bool isPlaying(int channelNum) const;
     [[nodiscard]] int getElapsedTime(int channelNum) const;
 
@@ -105,6 +107,7 @@ private:
     std::array<int, MAX_CHANNELS + 1> endTimes_{};
     std::array<int, MAX_CHANNELS + 1> loopStartTimes_{};
     std::array<int, MAX_CHANNELS + 1> loopEndTimes_{};
+    std::array<std::optional<lingo::Datum::CastMemberRef>, MAX_CHANNELS + 1> memberRefs_{};
     std::unordered_map<int, DirectorFile*> castLibFiles_;
     AudioResolver resolver_;
 };
