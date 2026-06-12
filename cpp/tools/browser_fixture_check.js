@@ -106,9 +106,88 @@ window.player = LibreShockwaveCppPlayer.create('stage', {
 </script></body></html>`;
 }
 
+function safeDecodeUriPath(value) {
+    try {
+        return decodeURIComponent(value);
+    } catch (error) {
+        return value;
+    }
+}
+
+function isInsideRoot(root, candidate) {
+    const relative = path.relative(root, candidate);
+    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function addCandidate(candidates, root, ...segments) {
+    if (!root || segments.some(segment => segment == null || segment === '')) {
+        return;
+    }
+    const candidate = path.resolve(root, ...segments);
+    if (!isInsideRoot(root, candidate)) {
+        return;
+    }
+    if (!candidates.includes(candidate)) {
+        candidates.push(candidate);
+    }
+}
+
+function normalizedRequestPath(requestPath) {
+    return requestPath.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function requestFileName(requestPath) {
+    const normalized = normalizedRequestPath(requestPath).replace(/\/+$/, '');
+    if (!normalized) {
+        return '';
+    }
+    let fileName = normalized.substring(normalized.lastIndexOf('/') + 1);
+    const driveOrScheme = fileName.lastIndexOf(':');
+    if (driveOrScheme >= 0) {
+        fileName = fileName.substring(driveOrScheme + 1);
+    }
+    return fileName;
+}
+
+function requestDirectory(requestPath) {
+    const normalized = normalizedRequestPath(requestPath);
+    const parts = normalized.split('/').filter(Boolean);
+    parts.pop();
+    if (parts.some(part => part.includes(':'))) {
+        return '';
+    }
+    return parts.join('/');
+}
+
+function fileCandidatesForRequest(requestPath) {
+    const relative = normalizedRequestPath(requestPath);
+    const fileName = requestFileName(requestPath);
+    const stem = fileName ? path.basename(fileName, path.extname(fileName)) : '';
+    const directory = requestDirectory(requestPath);
+    const candidates = [];
+
+    addCandidate(candidates, distPath, relative);
+    addCandidate(candidates, fixtureRoot, relative);
+    if (!fileName) {
+        return candidates;
+    }
+
+    addCandidate(candidates, fixtureRoot, fileName);
+    if (stem) {
+        addCandidate(candidates, fixtureRoot, stem, fileName);
+    }
+    if (directory) {
+        addCandidate(candidates, fixtureRoot, directory, fileName);
+        if (stem) {
+            addCandidate(candidates, fixtureRoot, directory, stem, fileName);
+        }
+    }
+    return candidates;
+}
+
 function createFixtureServer() {
     const server = http.createServer((req, res) => {
-        const requestPath = decodeURIComponent(req.url.split('?')[0]);
+        const requestPath = safeDecodeUriPath(req.url.split('?')[0]);
         if (requestPath === '/favicon.ico') {
             sendHeaders(res, 204, 'text/plain', 0);
             res.end();
@@ -120,11 +199,7 @@ function createFixtureServer() {
             res.end(body);
             return;
         }
-        const relative = requestPath.replace(/^\/+/, '');
-        const candidates = [
-            path.join(distPath, relative),
-            path.join(fixtureRoot, relative),
-        ];
+        const candidates = fileCandidatesForRequest(requestPath);
         const filePath = candidates.find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
         if (!filePath) {
             const body = Buffer.from(`Not found: ${requestPath}`, 'utf8');
@@ -146,6 +221,26 @@ function closeServer(server) {
         return Promise.resolve();
     }
     return new Promise(resolve => server.close(() => resolve()));
+}
+
+function compactDiagnostics(value, maxStringLength = 6000) {
+    if (typeof value === 'string') {
+        if (value.length <= maxStringLength) {
+            return value;
+        }
+        return `${value.substring(0, maxStringLength)}\n[truncated ${value.length - maxStringLength} chars]`;
+    }
+    if (Array.isArray(value)) {
+        return value.map(item => compactDiagnostics(item, maxStringLength));
+    }
+    if (value && typeof value === 'object') {
+        const result = {};
+        for (const [key, item] of Object.entries(value)) {
+            result[key] = compactDiagnostics(item, maxStringLength);
+        }
+        return result;
+    }
+    return value;
 }
 
 async function createBrowser() {
@@ -179,14 +274,16 @@ async function waitForRenderedFrame(page) {
             const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
             let nonBlack = 0;
             const buckets = new Set();
-            for (let p = 0; p < rgba.length; p += 80) {
+            for (let p = 0; p < rgba.length; p += 4) {
                 const r = rgba[p];
                 const g = rgba[p + 1];
                 const b = rgba[p + 2];
                 if (r > 10 || g > 10 || b > 10) {
                     nonBlack++;
                 }
-                buckets.add((r >> 5) + ',' + (g >> 5) + ',' + (b >> 5));
+                if ((p / 4) % 257 === 0) {
+                    buckets.add((r >> 5) + ',' + (g >> 5) + ',' + (b >> 5));
+                }
             }
             return {
                 loaded: window.__state.loaded,
@@ -205,7 +302,37 @@ async function waitForRenderedFrame(page) {
             return last;
         }
     }
-    throw new Error(`Movie did not produce the expected rendered frame before timeout: ${JSON.stringify(last, null, 2)}`);
+    let diagnostics = {};
+    try {
+        diagnostics = await page.evaluate(async () => {
+            const result = {};
+            const player = window.player;
+            async function capture(name, method) {
+                if (!player || typeof player[method] !== 'function') {
+                    return;
+                }
+                try {
+                    result[name] = await Promise.race([
+                        player[method](),
+                        new Promise(resolve => setTimeout(() => resolve('[diagnostic timeout]'), 2000)),
+                    ]);
+                } catch (error) {
+                    result[name] = `[diagnostic error] ${error && error.message ? error.message : String(error)}`;
+                }
+            }
+            await capture('runtime', 'getRuntimeDiagnostics');
+            await capture('bootstrap', 'getBootstrapDiagnostics');
+            await capture('scripts', 'getScriptDiagnostics');
+            await capture('windowSprites', 'getWindowSpriteDiagnostics');
+            await capture('visibleText', 'getVisibleTextDiagnostics');
+            await capture('callStack', 'getCallStack');
+            return result;
+        });
+    } catch (error) {
+        diagnostics = { error: error && error.message ? error.message : String(error) };
+    }
+    diagnostics = compactDiagnostics(diagnostics);
+    throw new Error(`Movie did not produce the expected rendered frame before timeout: ${JSON.stringify({ state: last, diagnostics }, null, 2)}`);
 }
 
 async function main() {
