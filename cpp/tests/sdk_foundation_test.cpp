@@ -25388,6 +25388,21 @@ void testW3DFileParser() {
         appendU16LE(data, static_cast<int>(value.size()));
         data.insert(data.end(), value.begin(), value.end());
     };
+    auto appendTransformLE = [&](std::vector<std::uint8_t>& data, float tx, float ty, float tz) {
+        for (int index = 0; index < 16; ++index) {
+            float value = 0.0F;
+            if (index == 0 || index == 5 || index == 10 || index == 15) {
+                value = 1.0F;
+            } else if (index == 12) {
+                value = tx;
+            } else if (index == 13) {
+                value = ty;
+            } else if (index == 14) {
+                value = tz;
+            }
+            appendF32LE(data, value);
+        }
+    };
     auto appendEntry = [&](std::vector<std::uint8_t>& data,
                            int type,
                            int parentRef,
@@ -25411,23 +25426,29 @@ void testW3DFileParser() {
     appendPString16LE(node, "RootNode");
     appendPString16LE(node, "Scene");
     appendI32LE(node, 7);
-    for (int index = 0; index < 16; ++index) {
-        appendF32LE(node, static_cast<float>(index));
-    }
+    appendTransformLE(node, 10.0F, 20.0F, 30.0F);
     appendPString16LE(node, "Mesh01");
     appendPString16LE(node, "Ref01");
     appendPString16LE(node, "Shader01");
     appendEntry(data, 0x72, 1, node);
 
+    std::vector<std::uint8_t> childNode;
+    appendPString16LE(childNode, "ChildNode");
+    appendPString16LE(childNode, "RootNode");
+    appendI32LE(childNode, 11);
+    appendTransformLE(childNode, 2.0F, 3.0F, 4.0F);
+    appendPString16LE(childNode, "Mesh01");
+    appendPString16LE(childNode, "Ref01");
+    appendPString16LE(childNode, "Mat01");
+    appendEntry(data, 0x72, 2, childNode);
+
     std::vector<std::uint8_t> shape;
     appendPString16LE(shape, "Shape01");
-    appendPString16LE(shape, "RootNode");
+    appendPString16LE(shape, "ChildNode");
     appendI32LE(shape, 3);
-    for (int index = 16; index < 32; ++index) {
-        appendF32LE(shape, static_cast<float>(index));
-    }
+    appendTransformLE(shape, 1.0F, 0.0F, -2.0F);
     shape.insert(shape.end(), {0xAA, 0xBB});
-    appendEntry(data, 0x74, 2, shape);
+    appendEntry(data, 0x74, 3, shape);
 
     std::vector<std::uint8_t> mesh;
     appendPString16LE(mesh, "Mesh01");
@@ -25487,25 +25508,30 @@ void testW3DFileParser() {
 
     W3DFile file = W3DFile::load(data);
     assert(file.version() == 0x01020304);
-    assert(file.entries().size() == 8);
+    assert(file.entries().size() == 9);
     assert(file.entries()[1].type == W3DEntryType::Node);
     assert(file.entries()[1].parentRef == 1);
-    assert(file.entries()[7].type == W3DEntryType::Unknown);
+    assert(file.entries()[8].type == W3DEntryType::Unknown);
 
-    assert(file.nodes().size() == 1);
+    assert(file.nodes().size() == 2);
     assert(file.nodes()[0].name == "RootNode");
     assert(file.nodes()[0].parentName == "Scene");
     assert(file.nodes()[0].flags == 7);
     assert(file.nodes()[0].transform.has_value());
-    assert(std::fabs(file.nodes()[0].posX() - 12.0F) < 0.0001F);
-    assert(std::fabs(file.nodes()[0].posY() - 13.0F) < 0.0001F);
-    assert(std::fabs(file.nodes()[0].posZ() - 14.0F) < 0.0001F);
+    assert(std::fabs(file.nodes()[0].posX() - 10.0F) < 0.0001F);
+    assert(std::fabs(file.nodes()[0].posY() - 20.0F) < 0.0001F);
+    assert(std::fabs(file.nodes()[0].posZ() - 30.0F) < 0.0001F);
     assert(file.nodes()[0].resourceName == "Mesh01");
     assert(file.nodes()[0].refName == "Ref01");
     assert(file.nodes()[0].shaderName == "Shader01");
+    assert(file.nodes()[1].name == "ChildNode");
+    assert(file.nodes()[1].parentName == "RootNode");
+    assert(file.nodes()[1].flags == 11);
+    assert(file.nodes()[1].shaderName == "Mat01");
 
     assert(file.shapes().size() == 1);
     assert(file.shapes()[0].name == "Shape01");
+    assert(file.shapes()[0].parentName == "ChildNode");
     assert(file.shapes()[0].shapeData.size() == 2);
     assert(file.meshResources().size() == 1);
     assert(file.meshResources()[0].vertexCount == 4);
@@ -25538,7 +25564,36 @@ void testW3DFileParser() {
     assert(file.resourceRefs()[0].refType == 9);
 
     assert(file.findNode("RootNode").has_value());
+    assert(file.findNode("ChildNode").has_value());
     assert(!file.findNode("Missing").has_value());
+    const auto sceneChildren = file.childNodes("Scene");
+    assert(sceneChildren.size() == 1);
+    assert(sceneChildren[0].name == "RootNode");
+    const auto rootChildren = file.childNodes("RootNode");
+    assert(rootChildren.size() == 1);
+    assert(rootChildren[0].name == "ChildNode");
+    assert(file.childNodes("Missing").empty());
+    const auto childShapes = file.childShapes("ChildNode");
+    assert(childShapes.size() == 1);
+    assert(childShapes[0].name == "Shape01");
+    assert(file.childShapes("RootNode").empty());
+    const auto rootWorld = file.worldTransformForNode("RootNode");
+    assert(rootWorld.has_value());
+    assert(std::fabs((*rootWorld)[12] - 10.0F) < 0.0001F);
+    assert(std::fabs((*rootWorld)[13] - 20.0F) < 0.0001F);
+    assert(std::fabs((*rootWorld)[14] - 30.0F) < 0.0001F);
+    const auto childWorld = file.worldTransformForNode("ChildNode");
+    assert(childWorld.has_value());
+    assert(std::fabs((*childWorld)[12] - 12.0F) < 0.0001F);
+    assert(std::fabs((*childWorld)[13] - 23.0F) < 0.0001F);
+    assert(std::fabs((*childWorld)[14] - 34.0F) < 0.0001F);
+    const auto shapeWorld = file.worldTransformForShape("Shape01");
+    assert(shapeWorld.has_value());
+    assert(std::fabs((*shapeWorld)[12] - 13.0F) < 0.0001F);
+    assert(std::fabs((*shapeWorld)[13] - 23.0F) < 0.0001F);
+    assert(std::fabs((*shapeWorld)[14] - 32.0F) < 0.0001F);
+    assert(!file.worldTransformForNode("Missing").has_value());
+    assert(!file.worldTransformForShape("Missing").has_value());
     assert(file.findMeshResource("Mesh01")->hasDecodedGeometry());
     assert(file.findMeshResource("Mesh01")->faces[0].c == 2);
     assert(!file.findMeshResource("Missing").has_value());

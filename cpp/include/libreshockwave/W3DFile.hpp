@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <string_view>
@@ -35,6 +36,10 @@ public:
     [[nodiscard]] std::optional<w3d::W3DTexture> findTexture(std::string_view name) const;
     [[nodiscard]] std::optional<w3d::W3DMaterial> findMaterial(std::string_view name) const;
     [[nodiscard]] std::optional<w3d::W3DResourceRef> findResourceRef(std::string_view name) const;
+    [[nodiscard]] std::vector<w3d::W3DNode> childNodes(std::string_view parentName) const;
+    [[nodiscard]] std::vector<w3d::W3DShape> childShapes(std::string_view parentName) const;
+    [[nodiscard]] std::optional<std::array<float, 16>> worldTransformForNode(std::string_view name) const;
+    [[nodiscard]] std::optional<std::array<float, 16>> worldTransformForShape(std::string_view name) const;
 
 private:
     void parse(const std::vector<std::uint8_t>& data);
