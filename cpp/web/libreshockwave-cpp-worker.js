@@ -1243,19 +1243,30 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
     var host = message.host || '127.0.0.1';
     var port = message.port | 0;
     var sendMessage = message.message || 'STATUSOK';
+    var inboundExpected = message.inboundExpected == null ? '' : String(message.inboundExpected);
+    var inboundReplyExpected = message.inboundReplyExpected == null ? '' : String(message.inboundReplyExpected);
+    var requireInbound = message.requireInbound === true || !!inboundExpected || !!inboundReplyExpected;
     var result = {
         ok: false,
         host: host,
         port: port,
         handler: 'Logon',
         sendHandler: 'sendFuseMsg',
+        inboundExpected: inboundExpected,
+        inboundReplyExpected: inboundReplyExpected,
         logonCalled: false,
         connected: false,
         callbackTicked: false,
         connectionOk: false,
         sendCalled: false,
         scriptSendQueued: false,
-        scriptSendSent: false
+        scriptSendSent: false,
+        inboundReceived: false,
+        handlerTickedAfterInbound: false,
+        lastContentMatched: false,
+        inboundReplyQueued: false,
+        inboundReplySent: false,
+        inboundHandled: false
     };
 
     if (!port) {
@@ -1317,12 +1328,56 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
         _pumpMusRequests();
         result.scriptSendSent = result.scriptSendQueued;
 
+        if (requireInbound) {
+            var inboundState = await _waitForMusState(instanceId, function() {
+                var inbound = _musInbound[instanceId];
+                if (inbound && inbound.length > 0) {
+                    return { type: 'message' };
+                }
+                if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                    return { type: 'error', code: _musErrors[instanceId] };
+                }
+                if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                    return { type: 'disconnected' };
+                }
+                return null;
+            }, timeoutMs);
+            result.inboundState = inboundState ? inboundState.type : 'timeout';
+            if (inboundState && inboundState.type === 'message') {
+                result.inboundReceived = true;
+                _deliverMusEvents();
+                _exports.tick();
+                result.handlerTickedAfterInbound = true;
+                result.connectionOkAfterInbound = _debugGetGlobalInt('gConnectionOk') === 1;
+                result.lastContent = _debugGetGlobalString('lastContent');
+                result.lastContentMatched = !inboundExpected ||
+                    result.lastContent.indexOf(inboundExpected) !== -1;
+                if (inboundReplyExpected) {
+                    result.inboundReplyPending = _findFirstPendingMusRequest(1);
+                    result.inboundReplyQueued = result.inboundReplyPending.index >= 0 &&
+                        result.inboundReplyPending.instanceId === instanceId &&
+                        result.inboundReplyPending.dataText.indexOf(inboundReplyExpected) !== -1;
+                    _pumpMusRequests();
+                    result.inboundReplySent = result.inboundReplyQueued;
+                }
+                result.inboundHandled = result.lastContentMatched || result.inboundReplyQueued;
+            } else if (inboundState && inboundState.type === 'error') {
+                result.inboundErrorCode = inboundState.code;
+            }
+        } else {
+            result.inboundState = 'not-required';
+            result.inboundHandled = true;
+        }
+
         _exports.debugMusRequestDisconnect(instanceId);
         _pumpMusRequests();
         result.disconnected = !_musSockets[instanceId];
         result.ok = result.logonCalled && result.connected && result.callbackTicked &&
             result.connectionOk && result.sendCalled && result.scriptSendQueued &&
-            result.scriptSendSent && result.disconnected;
+            result.scriptSendSent && result.disconnected &&
+            (!requireInbound || (result.inboundReceived && result.handlerTickedAfterInbound &&
+                result.connectionOkAfterInbound && result.inboundHandled &&
+                (!inboundReplyExpected || result.inboundReplySent)));
         return result;
     } catch (e) {
         result.exception = e && e.message ? e.message : String(e);

@@ -24212,6 +24212,11 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("_runFixtureMultiuserScriptSelfTest") != std::string::npos);
     assert(worker.find("runFixtureMultiuserScriptSelfTest") != std::string::npos);
     assert(worker.find("fixtureMultiuserScriptSelfTest") != std::string::npos);
+    assert(worker.find("inboundExpected") != std::string::npos);
+    assert(worker.find("inboundReplyExpected") != std::string::npos);
+    assert(worker.find("inboundReplyQueued") != std::string::npos);
+    assert(worker.find("handlerTickedAfterInbound") != std::string::npos);
+    assert(worker.find("_debugGetGlobalString('lastContent')") != std::string::npos);
     assert(worker.find("debug_set_global_string") != std::string::npos);
     assert(worker.find("debugCallHandlerStringArg") != std::string::npos);
     assert(worker.find("_debugCallHandler('Logon')") != std::string::npos);
