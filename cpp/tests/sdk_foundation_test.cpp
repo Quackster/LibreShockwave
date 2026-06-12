@@ -11373,6 +11373,10 @@ void testBuiltinRegistryFoundation() {
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "stop", {}).isVoid());
     assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "volume", Datum::of(300)));
     assert(builtinSoundManager.getVolume(2) == 255);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "pan", {}).intValue() == 0);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "pan", {Datum::of(-12)}).isVoid());
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "pan", {}).intValue() == -12);
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "pan").intValue() == -12);
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "ilk", {}).asSymbol()->name == "instance");
     assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopCount").intValue() == 1);
@@ -11387,6 +11391,10 @@ void testBuiltinRegistryFoundation() {
     assert(builtinSoundBackend.lastVolume == 123);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "volume", {}).intValue() == 123);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "volume").intValue() == 123);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "pan", {}).intValue() == -12);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "pan", {Datum::of(42)}).isVoid());
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "pan", {}).intValue() == 42);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "pan").intValue() == 42);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context,
                                                                        *builtinSoundChannel,
                                                                        "play",

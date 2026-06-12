@@ -1767,7 +1767,13 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         return Datum::of(manager != nullptr ? manager->getVolume(channelNum) : 255);
     }
     if (method == "pan") {
-        return Datum::of(0);
+        if (!args.empty()) {
+            if (manager != nullptr) {
+                manager->setPan(channelNum, toIntLikeJava(args[0]));
+            }
+            return Datum::voidValue();
+        }
+        return Datum::of(manager != nullptr ? manager->getPan(channelNum) : 0);
     }
     if (method == "member") {
         return Datum::voidValue();
