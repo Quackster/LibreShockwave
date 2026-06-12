@@ -141,6 +141,13 @@ function createFixtureServer() {
     });
 }
 
+function closeServer(server) {
+    if (!server || !server.close) {
+        return Promise.resolve();
+    }
+    return new Promise(resolve => server.close(() => resolve()));
+}
+
 async function createBrowser() {
     try {
         const puppeteer = requireFromCandidates('puppeteer');
@@ -256,18 +263,33 @@ async function main() {
 
     const WebSocket = requireFromCandidates('ws');
     const { server, port: httpPort } = await createFixtureServer();
-    const wss = new WebSocket.Server({ host: '127.0.0.1', port: 0 });
-    await new Promise(resolve => wss.once('listening', resolve));
-    const wsPort = wss.address().port;
-    const received = [];
-    wss.on('connection', socket => {
+    const fixtureWss = new WebSocket.Server({ host: '127.0.0.1', port: 0 });
+    const smusWss = new WebSocket.Server({ host: '127.0.0.1', port: 0 });
+    await Promise.all([
+        new Promise(resolve => fixtureWss.once('listening', resolve)),
+        new Promise(resolve => smusWss.once('listening', resolve)),
+    ]);
+    const fixtureWsPort = fixtureWss.address().port;
+    const smusWsPort = smusWss.address().port;
+    const fixtureReceived = [];
+    const smusReceived = [];
+    fixtureWss.on('connection', socket => {
         let sentInbound = false;
         socket.on('message', data => {
             const text = Buffer.from(data).toString('binary');
-            received.push(text);
+            fixtureReceived.push(text);
             if (!sentInbound) {
                 sentInbound = true;
                 socket.send(inboundExpected);
+            }
+        });
+    });
+    smusWss.on('connection', socket => {
+        socket.on('message', data => {
+            const bytes = Buffer.from(data);
+            smusReceived.push(bytes);
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(bytes);
             }
         });
     });
@@ -291,7 +313,7 @@ async function main() {
             return window.player.runFixtureMultiuserScriptSelfTest(options);
         }, {
             host: '127.0.0.1',
-            port: wsPort,
+            port: fixtureWsPort,
             message: inboundReplyExpected,
             inboundExpected,
             inboundReplyExpected,
@@ -300,6 +322,19 @@ async function main() {
         });
         if (!multiuser || !multiuser.ok) {
             throw new Error(`Fixture Multiuser diagnostic failed: ${JSON.stringify(multiuser, null, 2)}`);
+        }
+        const smus = await page.evaluate(async options => {
+            return window.player.runCxxSmusBridgeSelfTest(options);
+        }, {
+            host: '127.0.0.1',
+            port: smusWsPort,
+            sender: 'browser-fixture-check',
+            subject: 'CHAT',
+            content: 'hello-smus',
+            timeoutMs: Math.min(timeoutMs, 10000),
+        });
+        if (!smus || !smus.ok) {
+            throw new Error(`C++ SMUS bridge diagnostic failed: ${JSON.stringify(smus, null, 2)}`);
         }
         if (screenshotPath) {
             await page.screenshot({ path: screenshotPath });
@@ -322,16 +357,34 @@ async function main() {
                 inboundReplySent: multiuser.inboundReplySent,
                 inboundHandled: multiuser.inboundHandled,
             },
-            serverReceivedCount: received.length,
-            serverReceivedPreview: received.map(text => text.slice(0, 32)),
+            smus: {
+                connected: smus.connected,
+                cppConnected: smus.cppConnected,
+                logonQueued: smus.logonQueued,
+                logonSent: smus.logonSent,
+                smusSendQueued: smus.smusSendQueued,
+                smusSendSent: smus.smusSendSent,
+                cppReceived: smus.cppReceived,
+                disconnectRequested: smus.disconnectRequested,
+                socketClosedAfterDisconnect: smus.socketClosedAfterDisconnect,
+                errorDelivered: smus.errorDelivered,
+            },
+            serverReceivedCount: fixtureReceived.length,
+            serverReceivedPreview: fixtureReceived.map(text => text.slice(0, 32)),
+            fixtureServerReceivedCount: fixtureReceived.length,
+            fixtureServerReceivedPreview: fixtureReceived.map(text => text.slice(0, 32)),
+            smusServerReceivedCount: smusReceived.length,
+            smusServerReceivedLengths: smusReceived.map(bytes => bytes.length),
+            smusServerReceivedPreview: smusReceived.map(bytes => bytes.subarray(0, 16).toString('hex')),
             screenshot: screenshotPath || undefined,
         }, null, 2));
     } finally {
         if (browser) {
             await browser.close();
         }
-        await new Promise(resolve => wss.close(resolve));
-        await new Promise(resolve => server.close(resolve));
+        await closeServer(fixtureWss);
+        await closeServer(smusWss);
+        await closeServer(server);
     }
 }
 
