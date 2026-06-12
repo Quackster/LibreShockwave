@@ -2,6 +2,8 @@
 
 Objective: port LibreShockwave's non-editor runtime/player stack to C++ while keeping the C++ tree buildable and tested after each slice. The editor is out of scope for the current port objective.
 
+Current requested goal: the Habbo movie/browser networking load was only a completed proof that movies can load and the WebSocket -> JS bridge plus C++ SMUS path work. The active workstream is now C++ cleanup and parity: keep Java/Gradle source and project material out of the active tree, keep Habbo/movie-specific network debug hooks and fixture-specific variable seeding out of reusable runtime/browser assets, maintain the README as C++ source documentation, and continue non-editor runtime/player parity against generic fixtures such as `/var/www/html/dcr0910` and `/opt/git/v1_assets/`.
+
 ## Current Status
 
 C++-first cleanup is complete in the active tree. The Java/Gradle project served as the historical implementation reference for behavior already ported to C++; the repository-facing source now centers on the CMake/C++ library, native tools, probes, and Emscripten browser player. Required runtime font assets were preserved under `cpp/resources/fonts`, movie-specific browser debugging hooks used only for the Habbo networking proof were removed from reusable web assets, and `README.md` now documents the C++ source and build flow. Existing editor scaffolding is excluded from the default CMake build and is not being advanced as part of the current port objective.
