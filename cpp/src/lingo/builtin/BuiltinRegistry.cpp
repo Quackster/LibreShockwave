@@ -1065,6 +1065,9 @@ void ListBuiltins::registerBuiltins(BuiltinRegistry& registry) {
     registry.registerBuiltin("sort", ListBuiltins::sort);
     registry.registerBuiltin("listp", ListBuiltins::listp);
     registry.registerBuiltin("list", ListBuiltins::list);
+    registry.registerBuiltin("join", ListBuiltins::join);
+    registry.registerBuiltin("duplicate", ListBuiltins::duplicate);
+    registry.registerBuiltin("getfirst", ListBuiltins::getFirst);
     registry.registerBuiltin("getlast", ListBuiltins::getLast);
 }
 
@@ -1279,7 +1282,19 @@ Datum ListBuiltins::getPropAt(BuiltinContext&, const std::vector<Datum>& args) {
 }
 
 Datum ListBuiltins::findPos(BuiltinContext&, const std::vector<Datum>& args) {
-    if (args.size() < 2 || !args[0].isPropList()) {
+    if (args.size() < 2) {
+        return Datum::voidValue();
+    }
+    if (args[0].isList()) {
+        const auto& items = args[0].listValue().items();
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            if (lingoEquals(items[index], args[1])) {
+                return Datum::of(static_cast<int>(index + 1));
+            }
+        }
+        return Datum::of(0);
+    }
+    if (!args[0].isPropList()) {
         return Datum::voidValue();
     }
     const int index = findPropIndexUntyped(args[0].propListValue(), args[1]);
@@ -1335,6 +1350,44 @@ Datum ListBuiltins::listp(BuiltinContext&, const std::vector<Datum>& args) {
 
 Datum ListBuiltins::list(BuiltinContext&, const std::vector<Datum>& args) {
     return Datum::list(args);
+}
+
+Datum ListBuiltins::join(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty() || !args[0].isList()) {
+        return Datum::of(std::string());
+    }
+    const std::string separator = args.size() > 1 ? toStringLikeJava(args[1]) : "&";
+    std::ostringstream out;
+    const auto& items = args[0].listValue().items();
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        if (index > 0) {
+            out << separator;
+        }
+        out << toStringLikeJava(items[index]);
+    }
+    return Datum::of(out.str());
+}
+
+Datum ListBuiltins::duplicate(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty() || (!args[0].isList() && !args[0].isPropList())) {
+        return Datum::voidValue();
+    }
+    return args[0].deepCopy();
+}
+
+Datum ListBuiltins::getFirst(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    if (args[0].isList()) {
+        const auto& items = args[0].listValue().items();
+        return items.empty() ? Datum::voidValue() : items.front();
+    }
+    if (args[0].isPropList()) {
+        const auto& properties = args[0].propListValue().properties();
+        return properties.empty() ? Datum::voidValue() : properties.front().second;
+    }
+    return Datum::voidValue();
 }
 
 Datum ListBuiltins::getLast(BuiltinContext&, const std::vector<Datum>& args) {
