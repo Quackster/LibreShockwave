@@ -28,6 +28,7 @@ std::string_view name(SpriteType type) {
         case SpriteType::Text: return "TEXT";
         case SpriteType::Button: return "BUTTON";
         case SpriteType::FilmLoop: return "FILM_LOOP";
+        case SpriteType::Shockwave3D: return "SHOCKWAVE_3D";
         case SpriteType::Unknown: return "UNKNOWN";
     }
     throw std::logic_error("Unknown SpriteType enum value");

@@ -19421,6 +19421,7 @@ void testRenderPipelineFoundation() {
     assert(RenderPipelineTrace::empty().steps().empty());
     assert(libreshockwave::player::render::pipeline::name(SpriteType::Bitmap) == "BITMAP");
     assert(libreshockwave::player::render::pipeline::name(SpriteType::FilmLoop) == "FILM_LOOP");
+    assert(libreshockwave::player::render::pipeline::name(SpriteType::Shockwave3D) == "SHOCKWAVE_3D");
 
     auto staticChunk = std::make_shared<CastMemberChunk>(nullptr,
                                                          ChunkId(400),
@@ -19805,9 +19806,28 @@ void testStageRendererFoundation() {
     auto runtimeMember = std::make_shared<CastMember>(1, 10000, MemberType::Bitmap);
     runtimeMember->setName("Runtime Bitmap");
     runtimeMember->setRuntimeBitmap(runtimeBitmap);
-    renderer.setCastMemberResolver([runtimeMember](int castLib,
-                                                   int memberNum) -> std::shared_ptr<const CastMember> {
-        return castLib == 1 && memberNum == 10000 ? runtimeMember : nullptr;
+    auto shockwaveChunk = std::make_shared<CastMemberChunk>(nullptr,
+                                                            ChunkId(402),
+                                                            MemberType::Shockwave3D,
+                                                            0,
+                                                            0,
+                                                            std::vector<std::uint8_t>{},
+                                                            std::vector<std::uint8_t>(40, 0),
+                                                            "Authored 3D",
+                                                            0,
+                                                            0,
+                                                            0);
+    auto authoredShockwaveMember = std::make_shared<CastMember>(101, 1, 10001, shockwaveChunk);
+    auto runtimeShockwaveMember = std::make_shared<CastMember>(1, 10002, MemberType::Shockwave3D);
+    runtimeShockwaveMember->setName("Runtime 3D");
+    renderer.setCastMemberResolver([runtimeMember,
+                                    authoredShockwaveMember,
+                                    runtimeShockwaveMember](int castLib,
+                                                            int memberNum) -> std::shared_ptr<const CastMember> {
+        if (castLib == 1 && memberNum == 10000) return runtimeMember;
+        if (castLib == 1 && memberNum == 10001) return authoredShockwaveMember;
+        if (castLib == 1 && memberNum == 10002) return runtimeShockwaveMember;
+        return nullptr;
     });
     auto runtime = registry.getOrCreateDynamic(7);
     runtime->setDynamicMember(1, 10000);
@@ -19815,8 +19835,24 @@ void testStageRendererFoundation() {
     runtime->setLocV(30);
     runtime->setLocZ(2);
 
+    auto authored3d = registry.getOrCreateDynamic(8);
+    authored3d->setDynamicMember(1, 10001);
+    authored3d->setLocH(30);
+    authored3d->setLocV(40);
+    authored3d->setLocZ(4);
+    authored3d->setWidth(80);
+    authored3d->setHeight(60);
+
+    auto runtime3d = registry.getOrCreateDynamic(9);
+    runtime3d->setDynamicMember(1, 10002);
+    runtime3d->setLocH(35);
+    runtime3d->setLocV(45);
+    runtime3d->setLocZ(5);
+    runtime3d->setWidth(90);
+    runtime3d->setHeight(70);
+
     const auto sprites = renderer.getSpritesForFrame(99);
-    assert(sprites.size() == 3);
+    assert(sprites.size() == 5);
     assert(sprites[0].channel() == 4);
     assert(sprites[0].x() == 5);
     assert(sprites[0].y() == 6);
@@ -19850,6 +19886,22 @@ void testStageRendererFoundation() {
     assert(sprites[2].locZ() == 3);
     assert(sprites[2].blend() == 80);
     assert(sprites[2].hasBehaviors());
+
+    assert(sprites[3].channel() == 8);
+    assert(sprites[3].type() == SpriteType::Shockwave3D);
+    assert(sprites[3].castMember().get() == shockwaveChunk.get());
+    assert(sprites[3].dynamicMember().get() == authoredShockwaveMember.get());
+    assert(sprites[3].castMemberId() == 402);
+    assert(sprites[3].memberName().value() == "Authored 3D");
+    assert(sprites[3].width() == 80);
+    assert(sprites[3].height() == 60);
+
+    assert(sprites[4].channel() == 9);
+    assert(sprites[4].type() == SpriteType::Shockwave3D);
+    assert(sprites[4].castMember() == nullptr);
+    assert(sprites[4].dynamicMember().get() == runtimeShockwaveMember.get());
+    assert(sprites[4].castMemberId() == 10002);
+    assert(sprites[4].memberName().value() == "Runtime 3D");
 
     renderer.setLastBakedSprites({sprites[2]});
     assert(renderer.lastBakedSprites().size() == 1);
@@ -21368,6 +21420,27 @@ void testSpriteBakerFoundation() {
                              nullptr,
                              false);
     assert(baker.bake(unsupported).bakedBitmap() == nullptr);
+    RenderSprite unsupported3d(9,
+                              0,
+                              0,
+                              10,
+                              10,
+                              0,
+                              true,
+                              SpriteType::Shockwave3D,
+                              nullptr,
+                              nullptr,
+                              0,
+                              0,
+                              false,
+                              false,
+                              0,
+                              100,
+                              false,
+                              false,
+                              nullptr,
+                              false);
+    assert(baker.bake(unsupported3d).bakedBitmap() == nullptr);
     baker.registerBakeStep(SpriteBaker::SpriteBakeStep{
         "unknown-test",
         [](const RenderSprite& sprite) { return sprite.type() == SpriteType::Unknown; },

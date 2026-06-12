@@ -17,6 +17,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
@@ -360,7 +361,7 @@ std::string memberTypeName(const libreshockwave::player::render::pipeline::Rende
         return std::string(libreshockwave::cast::name(member->memberType()));
     }
     if (sprite.dynamicMember() != nullptr) {
-        return "dynamic";
+        return std::string(libreshockwave::cast::name(sprite.dynamicMember()->memberType()));
     }
     return "missing";
 }
@@ -370,7 +371,12 @@ bool isExpectedNonRenderableSprite(const libreshockwave::player::render::pipelin
         return true;
     }
     const auto member = sprite.castMember();
-    return member != nullptr && member->memberType() == libreshockwave::cast::MemberType::Script;
+    if (member != nullptr) {
+        return member->memberType() == libreshockwave::cast::MemberType::Script ||
+               member->memberType() == libreshockwave::cast::MemberType::Shockwave3D;
+    }
+    return sprite.dynamicMember() != nullptr &&
+           sprite.dynamicMember()->memberType() == libreshockwave::cast::MemberType::Shockwave3D;
 }
 
 void accumulateSpriteDiagnostics(const libreshockwave::player::render::pipeline::FrameSnapshot& snapshot,

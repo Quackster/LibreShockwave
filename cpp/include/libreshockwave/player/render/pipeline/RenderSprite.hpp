@@ -27,6 +27,7 @@ enum class SpriteType {
     Text,
     Button,
     FilmLoop,
+    Shockwave3D,
     Unknown
 };
 

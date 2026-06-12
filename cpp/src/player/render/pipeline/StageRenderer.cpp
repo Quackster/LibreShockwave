@@ -463,6 +463,8 @@ SpriteType StageRenderer::determineSpriteTypeFromMember(
             return SpriteType::Button;
         case ::libreshockwave::cast::MemberType::FilmLoop:
             return SpriteType::FilmLoop;
+        case ::libreshockwave::cast::MemberType::Shockwave3D:
+            return SpriteType::Shockwave3D;
         default:
             return SpriteType::Unknown;
     }
@@ -489,6 +491,8 @@ SpriteType StageRenderer::determineSpriteTypeFromMember(
             return SpriteType::Button;
         case ::libreshockwave::cast::MemberType::FilmLoop:
             return SpriteType::FilmLoop;
+        case ::libreshockwave::cast::MemberType::Shockwave3D:
+            return SpriteType::Shockwave3D;
         default:
             return SpriteType::Unknown;
     }
