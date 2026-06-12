@@ -10,6 +10,12 @@ Shockwave3D/W3D can be ignored for the current C++ parity objective because it w
 
 This file tracks the current state and remaining work only. Detailed chronological changes live in git.
 
+## Current Focus
+
+The Habbo browser movie load was a validation proof, not an ongoing product-specific target. That proof is complete: the C++ WASM browser player can load `http://localhost/dcr0910/loader.dcr`, render the expected Habbo login splash, and exercise the WebSocket -> JS bridge plus C++ SMUS networking path.
+
+The active goal now is the C++-first cleanup: keep the repository centered on the C++ runtime/player source, remove Java source and Gradle-era project material from the active tree, remove hardcoded Habbo/movie-specific debugging references and fixture-specific network-variable hooks, and maintain a README that documents the C++ source, CMake build, native probes, WASM build, and generic browser verification flow. Future movie fixtures, including `/opt/git/v1_assets/` and `/var/www/html/dcr0910`, should remain verification inputs rather than hardcoded runtime behavior.
+
 ## Current Cleanup Result
 
 - Java source modules, Gradle wrapper/build files, and old Java/TeaVM CI workflows are removed from the active tree.
