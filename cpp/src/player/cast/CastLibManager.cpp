@@ -994,6 +994,15 @@ int CastLibManager::getScriptChunkId(int castLibNumber, int memberNumber) {
     return script ? script->id().value() : -1;
 }
 
+std::vector<std::string> CastLibManager::getScriptPropertyNames(int castLibNumber, int memberNumber) {
+    auto castLib = getCastLib(castLibNumber);
+    if (!castLib || !castLib->isLoaded()) {
+        return {};
+    }
+    auto script = castLib->getScript(memberNumber);
+    return script ? script->getPropertyNames() : std::vector<std::string>{};
+}
+
 lingo::Datum CastLibManager::createMember(int castLibNumber, const std::string& memberType) {
     auto castLib = getCastLib(castLibNumber);
     if (!castLib) {
@@ -1338,6 +1347,9 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     };
     context.scriptChunkIdResolver = [this](int castLib, int memberNum) {
         return getScriptChunkId(castLib, memberNum);
+    };
+    context.scriptPropertyNamesResolver = [this](int castLib, int memberNum) {
+        return getScriptPropertyNames(castLib, memberNum);
     };
     context.importFileIntoHandler = [this](const lingo::Datum::CastMemberRef& ref,
                                            const std::string& url,

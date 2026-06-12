@@ -36,10 +36,11 @@ int WasmRuntime::loadMovie(const std::vector<std::uint8_t>& data, std::string ba
         auto nextPlayer = std::make_unique<WasmPlayer>();
         auto* rawPlayer = nextPlayer.get();
         nextPlayer->setGotoNetPageCallback([this](const std::string& url, const std::string& target) {
-            pendingGotoNetPages_.push_back(GotoNetPageRequest{url, target});
+            pendingGotoNetPage_ = GotoNetPageRequest{url, target};
         });
         nextPlayer->setGotoNetMovieCallback([this](const std::string& url) {
-            pendingGotoNetMovies_.push_back(url);
+            pendingGotoNetMovie_.assign(url.begin(), url.end());
+            hasPendingGotoNetMovie_ = true;
         });
         nextPlayer->setErrorListener([this](std::string_view message, std::string_view detail) {
             lastError_ = std::string(message);
@@ -291,28 +292,32 @@ void WasmRuntime::keyUp(int browserKeyCode, std::string keyChar, int modifiers) 
 }
 
 int WasmRuntime::pendingGotoNetPageCount() const {
-    return static_cast<int>(pendingGotoNetPages_.size());
+    return pendingGotoNetPage_.has_value() ? 1 : 0;
 }
 
 std::optional<WasmRuntime::GotoNetPageRequest> WasmRuntime::popNextGotoNetPage() {
-    if (pendingGotoNetPages_.empty()) {
+    if (!pendingGotoNetPage_.has_value()) {
         return std::nullopt;
     }
-    auto request = std::move(pendingGotoNetPages_.front());
-    pendingGotoNetPages_.erase(pendingGotoNetPages_.begin());
+    auto request = std::move(*pendingGotoNetPage_);
+    pendingGotoNetPage_.reset();
     return request;
 }
 
 int WasmRuntime::pendingGotoNetMovieCount() const {
-    return static_cast<int>(pendingGotoNetMovies_.size());
+    return hasPendingGotoNetMovie_ ? 1 : 0;
 }
 
 std::optional<std::string> WasmRuntime::popNextGotoNetMovie() {
-    if (pendingGotoNetMovies_.empty()) {
+    if (!hasPendingGotoNetMovie_) {
         return std::nullopt;
     }
-    auto request = std::move(pendingGotoNetMovies_.front());
-    pendingGotoNetMovies_.erase(pendingGotoNetMovies_.begin());
+    std::string request;
+    if (!pendingGotoNetMovie_.empty()) {
+        request.assign(reinterpret_cast<const char*>(pendingGotoNetMovie_.data()), pendingGotoNetMovie_.size());
+    }
+    pendingGotoNetMovie_.clear();
+    hasPendingGotoNetMovie_ = false;
     return request;
 }
 
@@ -477,8 +482,9 @@ std::string WasmRuntime::takeLastError() {
 }
 
 void WasmRuntime::resetHostQueues() {
-    pendingGotoNetPages_.clear();
-    pendingGotoNetMovies_.clear();
+    pendingGotoNetPage_.reset();
+    pendingGotoNetMovie_.clear();
+    hasPendingGotoNetMovie_ = false;
 }
 
 void WasmRuntime::captureError(std::string context, const std::exception& error) {

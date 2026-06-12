@@ -242,6 +242,7 @@ public:
     [[nodiscard]] static Datum list(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum join(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum duplicate(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum convertToPropList(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum getFirst(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum getLast(BuiltinContext& context, const std::vector<Datum>& args);
 };

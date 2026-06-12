@@ -348,8 +348,17 @@
                     runtimeState.textContent = 'error';
                     status.textContent = message;
                     window.__libreshockwaveCppLastError = message;
+                },
+                onDebugLog: function(message) {
+                    var logs = window.__libreshockwaveCppDebugLogs || [];
+                    logs.push(message);
+                    if (logs.length > 200) {
+                        logs.shift();
+                    }
+                    window.__libreshockwaveCppDebugLogs = logs;
                 }
             });
+            window.__libreshockwaveCppPlayer = player;
 
             document.getElementById('load-button').addEventListener('click', loadMovie);
             document.getElementById('play-button').addEventListener('click', function() {

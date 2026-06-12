@@ -45,6 +45,11 @@ public:
 
     [[nodiscard]] std::optional<std::string> getTaskUrl(int taskId) const;
     [[nodiscard]] std::string getDebugStatus() const;
+    [[nodiscard]] int taskCount() const;
+    [[nodiscard]] int lastTaskId() const;
+    [[nodiscard]] int pendingRequestCount() const;
+    [[nodiscard]] int pendingMovieNavigationTaskCount() const;
+    [[nodiscard]] bool latestTaskDone() const;
     [[nodiscard]] const std::vector<PendingRequest>& pendingRequests() const;
     [[nodiscard]] const PendingRequest* getRequest(int index) const;
     void drainPendingRequests();

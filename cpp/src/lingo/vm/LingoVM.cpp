@@ -16,6 +16,7 @@
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
+#include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
 #include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
@@ -388,6 +389,11 @@ const std::unordered_set<std::string>& LingoVM::tracedHandlers() const {
     return tracedHandlers_;
 }
 
+void LingoVM::setGlobalHandlerFinder(GlobalHandlerFinder finder) {
+    globalHandlerFinder_ = std::move(finder);
+    invalidateHandlerCache();
+}
+
 int LingoVM::callStackDepth() const {
     return static_cast<int>(callStack_.size());
 }
@@ -560,7 +566,15 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
         }
     }
 
-    missingHandlerCache_.insert(cacheKey);
+    if (globalHandlerFinder_) {
+        if (auto handler = globalHandlerFinder_(handlerNameValue); handler && handler->script != nullptr) {
+            return handler;
+        }
+    }
+
+    if (!globalHandlerFinder_) {
+        missingHandlerCache_.insert(cacheKey);
+    }
     return std::nullopt;
 }
 
@@ -645,14 +659,13 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     if (normalizedHandlerName == "deconstruct" && effectiveReceiver != nullptr) {
         for (const auto& existing : callStack_) {
             const auto* existingScript = existing.script();
-            if (existingScript == nullptr) {
+            if (existingScript != &script || existing.handler().nameId != handler.nameId) {
                 continue;
             }
-            const std::string existingHandlerName = normalizeLookupName(handlerName(*existingScript, existing.handler()));
             if (shouldSkipDeconstructReentry(normalizedHandlerName,
                                              *effectiveReceiver,
                                              script,
-                                             existingHandlerName,
+                                             normalizedHandlerName,
                                              existing.receiver(),
                                              *existingScript)) {
                 return Datum::voidValue();
@@ -676,6 +689,8 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
 
     callStack_.emplace_back(&script, handler, std::move(effectiveArgs), scopeReceiver, firstParamDeclaredMe);
     Scope& scope = callStack_.back();
+    auto previousHandlerArgs = builtinContext_.currentHandlerArgs;
+    builtinContext_.currentHandlerArgs = scope.arguments();
     Datum result = Datum::voidValue();
     std::optional<TraceListener::HandlerInfo> handlerInfo;
     bool alertHookDepthIncremented = false;
@@ -694,6 +709,7 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
             alertHookHandler_.decrementDepth();
             alertHookDepthIncremented = false;
         }
+        builtinContext_.currentHandlerArgs = std::move(previousHandlerArgs);
         callStack_.pop_back();
         flushDeferredScriptInstanceCalls();
     };
@@ -782,11 +798,12 @@ std::string LingoVM::formatTraceArgument(const Datum& value) {
     if (const auto* string = value.asString()) {
         return "\"" + string->value + "\"";
     }
-    return value.stringValue();
+    return datum::format(value, 120);
 }
 
 bool LingoVM::isGlobalHandlerScriptType(chunks::ScriptChunkType scriptType) {
-    return scriptType == chunks::ScriptChunkType::MovieScript;
+    return scriptType == chunks::ScriptChunkType::MovieScript ||
+           scriptType == chunks::ScriptChunkType::Parent;
 }
 
 bool LingoVM::shouldSkipDeconstructReentry(std::string_view normalizedHandlerName,

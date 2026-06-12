@@ -111,6 +111,27 @@ std::optional<libreshockwave::cast::ShapeType> shapeTypeFromDatum(const lingo::D
     return std::nullopt;
 }
 
+int textBoxTypeFromDatum(const lingo::Datum& value) {
+    if (value.isString() || value.isSymbol()) {
+        std::string name = lower(trim(value.stringValue()));
+        if (!name.empty() && name.front() == '#') {
+            name.erase(name.begin());
+        }
+        name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char ch) {
+            return ch == '_' || ch == '-' || std::isspace(ch);
+        }), name.end());
+
+        if (name == "adjust" || name == "auto" || name == "autosize") return 0;
+        if (name == "fixed") return 1;
+        if (name == "scroll" || name == "scrolling") return 2;
+        if (!value.isString()) {
+            throw lingo::LingoException("Cannot convert symbol to text box type");
+        }
+    }
+
+    return value.intValue();
+}
+
 std::string directorMemberTypeName(const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
     if (!member || member->memberType() == libreshockwave::cast::MemberType::Null) {
         return "empty";
@@ -893,7 +914,7 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
             return true;
         }
         if (prop == "boxtype") {
-            member->setTextBoxType(value.intValue());
+            member->setTextBoxType(textBoxTypeFromDatum(value));
             return true;
         }
         if (prop == "rect") {

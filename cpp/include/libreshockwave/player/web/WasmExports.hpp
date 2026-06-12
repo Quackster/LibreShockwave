@@ -77,6 +77,14 @@ LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_window_sprite_diagnostics
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_visible_text_diagnostics();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_bootstrap_diagnostics();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_script_diagnostics();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_net_debug_status();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_done();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_error();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_task_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_last_task_id();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_pending_request_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_pending_movie_navigation_task_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_net_latest_task_done();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_trigger_test_error();
 
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_external_param(int keyLen, int valueLen);

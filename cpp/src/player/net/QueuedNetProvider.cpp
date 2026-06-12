@@ -151,6 +151,9 @@ void QueuedNetProvider::completeMovieNavigationTasks() {
 }
 
 bool QueuedNetProvider::netDone(std::optional<int> taskId) const {
+    if (!taskId.has_value() && lastTaskId_ > 0 && pendingRequests_.empty()) {
+        return true;
+    }
     const auto* task = getTask(taskId);
     return task != nullptr && task->done;
 }
@@ -202,7 +205,12 @@ std::optional<std::string> QueuedNetProvider::getTaskUrl(int taskId) const {
 
 std::string QueuedNetProvider::getDebugStatus() const {
     std::ostringstream out;
-    out << "netProvider: tasks=" << tasks_.size() << " pendingRequests=" << pendingRequests_.size() << '\n';
+    out << "netProvider: tasks=" << tasks_.size()
+        << " pendingRequests=" << pendingRequests_.size()
+        << " pendingMovieNavigationTasks=" << pendingMovieNavigationTasks_.size()
+        << " lastTaskId=" << lastTaskId_
+        << " latestTaskDone=" << (latestTaskDone() ? "true" : "false")
+        << '\n';
     for (const auto& [id, task] : tasks_) {
         out << "task #" << id
             << " url=" << task.url
@@ -222,6 +230,27 @@ std::string QueuedNetProvider::getDebugStatus() const {
             << '\n';
     }
     return out.str();
+}
+
+int QueuedNetProvider::taskCount() const {
+    return static_cast<int>(tasks_.size());
+}
+
+int QueuedNetProvider::lastTaskId() const {
+    return lastTaskId_;
+}
+
+int QueuedNetProvider::pendingRequestCount() const {
+    return static_cast<int>(pendingRequests_.size());
+}
+
+int QueuedNetProvider::pendingMovieNavigationTaskCount() const {
+    return static_cast<int>(pendingMovieNavigationTasks_.size());
+}
+
+bool QueuedNetProvider::latestTaskDone() const {
+    const auto* task = getTask(std::nullopt);
+    return task != nullptr && task->done;
 }
 
 const std::vector<QueuedNetProvider::PendingRequest>& QueuedNetProvider::pendingRequests() const {

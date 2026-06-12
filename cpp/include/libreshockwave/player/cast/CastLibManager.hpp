@@ -85,6 +85,7 @@ public:
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteById(int castLibNumber, int paletteId);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByName(const std::string& name);
     [[nodiscard]] int getScriptChunkId(int castLibNumber, int memberNumber);
+    [[nodiscard]] std::vector<std::string> getScriptPropertyNames(int castLibNumber, int memberNumber);
     [[nodiscard]] lingo::Datum createMember(int castLibNumber, const std::string& memberType);
     [[nodiscard]] lingo::Datum createMember(const std::string& memberName, const std::string& memberType);
     bool eraseMember(int castLibNumber, int memberNumber);

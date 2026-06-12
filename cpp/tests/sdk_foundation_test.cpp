@@ -9964,6 +9964,10 @@ void testPlayerVmEventDispatchFoundation() {
 
     const auto directCallTarget = Datum::scriptInstance("direct-call-target", Datum::CastMemberRef{1, 1});
     assert(player.vm().callBuiltin("call", {Datum::symbol("directResult"), directCallTarget}).intValue() == 73);
+    auto inheritedCallTarget = Datum::scriptInstance("inherited-call-target", Datum::CastMemberRef{1, 999});
+    auto inheritedAncestor = Datum::scriptInstance("inherited-ancestor", Datum::CastMemberRef{1, 1});
+    inheritedCallTarget.scriptInstanceValue().setAncestor(inheritedAncestor.scriptInstancePtr());
+    assert(player.vm().callBuiltin("call", {Datum::symbol("directResult"), inheritedCallTarget}).intValue() == 73);
     assert(player.spriteProperties().setSpriteProp(14, "scriptInstanceList", Datum::list({directCallTarget})));
     assert(player.vm().callBuiltin("call", {Datum::symbol("directResult"), Datum::spriteRef(ChannelId(14))}).intValue() == 73);
 
@@ -10639,6 +10643,8 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("member", context, {Datum::of(5), Datum::castLibRef(CastLibId(2))}).asCastMemberRef()->memberNum() == 5);
     assert(registry.invoke("member", context, {Datum::of(0)}).isVoid());
     assert(registry.invoke("member", context, {Datum::of((2 << 16) | 5)}).asCastMemberRef()->castLib == 2);
+    assert(registry.invoke("member", context, {Datum::of((9 << 16) | 77)}).asCastMemberRef()->castLib == 9);
+    assert(registry.invoke("member", context, {Datum::of((9 << 16) | 77)}).asCastMemberRef()->memberNum() == 77);
     assert(registry.invoke("member", context, {Datum::of(4)}).asCastMemberRef()->castLib == 2);
     assert(registry.invoke("member", context, {Datum::of(99)}).asCastMemberRef()->castLib == 1);
     assert(registry.invoke("member", context, {Datum::of(std::string("door"))}).asCastMemberRef()->memberNum() == 4);
@@ -11126,6 +11132,10 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("netError", context, {Datum::of(builtinGetTask)}).stringValue() == "OK");
     const auto builtinStatus = registry.invoke("getStreamStatus", context, {Datum::of(builtinGetTask)});
     assert(builtinStatusProp(builtinStatus, "state").stringValue() == "Complete");
+    assert(builtinStatusProp(registry.invoke("getStreamStatus", context, {Datum::of(std::to_string(builtinGetTask))}),
+                             "state").stringValue() == "Complete");
+    assert(builtinStatusProp(registry.invoke("getStreamStatus", context, {Datum::symbol(std::to_string(builtinGetTask))}),
+                             "state").stringValue() == "Complete");
     assert(builtinStatusProp(registry.invoke("getStreamStatus", context, {Datum::of(std::string("movie.dir"))}), "state").stringValue() == "Complete");
     const int builtinPostTask = registry.invoke("postNetText",
                                                 context,
@@ -11133,6 +11143,11 @@ void testBuiltinRegistryFoundation() {
     assert(builtinPostTask == 4);
     assert(builtinNet.getTask(builtinPostTask)->postData().value() == "a=b");
     assert(registry.invoke("netTextResult", context, {Datum::of(builtinPostTask)}).stringValue() == "POST");
+
+    libreshockwave::player::net::QueuedNetProvider builtinQueuedNet("https://example.invalid/movie.dcr");
+    context.netManager = &builtinQueuedNet;
+    assert(!builtinQueuedNet.netDone());
+    assert(registry.invoke("netDone", context).boolValue());
 
     std::string builtinPageUrl;
     std::string builtinPageTarget;
@@ -11592,7 +11607,7 @@ void testBuiltinRegistryFoundation() {
         ++directNewPropertyLookups;
         assert(castLib == 5);
         assert(memberNum == 9);
-        return std::vector<std::string>{"pDeclared", "pOther"};
+        return std::vector<std::string>{"pDeclared", "pOther", "id"};
     };
     const auto directNewScript = registry.invoke("new",
                                                  context,
@@ -11603,6 +11618,14 @@ void testBuiltinRegistryFoundation() {
     assert(directNewScript.scriptInstanceValue().scriptRef()->memberNum() == 9);
     assert(directNewScript.scriptInstanceValue().getProperty("pDeclared").isVoid());
     assert(directNewScript.scriptInstanceValue().getProperty("pOther").isVoid());
+    auto ancestorWithId = Datum::scriptInstance("ancestorWithId");
+    ancestorWithId.scriptInstanceValue().setProperty("id", Datum::symbol("ancestor"));
+    auto childWithDeclaredId = directNewScript;
+    childWithDeclaredId.scriptInstanceValue().setProperty("ancestor", ancestorWithId);
+    assert(childWithDeclaredId.scriptInstanceValue().getProperty("id").isVoid());
+    childWithDeclaredId.scriptInstanceValue().setProperty("id", Datum::symbol("child"));
+    assert(childWithDeclaredId.scriptInstanceValue().getProperty("id").asSymbol()->name == "child");
+    assert(ancestorWithId.scriptInstanceValue().getProperty("id").asSymbol()->name == "ancestor");
 
     int builtinScriptNewHandlerCalls = 0;
     context.callTargetHandler = [&builtinScriptNewHandlerCalls](const Datum& target,
@@ -13017,6 +13040,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 154) {
             return std::string("timeoutLength");
         }
+        if (nameId == 155) {
+            return std::string("return");
+        }
+        if (nameId == 156) {
+            return std::string("me");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -13188,6 +13217,46 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::JMP_IF_Z));
     assert(opcodeRegistry.hasHandler(Opcode::END_REPEAT));
     assert(!opcodeRegistry.hasHandler(Opcode::INVALID));
+
+    auto explicitMeCaller = makeHandler(300, 0, {0});
+    auto explicitMeTarget = makeHandler(301, 0, {0});
+    explicitMeTarget.argNameIds = {156};
+    ScriptChunk explicitMeScript(nullptr,
+                                 ChunkId(703),
+                                 ScriptChunkType::Parent,
+                                 0,
+                                 {explicitMeCaller, explicitMeTarget},
+                                 {},
+                                 {},
+                                 {},
+                                 {});
+    const Datum explicitReceiver = Datum::scriptInstance("explicitReceiver");
+    bool explicitMeCallChecked = false;
+    ExecutionContext::Callbacks explicitMeCallbacks = callbacks;
+    explicitMeCallbacks.handlerExecutor = [&explicitMeCallChecked, &explicitReceiver](
+                                              const ScriptChunk& calledScript,
+                                              const ScriptChunk::Handler& calledHandler,
+                                              const std::vector<Datum>& args,
+                                              const Datum& receiverArg) {
+        explicitMeCallChecked = true;
+        assert(calledScript.id().value() == 703);
+        assert(calledHandler.nameId == 301);
+        assert(receiverArg == explicitReceiver);
+        assert(args.size() == 1);
+        assert(args.front().stringValue() == "payload");
+        return Datum::of(std::string("local-call-ok"));
+    };
+    Scope explicitMeScope(&explicitMeScript, explicitMeCaller, {}, explicitReceiver);
+    ExecutionContext explicitMeContext(
+        explicitMeScope,
+        ScriptChunk::Instruction{0, Opcode::LOCAL_CALL, libreshockwave::lingo::code(Opcode::LOCAL_CALL), 1},
+        &registry,
+        &builtinContext,
+        explicitMeCallbacks);
+    explicitMeContext.push(Datum::argList({explicitReceiver, Datum::of(std::string("payload"))}));
+    assert(opcodeRegistry.execute(Opcode::LOCAL_CALL, explicitMeContext));
+    assert(explicitMeCallChecked);
+    assert(explicitMeContext.pop().stringValue() == "local-call-ok");
 
     const auto moviePropName = PropertyIdMappings::getMoviePropName(0x00);
     assert(moviePropName.has_value() && *moviePropName == "floatPrecision");
@@ -14611,6 +14680,23 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     extNoRetContext.push(Datum::argListNoRet({Datum::of(1)}));
     assert(opcodeRegistry.execute(Opcode::EXT_CALL, extNoRetContext));
     assert(extNoRetScope.stackSize() == 0);
+
+    builtinContext.returned = false;
+    builtinContext.returnValue = Datum::voidValue();
+    Scope extReturnScope(&script, handler, {});
+    ExecutionContext extReturnContext(extReturnScope,
+                                      ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 155},
+                                      &registry,
+                                      &builtinContext,
+                                      callbacks);
+    extReturnContext.push(Datum::argListNoRet({Datum::of(std::string("returned prop"))}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extReturnContext));
+    assert(extReturnScope.stackSize() == 0);
+    assert(extReturnScope.returned());
+    assert(extReturnScope.returnValue().stringValue() == "returned prop");
+    assert(!builtinContext.returned);
+    assert(!builtinContext.aborted);
+    assert(builtinContext.returnValue.isVoid());
 
     errorState = false;
     extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 61});
@@ -16673,6 +16759,7 @@ void testLingoVmRuntimeFoundation() {
     assert(vm.currentScope() == nullptr);
     assert(vm.formatCallStack() == "Lingo call stack: (empty)");
     assert(LingoVM::isGlobalHandlerScriptType(ScriptChunkType::MovieScript));
+    assert(LingoVM::isGlobalHandlerScriptType(ScriptChunkType::Parent));
     assert(!LingoVM::isGlobalHandlerScriptType(ScriptChunkType::Behavior));
 
     ScriptChunk ancestorScript(nullptr,
@@ -16716,6 +16803,26 @@ void testLingoVmRuntimeFoundation() {
     assert(!vm.findHandler(script, "missing").has_value());
     assert(vm.executeHandler(script, returnHandler).intValue() == 42);
     assert(vm.callStackDepth() == 0);
+
+    auto externalReturnHandler = makeHandler(5, {
+        {Opcode::PUSH_INT8, 77},
+        {Opcode::RET, 0}
+    });
+    int externalGlobalLookups = 0;
+    vm.setGlobalHandlerFinder([&externalGlobalLookups, &script, returnHandler, externalReturnHandler](std::string_view handlerName)
+        -> std::optional<HandlerRef> {
+        ++externalGlobalLookups;
+        if (handlerName == "externalStart") {
+            return HandlerRef{&script, externalGlobalLookups == 1 ? returnHandler : externalReturnHandler};
+        }
+        return std::nullopt;
+    });
+    assert(vm.callHandler("externalStart").intValue() == 42);
+    assert(externalGlobalLookups == 1);
+    assert(vm.callHandler("externalStart").intValue() == 77);
+    assert(externalGlobalLookups == 2);
+    vm.setGlobalHandlerFinder(nullptr);
+    assert(vm.callHandler("externalStart").isVoid());
 
     auto scaledLocalHandler = makeHandler(6, {
         {Opcode::PUSH_INT8, 42},
@@ -16846,6 +16953,53 @@ void testLingoVmRuntimeFoundation() {
         });
     assert(implicitReceiverVm.executeHandler(script, stackHandler, {implicitReceiver, Datum::of(9)}).intValue() == 91);
     assert(implicitReceiverVm.callStackDepth() == 0);
+
+    auto innerParamBuiltinHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}}, 0, {20, 21});
+    auto outerParamBuiltinHandler = makeHandler(8, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}}, 0, {22});
+    auto receiverParamBuiltinHandler = makeHandler(9, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}}, 0, {26});
+    ScriptChunk paramBuiltinScript(nullptr,
+                                   ChunkId(963),
+                                   ScriptChunkType::Parent,
+                                   0,
+                                   {innerParamBuiltinHandler, outerParamBuiltinHandler, receiverParamBuiltinHandler},
+                                   {},
+                                   {},
+                                   {},
+                                   {});
+    LingoVM paramBuiltinVm;
+    const auto paramBuiltinReceiver = Datum::scriptInstance("param-receiver");
+    paramBuiltinVm.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&](ExecutionContext& context) {
+        const auto* scope = paramBuiltinVm.currentScope();
+        assert(scope != nullptr);
+        if (scope->handler().nameId == 7) {
+            context.push(paramBuiltinVm.callBuiltin("param", {Datum::of(2)}));
+            return true;
+        }
+        if (scope->handler().nameId == 8) {
+            assert(paramBuiltinVm.executeHandler(paramBuiltinScript,
+                                                 innerParamBuiltinHandler,
+                                                 {Datum::of(100), Datum::of(200)}).intValue() == 200);
+            context.push(paramBuiltinVm.callBuiltin("param", {Datum::of(1)}));
+            return true;
+        }
+        if (scope->handler().nameId == 9) {
+            context.push(paramBuiltinVm.callBuiltin("param", {Datum::of(1)}));
+            return true;
+        }
+        context.push(Datum::voidValue());
+        return true;
+    });
+    assert(paramBuiltinVm.executeHandler(paramBuiltinScript,
+                                         innerParamBuiltinHandler,
+                                         {Datum::of(10), Datum::of(20)}).intValue() == 20);
+    assert(paramBuiltinVm.executeHandler(paramBuiltinScript,
+                                         outerParamBuiltinHandler,
+                                         {Datum::of(77)}).intValue() == 77);
+    assert(paramBuiltinVm.executeHandler(paramBuiltinScript,
+                                         receiverParamBuiltinHandler,
+                                         {},
+                                         paramBuiltinReceiver) == paramBuiltinReceiver);
+    assert(paramBuiltinVm.callStackDepth() == 0);
 
     assert(vm.executeHandler(script, globalHandler).intValue() == 7);
     assert(vm.getGlobal("#3").intValue() == 7);
@@ -22818,6 +22972,8 @@ void testQueuedNetProviderFoundation() {
 
     provider.drainPendingRequests();
     assert(provider.pendingRequests().empty());
+    assert(provider.netDone());
+    assert(!provider.netDone(rootTask));
     provider.onFetchComplete(rootTask, {'O', 'K'});
     assert(provider.netDone(rootTask));
     assert(provider.netError(rootTask) == 0);
@@ -28433,6 +28589,25 @@ void testCastLibManagerFoundation() {
                                                                                  Datum::castLibRef(CastLibId(1))})});
     assert(parsedField.propListValue().get(Datum::symbol("answer")).intValue() == 42);
     assert(manager.getParsedFieldValue(1, 10001).propListValue().get(Datum::symbol("answer")).intValue() == 42);
+    const std::string directorProps =
+        "#system\r#props\r#index\r\r"
+        "thread.manager.class       = Thread Manager Class\r"
+        "client.debug.window        = 0\r"
+        "-- ignored comment\r"
+        "malformed line\r";
+    const auto convertedProps = registry.invoke("convertToPropList",
+                                                context,
+                                                {Datum::of(directorProps), Datum::symbol("RETURN")});
+    assert(convertedProps.isPropList());
+    assert(convertedProps.propListValue().count() == 2);
+    assert(convertedProps.propListValue().get(Datum::of(std::string("thread.manager.class"))).stringValue() ==
+           "Thread Manager Class");
+    assert(convertedProps.propListValue().get(Datum::of(std::string("client.debug.window"))).stringValue() == "0");
+    const auto newlineProps = registry.invoke("convertToPropList",
+                                              context,
+                                              {Datum::of(std::string("first = one\n#section\nsecond=two"))});
+    assert(newlineProps.propListValue().get(Datum::of(std::string("first"))).stringValue() == "one");
+    assert(newlineProps.propListValue().get(Datum::of(std::string("second"))).stringValue() == "two");
     assert(manager.setMemberProp(1, 10001, "html", Datum::of(std::string("<b>Plain</b> <i>Text</i>"))));
     assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Plain Text");
     assert(manager.setMemberProp(1, 10001, "media", Datum::symbol("Symbolic")));
@@ -28469,6 +28644,13 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "wordWrap").intValue() == 1);
     assert(manager.getMemberProp(1, 10001, "antialias").intValue() == 1);
     assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 1);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::symbol("adjust")));
+    assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 0);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::symbol("fixed")));
+    assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 1);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(std::string("#scroll"))));
+    assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 2);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(1)));
     assert(manager.getMemberProp(1, 10001, "width").intValue() == 50);
     assert(manager.getMemberProp(1, 10001, "height").intValue() == 30);
     assert(manager.getMemberProp(1, 10001, "rect").asIntRect()->left == 2);

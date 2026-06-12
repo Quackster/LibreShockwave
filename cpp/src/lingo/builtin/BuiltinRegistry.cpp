@@ -298,6 +298,86 @@ std::string toStringLikeJava(const Datum& datum) {
     }
 }
 
+bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs);
+
+std::string delimiterFromArg(const Datum& datum) {
+    std::string delimiter = toStringLikeJava(datum);
+    if (equalsIgnoreCase(delimiter, "return")) {
+        return "\r";
+    }
+    if (equalsIgnoreCase(delimiter, "linefeed")) {
+        return "\n";
+    }
+    if (equalsIgnoreCase(delimiter, "tab")) {
+        return "\t";
+    }
+    return delimiter;
+}
+
+std::vector<std::string> splitPropertyText(std::string_view text, std::string_view delimiter) {
+    std::vector<std::string> lines;
+    std::string current;
+
+    auto flush = [&]() {
+        lines.push_back(current);
+        current.clear();
+    };
+
+    if (!delimiter.empty()) {
+        std::size_t start = 0;
+        while (start <= text.size()) {
+            const std::size_t next = text.find(delimiter, start);
+            if (next == std::string_view::npos) {
+                lines.emplace_back(text.substr(start));
+                break;
+            }
+            lines.emplace_back(text.substr(start, next - start));
+            start = next + delimiter.size();
+        }
+        return lines;
+    }
+
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        const char ch = text[index];
+        if (ch == '\r') {
+            flush();
+            if (index + 1 < text.size() && text[index + 1] == '\n') {
+                ++index;
+            }
+        } else if (ch == '\n') {
+            flush();
+        } else {
+            current.push_back(ch);
+        }
+    }
+    flush();
+    return lines;
+}
+
+Datum parseDirectorPropertyText(std::string_view text, std::string_view delimiter) {
+    Datum result = Datum::propList();
+    auto& properties = result.propListValue();
+
+    for (const auto& rawLine : splitPropertyText(text, delimiter)) {
+        std::string line = trimCopy(rawLine);
+        if (line.empty() || line.front() == '#' || line.starts_with("--")) {
+            continue;
+        }
+        const std::size_t equals = line.find('=');
+        if (equals == std::string::npos) {
+            continue;
+        }
+        std::string key = trimCopy(line.substr(0, equals));
+        if (key.empty()) {
+            continue;
+        }
+        std::string value = trimCopy(line.substr(equals + 1));
+        properties.put(Datum::of(std::move(key)), Datum::of(std::move(value)));
+    }
+
+    return result;
+}
+
 bool regionMatchesIgnoreCase(const std::string& value, std::size_t offset, const std::string& pattern) {
     if (offset + pattern.size() > value.size()) {
         return false;
@@ -1067,6 +1147,7 @@ void ListBuiltins::registerBuiltins(BuiltinRegistry& registry) {
     registry.registerBuiltin("list", ListBuiltins::list);
     registry.registerBuiltin("join", ListBuiltins::join);
     registry.registerBuiltin("duplicate", ListBuiltins::duplicate);
+    registry.registerBuiltin("convertToPropList", ListBuiltins::convertToPropList);
     registry.registerBuiltin("getfirst", ListBuiltins::getFirst);
     registry.registerBuiltin("getlast", ListBuiltins::getLast);
 }
@@ -1375,6 +1456,15 @@ Datum ListBuiltins::duplicate(BuiltinContext&, const std::vector<Datum>& args) {
     return args[0].deepCopy();
 }
 
+Datum ListBuiltins::convertToPropList(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::propList();
+    }
+    const std::string text = toStringLikeJava(args[0]);
+    const std::string delimiter = args.size() > 1 ? delimiterFromArg(args[1]) : std::string();
+    return parseDirectorPropertyText(text, delimiter);
+}
+
 Datum ListBuiltins::getFirst(BuiltinContext&, const std::vector<Datum>& args) {
     if (args.empty()) {
         return Datum::voidValue();
@@ -1510,6 +1600,9 @@ Datum NetBuiltins::netDone(BuiltinContext& context, const std::vector<Datum>& ar
     if (context.netManager == nullptr) {
         return Datum::TRUE;
     }
+    if (args.empty() && context.netManager->getStreamStatus() == "Error" && context.netManager->netError() == 0) {
+        return Datum::TRUE;
+    }
     const std::optional<int> taskId = args.empty() ? std::nullopt
                                                    : std::optional<int>{toIntLikeJava(args[0])};
     return boolDatum(context.netManager->netDone(taskId));
@@ -1539,7 +1632,11 @@ Datum NetBuiltins::getStreamStatus(BuiltinContext& context, const std::vector<Da
         return defaultStreamStatusDatum();
     }
     if (!args.empty() && (args[0].isString() || args[0].isSymbol())) {
-        return context.netManager->getStreamStatusDatum(toStringLikeJava(args[0]));
+        const std::string value = toStringLikeJava(args[0]);
+        if (const auto taskId = parseIntStrict(trimCopy(value))) {
+            return context.netManager->getStreamStatusDatum(*taskId);
+        }
+        return context.netManager->getStreamStatusDatum(value);
     }
     const std::optional<int> taskId = args.empty() ? std::nullopt
                                                    : std::optional<int>{toIntLikeJava(args[0])};
@@ -1975,8 +2072,7 @@ Datum CastLibBuiltins::member(BuiltinContext& context, const std::vector<Datum>&
 
         const int encodedCast = (normalizedMemberNumber >> 16) & 0xFFFF;
         const int encodedMember = normalizedMemberNumber & 0xFFFF;
-        if (encodedCast > 0 && encodedMember > 0 && context.castMemberExistsResolver &&
-            context.castMemberExistsResolver(encodedCast, encodedMember)) {
+        if (encodedCast > 0 && encodedMember > 0) {
             return context.castMemberResolver ? context.castMemberResolver(encodedCast, encodedMember)
                                               : castMemberRefOrVoid(encodedCast, encodedMember);
         }

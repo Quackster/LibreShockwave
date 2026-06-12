@@ -34,6 +34,7 @@ namespace libreshockwave::lingo::vm {
 class LingoVM {
 public:
     using TraceOutputHandler = std::function<void(std::string_view line)>;
+    using GlobalHandlerFinder = std::function<std::optional<HandlerRef>(std::string_view handlerName)>;
 
     struct CallStackFrame {
         std::string handlerName;
@@ -97,6 +98,7 @@ public:
     void removeTraceHandler(std::string_view name);
     void clearTraceHandlers();
     [[nodiscard]] const std::unordered_set<std::string>& tracedHandlers() const;
+    void setGlobalHandlerFinder(GlobalHandlerFinder finder);
 
     [[nodiscard]] int callStackDepth() const;
     [[nodiscard]] bool hasActiveCallStack() const;
@@ -193,6 +195,7 @@ private:
     OpcodeRegistry opcodeRegistry_;
     std::shared_ptr<TraceListener> traceListener_;
     TraceOutputHandler traceOutputHandler_;
+    GlobalHandlerFinder globalHandlerFinder_;
     std::unordered_set<std::string> tracedHandlers_;
     std::unordered_map<std::string, HandlerRef> handlerCache_;
     std::unordered_set<std::string> missingHandlerCache_;

@@ -5338,7 +5338,7 @@ bool localCall(ExecutionContext& context) {
             handlerDeclaresMe = equalsIgnoreCase(context.resolveName(targetHandler->argNameIds.front()), "me");
         }
         if (handlerDeclaresMe) {
-            receiver = Datum::voidValue();
+            args.erase(args.begin());
         } else {
             receiver = args.front();
             args.erase(args.begin());

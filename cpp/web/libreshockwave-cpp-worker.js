@@ -20,12 +20,23 @@ var _musErrors = {};
 var _musInbound = {};
 var _fetchRelayCounter = 0;
 var _fetchRelayMap = {};
+var _fetchDiagnostics = {
+    active: null,
+    attempts: 0,
+    delivered: 0,
+    failed: 0,
+    lastStatus: 0,
+    lastUrl: '',
+    deliveredTaskIds: [],
+    failedTaskIds: []
+};
 var _sharedFrameBytes = null;
 var _sharedFrameControl = null;
 var _sharedFrameCapacity = 0;
 var _sharedFrameSeq = 0;
 var _activeLoadSeq = 0;
 var _diagnosticDepth = 0;
+var _lastNativeOperation = null;
 
 var _requiredExports = {
     allocateBuffer: 'allocate_buffer',
@@ -84,6 +95,14 @@ var _requiredExports = {
     getVisibleTextDiagnostics: 'get_visible_text_diagnostics',
     getBootstrapDiagnostics: 'get_bootstrap_diagnostics',
     getScriptDiagnostics: 'get_script_diagnostics',
+    getNetDebugStatus: 'get_net_debug_status',
+    netDone: 'net_done',
+    netError: 'net_error',
+    netTaskCount: 'net_task_count',
+    netLastTaskId: 'net_last_task_id',
+    netPendingRequestCount: 'net_pending_request_count',
+    netPendingMovieNavigationTaskCount: 'net_pending_movie_navigation_task_count',
+    netLatestTaskDone: 'net_latest_task_done',
     triggerTestError: 'trigger_test_error',
     getPendingFetchCount: 'get_pending_fetch_count',
     getPendingFetchTaskId: 'get_pending_fetch_task_id',
@@ -362,12 +381,78 @@ function _runtimeDiagnostics() {
         fetchRelay: {
             pending: Object.keys(_fetchRelayMap).length
         },
+        fetch: Object.assign({}, _fetchDiagnostics),
+        cxxPendingFetches: _exports ? _exports.getPendingFetchCount() : 0,
+        net: {
+            done: _exports ? _exports.netDone() !== 0 : false,
+            error: _exports ? _exports.netError() : 0,
+            taskCount: _exports ? _exports.netTaskCount() : 0,
+            lastTaskId: _exports ? _exports.netLastTaskId() : 0,
+            pendingRequests: _exports ? _exports.netPendingRequestCount() : 0,
+            pendingMovieNavigationTasks: _exports ? _exports.netPendingMovieNavigationTaskCount() : 0,
+            latestTaskDone: _exports ? _exports.netLatestTaskDone() !== 0 : false,
+            debugStatus: _exports ? _readExportString(_exports.getNetDebugStatus) : ''
+        },
         sharedFrame: {
             enabled: !!_sharedFrameBytes,
             capacity: _sharedFrameCapacity,
             sequence: _sharedFrameSeq
         }
     };
+}
+
+function _snapshotNativeOperation(label) {
+    if (!_exports) {
+        _lastNativeOperation = { label: label, exportsReady: false };
+        return;
+    }
+    var snapshot = {
+        label: label,
+        exportsReady: true,
+        playing: _playing,
+        loadSeq: _activeLoadSeq
+    };
+    try {
+        snapshot.frame = _exports.getCurrentFrame();
+        snapshot.frameCount = _exports.getFrameCount();
+        snapshot.tempo = _exports.getTempo();
+        snapshot.spriteCount = _exports.getSpriteCount();
+        snapshot.pendingFetches = _exports.getPendingFetchCount();
+        snapshot.netDone = _exports.netDone() !== 0;
+        snapshot.netError = _exports.netError();
+        snapshot.netTaskCount = _exports.netTaskCount();
+        snapshot.netLastTaskId = _exports.netLastTaskId();
+        snapshot.netPendingRequests = _exports.netPendingRequestCount();
+        snapshot.netPendingMovieNavigationTasks = _exports.netPendingMovieNavigationTaskCount();
+        snapshot.netLatestTaskDone = _exports.netLatestTaskDone() !== 0;
+    } catch (e) {
+        snapshot.snapshotError = e && (e.stack || e.message) ? (e.stack || e.message) : String(e);
+    }
+    _lastNativeOperation = snapshot;
+}
+
+function _formatCaughtError(error) {
+    if (error && (error.stack || error.message)) {
+        return (error.stack || error.message) + '\nlastNativeOperation=' + JSON.stringify(_lastNativeOperation);
+    }
+    if (error && typeof error === 'object') {
+        var fields = {};
+        try {
+            Object.getOwnPropertyNames(error).forEach(function(name) {
+                fields[name] = error[name];
+            });
+        } catch (e) {
+            fields.inspectError = String(e);
+        }
+        return JSON.stringify({
+            value: String(error),
+            name: error.name || '',
+            constructor: error.constructor && error.constructor.name ? error.constructor.name : '',
+            fields: fields,
+            lastNativeOperation: _lastNativeOperation
+        });
+    }
+    return String(error);
 }
 
 function _isStaleLoad(loadSeq) {
@@ -554,6 +639,9 @@ async function _fetchFirst(urls, method, postData) {
     var lastStatus = 0;
     for (var i = 0; i < urls.length; i++) {
         var url = _resolveUrl(urls[i]);
+        _fetchDiagnostics.active = url;
+        _fetchDiagnostics.lastUrl = url;
+        _fetchDiagnostics.attempts++;
         try {
             var data;
             if (_isCrossOrigin(url)) {
@@ -572,11 +660,17 @@ async function _fetchFirst(urls, method, postData) {
                 }
                 data = await response.arrayBuffer();
             }
+            _fetchDiagnostics.delivered++;
+            _fetchDiagnostics.active = null;
+            _fetchDiagnostics.lastStatus = lastStatus || 200;
             return { data: await _decodeImageForImport(data, url), url: url };
         } catch (e) {
             lastStatus = e && e.status ? e.status : 0;
+            _fetchDiagnostics.lastStatus = lastStatus;
         }
     }
+    _fetchDiagnostics.failed++;
+    _fetchDiagnostics.active = null;
     return { error: true, status: lastStatus || 404 };
 }
 
@@ -614,15 +708,17 @@ async function _drainFetches(maxRounds, loadSeq) {
                 return { delivered: delivered, failed: failed };
             }
             if (result.error) {
-                _exports.deliverFetchError(requests[r].taskId, result.status);
-                failed++;
-                continue;
-            }
-            var bytes = new Uint8Array(result.data);
-            var addr = _exports.allocateNetBuffer(bytes.length);
-            new Uint8Array(_mem(), addr, bytes.length).set(bytes);
-            _exports.deliverFetchResult(requests[r].taskId, bytes.length);
-            delivered++;
+            _exports.deliverFetchError(requests[r].taskId, result.status);
+            _fetchDiagnostics.failedTaskIds.push(requests[r].taskId);
+            failed++;
+            continue;
+        }
+        var bytes = new Uint8Array(result.data);
+        var addr = _exports.allocateNetBuffer(bytes.length);
+        new Uint8Array(_mem(), addr, bytes.length).set(bytes);
+        _exports.deliverFetchResult(requests[r].taskId, bytes.length);
+        _fetchDiagnostics.deliveredTaskIds.push(requests[r].taskId);
+        delivered++;
         }
     }
     return { delivered: delivered, failed: failed };
@@ -643,19 +739,39 @@ function _deliverJpegDecodeResults() {
 }
 
 function _pumpJpegDecodeRequests() {
-    var count = _exports.getPendingJpegDecodeCount();
+    var count;
+    try {
+        count = _exports.getPendingJpegDecodeCount();
+    } catch (e) {
+        throw new Error('getPendingJpegDecodeCount failed: ' + (e && (e.stack || e.message) ? (e.stack || e.message) : String(e)));
+    }
     if (count <= 0) {
         return 0;
     }
     var seq = _jpegDecodeSeq;
     var started = 0;
     for (var i = 0; i < count; i++) {
-        var id = _exports.getPendingJpegDecodeId(i);
+        var id;
+        try {
+            id = _exports.getPendingJpegDecodeId(i);
+        } catch (e) {
+            throw new Error('getPendingJpegDecodeId failed index=' + i + ': ' + (e && (e.stack || e.message) ? (e.stack || e.message) : String(e)));
+        }
         if (!id || _jpegDecodeInFlight[id]) {
             continue;
         }
-        var length = _exports.getPendingJpegDecodeData(id);
-        var addr = _exports.getPendingJpegDecodeDataAddress();
+        var length;
+        var addr;
+        try {
+            length = _exports.getPendingJpegDecodeData(id);
+        } catch (e) {
+            throw new Error('getPendingJpegDecodeData failed id=' + id + ': ' + (e && (e.stack || e.message) ? (e.stack || e.message) : String(e)));
+        }
+        try {
+            addr = _exports.getPendingJpegDecodeDataAddress();
+        } catch (e) {
+            throw new Error('getPendingJpegDecodeDataAddress failed id=' + id + ': ' + (e && (e.stack || e.message) ? (e.stack || e.message) : String(e)));
+        }
         if (length <= 0 || addr === 0) {
             continue;
         }
@@ -1270,7 +1386,12 @@ function _drainNavigation() {
         }
         var urlLen = (packedPage >>> 16) & 0xffff;
         var targetLen = packedPage & 0xffff;
-        var buffer = _stringBufferView();
+        var totalLen = urlLen + targetLen;
+        var addr = _exports.getStringBufferAddress();
+        if (totalLen < 0 || addr + totalLen > _mem().byteLength) {
+            throw new Error('C++ WASM gotoNetPage buffer out of range');
+        }
+        var buffer = new Uint8Array(_mem(), addr, totalLen);
         var url = new TextDecoder().decode(buffer.subarray(0, urlLen));
         var target = new TextDecoder().decode(buffer.subarray(urlLen, urlLen + targetLen));
         self.postMessage({ type: 'gotoNetPage', url: url, target: target });
@@ -1328,6 +1449,7 @@ async function _driveHostQueues(fetchRounds, loadSeq) {
 }
 
 function _renderFrame() {
+    _snapshotNativeOperation('render');
     var length = _exports.render();
     if (length <= 0) {
         var renderError = _readExportString(_exports.getDebugLog);
@@ -1459,6 +1581,16 @@ async function _loadMovie(message) {
     _jpegDecodeSeq++;
     _jpegDecodeQueue = [];
     _jpegDecodeInFlight = {};
+    _fetchDiagnostics = {
+        active: null,
+        attempts: 0,
+        delivered: 0,
+        failed: 0,
+        lastStatus: 0,
+        lastUrl: '',
+        deliveredTaskIds: [],
+        failedTaskIds: []
+    };
     var movieBytes = new Uint8Array(message.data || new ArrayBuffer(0));
     var basePathLength = _writeString(message.basePath || _basePath);
     var movieAddr = _exports.allocateBuffer(movieBytes.length);
@@ -1525,8 +1657,9 @@ async function _loadMovie(message) {
     _postFrame(loadSeq);
     if (message.autoplay !== false) {
         _playing = true;
+        _snapshotNativeOperation('play');
         _exports.play();
-        await _driveHostQueues(32, loadSeq);
+        await _driveHostQueues(128, loadSeq);
         _postFrame(loadSeq);
     }
 }
@@ -1535,10 +1668,11 @@ async function _tick() {
     if (!_ready || _diagnosticActive()) {
         return;
     }
-    await _driveHostQueues(8);
+    await _driveHostQueues(32);
     if (_playing) {
+        _snapshotNativeOperation('tick');
         _exports.tick();
-        await _driveHostQueues(8);
+        await _driveHostQueues(32);
     }
     _postLastError();
     _flushDebugLog();
@@ -1601,6 +1735,7 @@ self.onmessage = function(event) {
             }
             case 'play':
                 _playing = true;
+                _snapshotNativeOperation('play-message');
                 _exports.play();
                 await _driveHostQueues(8);
                 _postFrame();
@@ -1615,11 +1750,13 @@ self.onmessage = function(event) {
                 _postFrame();
                 break;
             case 'goToFrame':
+                _snapshotNativeOperation('goToFrame');
                 _exports.goToFrame(message.frame | 0);
                 await _driveHostQueues(8);
                 _postFrame();
                 break;
             case 'stepForward':
+                _snapshotNativeOperation('stepForward');
                 _exports.stepForward();
                 await _driveHostQueues(8);
                 _postFrame();
@@ -1773,6 +1910,7 @@ self.onmessage = function(event) {
         _postLastError();
         _flushDebugLog();
     }).catch(function(error) {
-        self.postMessage({ type: 'error', message: error && error.message ? error.message : String(error) });
+        var message = _formatCaughtError(error);
+        self.postMessage({ type: 'error', message: message });
     });
 };

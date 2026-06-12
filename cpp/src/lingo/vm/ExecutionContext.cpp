@@ -7,6 +7,26 @@
 
 namespace libreshockwave::lingo::vm {
 
+namespace {
+
+void resetBuiltinControlFlow(builtin::BuiltinContext& context) {
+    context.returned = false;
+    context.aborted = false;
+    context.returnValue = Datum::voidValue();
+}
+
+std::optional<Datum> consumeBuiltinReturnValue(builtin::BuiltinContext& context) {
+    const bool returned = context.returned || context.aborted;
+    Datum returnValue = returned ? context.returnValue : Datum::voidValue();
+    resetBuiltinControlFlow(context);
+    if (!returned) {
+        return std::nullopt;
+    }
+    return returnValue;
+}
+
+} // namespace
+
 ExecutionContext::ExecutionContext(Scope& scope,
                                    chunks::ScriptChunk::Instruction instruction,
                                    builtin::BuiltinRegistry* builtins,
@@ -217,7 +237,12 @@ Datum ExecutionContext::invokeBuiltin(std::string_view name, const std::vector<D
     }
     builtin::BuiltinContext fallback;
     auto& context = builtinContext_ != nullptr ? *builtinContext_ : fallback;
-    return builtins_->invoke(name, context, args);
+    resetBuiltinControlFlow(context);
+    Datum result = builtins_->invoke(name, context, args);
+    if (auto returnValue = consumeBuiltinReturnValue(context)) {
+        scope_->setReturnValue(std::move(*returnValue));
+    }
+    return result;
 }
 
 std::optional<Datum> ExecutionContext::invokeBuiltinIfPresent(std::string_view name, const std::vector<Datum>& args) {
@@ -226,7 +251,12 @@ std::optional<Datum> ExecutionContext::invokeBuiltinIfPresent(std::string_view n
     }
     builtin::BuiltinContext fallback;
     auto& context = builtinContext_ != nullptr ? *builtinContext_ : fallback;
-    return builtins_->invokeIfPresent(name, context, args);
+    resetBuiltinControlFlow(context);
+    auto result = builtins_->invokeIfPresent(name, context, args);
+    if (auto returnValue = consumeBuiltinReturnValue(context)) {
+        scope_->setReturnValue(std::move(*returnValue));
+    }
+    return result;
 }
 
 builtin::BuiltinRegistry* ExecutionContext::builtins() {

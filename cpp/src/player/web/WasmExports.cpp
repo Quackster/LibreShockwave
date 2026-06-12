@@ -113,6 +113,16 @@ int writeBytes(const std::vector<std::uint8_t>& value) {
     return len;
 }
 
+void appendDebugLog(std::string_view line) {
+    constexpr std::size_t MAX_DEBUG_LOG_BYTES = 65536;
+    auto& log = state().debugLog;
+    log.append(line);
+    log.push_back('\n');
+    if (log.size() > MAX_DEBUG_LOG_BYTES) {
+        log.erase(0, log.size() - MAX_DEBUG_LOG_BYTES);
+    }
+}
+
 std::string datumDebugString(const lingo::Datum& value) {
     try {
         return value.stringValue();
@@ -377,7 +387,13 @@ int libreshockwave_wasm_load_movie(int movieSize, int basePathLen) {
     auto& exportState = state();
     const auto movieData = readBytes(exportState.movieBuffer, movieSize);
     const auto basePath = readString(exportState.stringBuffer, 0, basePathLen);
-    return exportState.runtime.loadMovie(movieData, basePath);
+    const int packedStage = exportState.runtime.loadMovie(movieData, basePath);
+    if (auto* player = activePlayer()) {
+        player->vm().setTraceOutputHandler([](std::string_view line) {
+            appendDebugLog(line);
+        });
+    }
+    return packedStage;
 }
 
 void libreshockwave_wasm_set_initial_builtin_symbol(int keyLen, int valueLen) {
@@ -785,6 +801,54 @@ int libreshockwave_wasm_get_script_diagnostics() {
         }
     }
     return writeBytes(out.str());
+}
+
+int libreshockwave_wasm_get_net_debug_status() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr ? writeBytes(net->getDebugStatus()) : 0;
+}
+
+int libreshockwave_wasm_net_done() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr && net->netDone() ? 1 : 0;
+}
+
+int libreshockwave_wasm_net_error() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr ? net->netError() : 0;
+}
+
+int libreshockwave_wasm_net_task_count() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr ? net->taskCount() : 0;
+}
+
+int libreshockwave_wasm_net_last_task_id() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr ? net->lastTaskId() : 0;
+}
+
+int libreshockwave_wasm_net_pending_request_count() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr ? net->pendingRequestCount() : 0;
+}
+
+int libreshockwave_wasm_net_pending_movie_navigation_task_count() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr ? net->pendingMovieNavigationTaskCount() : 0;
+}
+
+int libreshockwave_wasm_net_latest_task_done() {
+    auto* wrapper = activeWasmPlayer();
+    auto* net = wrapper != nullptr ? wrapper->netProvider() : nullptr;
+    return net != nullptr && net->latestTaskDone() ? 1 : 0;
 }
 
 int libreshockwave_wasm_trigger_test_error() {

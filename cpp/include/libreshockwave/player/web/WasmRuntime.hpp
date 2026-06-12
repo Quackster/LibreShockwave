@@ -115,8 +115,9 @@ private:
     [[nodiscard]] static int packDimensions(int width, int height);
 
     std::unique_ptr<WasmPlayer> player_;
-    std::vector<GotoNetPageRequest> pendingGotoNetPages_;
-    std::vector<std::string> pendingGotoNetMovies_;
+    std::optional<GotoNetPageRequest> pendingGotoNetPage_;
+    std::vector<std::uint8_t> pendingGotoNetMovie_;
+    bool hasPendingGotoNetMovie_{false};
     std::string lastError_;
 };
 
