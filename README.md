@@ -17,65 +17,41 @@ It **won't** *just* be an emulator: the goal is to eventually become a full soft
 
 ## Linux Package Setup
 
-Install the native build dependencies for your distribution before running CMake.
-
-### Debian, Ubuntu, Linux Mint, Pop!_OS
+Use the build script to print the dependency commands for your Linux distribution:
 
 ```bash
-sudo apt update
-sudo apt install build-essential cmake ninja-build zlib1g-dev
+./build.sh --deps
 ```
 
-### Fedora
+The script knows the native package names for Debian, Ubuntu, Linux Mint, Pop!_OS, Fedora, RHEL, Rocky Linux, AlmaLinux, CentOS Stream, Arch Linux, Manjaro, openSUSE, and Alpine Linux.
+
+To let the script install native dependencies for the detected distribution:
 
 ```bash
-sudo dnf install cmake gcc-c++ ninja-build zlib-ng-compat-devel
+./build.sh --install-deps
 ```
 
-If your Fedora release does not provide `zlib-ng-compat-devel`, use `zlib-devel`.
-
-### RHEL, Rocky Linux, AlmaLinux, CentOS Stream
-
-```bash
-sudo dnf install cmake gcc-c++ ninja-build zlib-devel
-```
-
-On older releases, make sure the installed CMake is at least 3.20.
-
-### Arch Linux, Manjaro
-
-```bash
-sudo pacman -S --needed base-devel cmake ninja zlib
-```
-
-### openSUSE Leap, openSUSE Tumbleweed
-
-```bash
-sudo zypper install cmake gcc-c++ ninja zlib-devel
-```
-
-### Alpine Linux
-
-```bash
-sudo apk add build-base cmake ninja zlib-dev linux-headers
-```
+Automatic installation is optional; by default the script only builds.
 
 ## Native Build
 
 ```bash
-cmake -S . -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug
-cmake --build cmake-build-debug --target libreshockwave_tests libreshockwave_probe libreshockwave_render_probe libreshockwave_wasm_bridge_probe --parallel
-ctest --test-dir cmake-build-debug --output-on-failure
+./build.sh
+```
+
+By default this configures a Debug build, builds the C++ tests and native probe tools, and runs `ctest`.
+
+Useful variants:
+
+```bash
+./build.sh --release
+./build.sh --generator Ninja
+./build.sh --jobs 8
+./build.sh --target libreshockwave_probe --no-tests
+./build.sh --clean
 ```
 
 The main library target is `LibreShockwave::libreshockwave`.
-
-If you installed Ninja and want to use it explicitly:
-
-```bash
-cmake -S . -B cmake-build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build cmake-build-debug --parallel
-```
 
 ## Supported Formats
 
@@ -378,8 +354,7 @@ The C++ tools scan local Director fixture roots. With no path argument, the prob
 Build the Emscripten target from an Emscripten-enabled shell:
 
 ```bash
-emcmake cmake -S . -B cmake-build-wasm -DCMAKE_BUILD_TYPE=Release
-cmake --build cmake-build-wasm --target libreshockwave_cpp_wasm --parallel
+./build.sh --wasm --release
 ```
 
 The generated browser player is assembled under:
@@ -469,9 +444,7 @@ docs/
 node --check cpp/web/libreshockwave-cpp-player.js
 node --check cpp/web/libreshockwave-cpp-worker.js
 node --check cpp/tools/browser_fixture_check.js
-cmake -S . -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug
-cmake --build cmake-build-debug --target libreshockwave_tests libreshockwave_probe libreshockwave_render_probe libreshockwave_wasm_bridge_probe --parallel
-ctest --test-dir cmake-build-debug --output-on-failure
+./build.sh
 git diff --check
 ```
 
