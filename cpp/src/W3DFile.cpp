@@ -39,6 +39,33 @@ Transform multiplyTransforms(const Transform& parent, const Transform& local) {
     return result;
 }
 
+w3d::W3DVertex transformVertex(const w3d::W3DVertex& vertex, const Transform& transform) {
+    return w3d::W3DVertex{
+        transform[0] * vertex.x + transform[4] * vertex.y + transform[8] * vertex.z + transform[12],
+        transform[1] * vertex.x + transform[5] * vertex.y + transform[9] * vertex.z + transform[13],
+        transform[2] * vertex.x + transform[6] * vertex.y + transform[10] * vertex.z + transform[14]
+    };
+}
+
+std::array<w3d::W3DVertex, 2> transformedBounds(const w3d::W3DMeshResource& mesh, const Transform& transform) {
+    if (mesh.vertices.empty()) {
+        return {w3d::W3DVertex{}, w3d::W3DVertex{}};
+    }
+
+    w3d::W3DVertex min = transformVertex(mesh.vertices.front(), transform);
+    w3d::W3DVertex max = min;
+    for (std::size_t index = 1; index < mesh.vertices.size(); ++index) {
+        const auto vertex = transformVertex(mesh.vertices[index], transform);
+        min.x = std::min(min.x, vertex.x);
+        min.y = std::min(min.y, vertex.y);
+        min.z = std::min(min.z, vertex.z);
+        max.x = std::max(max.x, vertex.x);
+        max.y = std::max(max.y, vertex.y);
+        max.z = std::max(max.z, vertex.z);
+    }
+    return {min, max};
+}
+
 const w3d::W3DNode* findNodePtr(const std::vector<w3d::W3DNode>& nodes, std::string_view name) {
     for (const auto& node : nodes) {
         if (node.name == name) {
@@ -244,13 +271,18 @@ std::optional<W3DRenderableMesh> W3DFile::renderableMeshForNode(std::string_view
         texture = findTexture(material->textureName);
     }
 
+    const auto localBounds = mesh->bounds();
+    const auto worldBounds = transformedBounds(*mesh, *transform);
+
     return W3DRenderableMesh{
         std::move(*node),
         std::move(*mesh),
         std::move(material),
         std::move(texture),
         resourceRefForNode(nodeName),
-        *transform
+        *transform,
+        localBounds,
+        worldBounds
     };
 }
 

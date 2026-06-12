@@ -25624,6 +25624,14 @@ void testW3DFileParser() {
     assert(!rootRenderable->texture.has_value());
     assert(rootRenderable->resourceRef.has_value());
     assert(std::fabs(rootRenderable->worldTransform[12] - 10.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->localBounds[0].x - -1.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->localBounds[1].y - 5.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->worldBounds[0].x - 9.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->worldBounds[0].y - 16.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->worldBounds[0].z - 24.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->worldBounds[1].x - 13.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->worldBounds[1].y - 25.0F) < 0.0001F);
+    assert(std::fabs(rootRenderable->worldBounds[1].z - 31.0F) < 0.0001F);
     const auto childRenderable = file.renderableMeshForNode("ChildNode");
     assert(childRenderable.has_value());
     assert(childRenderable->node.name == "ChildNode");
@@ -25633,11 +25641,19 @@ void testW3DFileParser() {
     assert(childRenderable->texture->format == "jpeg");
     assert(childRenderable->resourceRef.has_value());
     assert(std::fabs(childRenderable->worldTransform[12] - 12.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->localBounds[0].z - -6.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->worldBounds[0].x - 11.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->worldBounds[0].y - 19.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->worldBounds[0].z - 28.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->worldBounds[1].x - 15.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->worldBounds[1].y - 28.0F) < 0.0001F);
+    assert(std::fabs(childRenderable->worldBounds[1].z - 35.0F) < 0.0001F);
     assert(!file.renderableMeshForNode("Missing").has_value());
     const auto renderableMeshes = file.renderableMeshes();
     assert(renderableMeshes.size() == 2);
     assert(renderableMeshes[0].node.name == "RootNode");
     assert(renderableMeshes[1].node.name == "ChildNode");
+    assert(std::fabs(renderableMeshes[1].worldBounds[1].z - 35.0F) < 0.0001F);
 
     const auto tmpPath = std::filesystem::temp_directory_path() / "libreshockwave_w3d_file_parser_test.w3d";
     {

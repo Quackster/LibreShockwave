@@ -24,6 +24,8 @@ struct W3DRenderableMesh {
     std::optional<w3d::W3DTexture> texture;
     std::optional<w3d::W3DResourceRef> resourceRef;
     std::array<float, 16> worldTransform{};
+    std::array<w3d::W3DVertex, 2> localBounds{};
+    std::array<w3d::W3DVertex, 2> worldBounds{};
 };
 
 class W3DFile {
