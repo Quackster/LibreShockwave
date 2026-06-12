@@ -182,38 +182,14 @@ std::optional<lingo::vm::HandlerRef> findPlayerHandler(Player& player, std::stri
     return std::nullopt;
 }
 
-bool hasNamedHandler(const chunks::ScriptChunk& script,
-                     const chunks::ScriptNamesChunk* names,
-                     std::string_view handlerName) {
-    if (script.findHandler(handlerName, names)) {
-        return true;
-    }
-    if (names != nullptr) {
-        return false;
-    }
-    for (const auto& handler : script.handlers()) {
-        if (equalsIgnoreCase(script.getHandlerName(handler, nullptr), handlerName) ||
-            equalsIgnoreCase("#" + std::to_string(handler.nameId), handlerName)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-void appendScriptMatchDiagnostics(std::ostringstream& out,
-                                  std::string_view sourceLabel,
-                                  DirectorFile* sourceFile,
-                                  const std::vector<std::shared_ptr<chunks::ScriptChunk>>& scripts,
-                                  const std::shared_ptr<chunks::ScriptNamesChunk>& fallbackNames) {
-    constexpr std::array<std::string_view, 4> targets{
-        "Logon",
-        "sendFuseMsg",
-        "DefaultMessageHandler",
-        "EPDefaultMessageHandler",
-    };
-
+void appendScriptSourceDiagnostics(std::ostringstream& out,
+                                   std::string_view sourceLabel,
+                                   DirectorFile* sourceFile,
+                                   const std::vector<std::shared_ptr<chunks::ScriptChunk>>& scripts,
+                                   const std::shared_ptr<chunks::ScriptNamesChunk>& fallbackNames) {
     int movieScripts = 0;
-    int matchedScripts = 0;
+    int handlers = 0;
+    int namedHandlers = 0;
     for (const auto& script : scripts) {
         if (!script) {
             continue;
@@ -223,34 +199,19 @@ void appendScriptMatchDiagnostics(std::ostringstream& out,
         }
 
         const auto scriptNames = sourceFile != nullptr ? sourceFile->getScriptNamesForScript(script) : fallbackNames;
-        std::vector<std::string_view> matches;
-        for (const auto target : targets) {
-            if (hasNamedHandler(*script, scriptNames.get(), target)) {
-                matches.push_back(target);
+        for (const auto& handler : script->handlers()) {
+            ++handlers;
+            if (!script->getHandlerName(handler, scriptNames.get()).empty()) {
+                ++namedHandlers;
             }
         }
-        if (matches.empty()) {
-            continue;
-        }
-
-        ++matchedScripts;
-        out << "scriptMatch source=" << sourceLabel
-            << " id=" << script->id().value()
-            << " type=" << scriptTypeName(script->resolvedScriptType())
-            << " name=\"" << script->displayName() << "\" handlers=";
-        for (std::size_t index = 0; index < matches.size(); ++index) {
-            if (index > 0) {
-                out << ',';
-            }
-            out << matches[index];
-        }
-        out << '\n';
     }
 
     out << "scriptSource source=" << sourceLabel
         << " scripts=" << scripts.size()
         << " movieScripts=" << movieScripts
-        << " matchedScripts=" << matchedScripts
+        << " handlers=" << handlers
+        << " namedHandlers=" << namedHandlers
         << '\n';
 }
 
@@ -794,16 +755,10 @@ int libreshockwave_wasm_get_script_diagnostics() {
     }
 
     std::ostringstream out;
-    out << "handler Logon=" << (findPlayerHandler(*player, "Logon").has_value() ? "yes" : "no")
-        << " sendFuseMsg=" << (findPlayerHandler(*player, "sendFuseMsg").has_value() ? "yes" : "no")
-        << " DefaultMessageHandler="
-        << (findPlayerHandler(*player, "DefaultMessageHandler").has_value() ? "yes" : "no")
-        << '\n';
-
     if (const auto file = player->file()) {
-        appendScriptMatchDiagnostics(out, "main", file.get(), file->scripts(), file->scriptNames());
+        appendScriptSourceDiagnostics(out, "main", file.get(), file->scripts(), file->scriptNames());
     } else {
-        out << "scriptSource source=main scripts=0 movieScripts=0 matchedScripts=0\n";
+        out << "scriptSource source=main scripts=0 movieScripts=0 handlers=0 namedHandlers=0\n";
     }
 
     for (const auto& [number, castLib] : player->castLibManager().castLibs()) {
@@ -822,11 +777,11 @@ int libreshockwave_wasm_get_script_diagnostics() {
             << '\n';
         if (castLib->isFetched()) {
             const auto& scripts = castLib->allScripts();
-            appendScriptMatchDiagnostics(out,
-                                         "castLib" + std::to_string(number),
-                                         sourceFile.get(),
-                                         scripts,
-                                         castLib->scriptNames());
+            appendScriptSourceDiagnostics(out,
+                                          "castLib" + std::to_string(number),
+                                          sourceFile.get(),
+                                          scripts,
+                                          castLib->scriptNames());
         }
     }
     return writeBytes(out.str());

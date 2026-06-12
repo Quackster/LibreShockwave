@@ -1,13 +1,9 @@
-# Gradle
-.gradle/
+# Build output
 build/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
 compile_commands.json
-
-# Keep wrapper jar
-!gradle/wrapper/gradle-wrapper.jar
 
 # IDE
 .idea/
@@ -17,20 +13,14 @@ compile_commands.json
 .project
 .classpath
 
-# Compiled (legacy)
-/target/
-*.class
-
 # OS
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
-/player-wasm/node_modules
-/player-wasm/frames_register_procedure_trace
-/player-wasm/frames_registration
-/player-wasm/frames_update_routing_trace
-/player-wasm/frames_r31_login
-player-wasm/package-lock.json
-/player-wasm/frames_v31_room_photo_hotspot
+
+# JavaScript tooling used by optional browser fixture checks
+node_modules/
+cpp/tools/node_modules/
+cpp/tools/package-lock.json

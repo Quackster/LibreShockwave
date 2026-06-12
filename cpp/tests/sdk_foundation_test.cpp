@@ -1231,7 +1231,7 @@ void testBitmapFontAndFontRegistry() {
         }));
     };
 
-    const auto verdanaBytes = readFixtureBytes("player-core/src/main/resources/fonts/windows/Verdana.ttf");
+    const auto verdanaBytes = readFixtureBytes("cpp/resources/fonts/windows/Verdana.ttf");
     assert(verdanaBytes.size() == 171811);
     auto verdanaFont = TtfBitmapRasterizer::rasterize(verdanaBytes, 9, "Verdana");
     assert(verdanaFont != nullptr);
@@ -1254,11 +1254,11 @@ void testBitmapFontAndFontRegistry() {
     assert(minInkX > 0);
     assert(verdanaFont->getCharWidth('H') > verdanaInkWidth);
 
-    const auto verdanaBoldBytes = readFixtureBytes("player-core/src/main/resources/fonts/windows/VerdanaBd.ttf");
-    const auto arialBytes = readFixtureBytes("player-core/src/main/resources/fonts/windows/Arial.ttf");
-    const auto geneva9Bytes = readFixtureBytes("player-core/src/main/resources/fonts/mac/Geneva-9.ttf");
-    const auto espySans9Bytes = readFixtureBytes("player-core/src/main/resources/fonts/mac/EspySans-9.ttf");
-    const auto espySansBold9Bytes = readFixtureBytes("player-core/src/main/resources/fonts/mac/EspySansBold-9.ttf");
+    const auto verdanaBoldBytes = readFixtureBytes("cpp/resources/fonts/windows/VerdanaBd.ttf");
+    const auto arialBytes = readFixtureBytes("cpp/resources/fonts/windows/Arial.ttf");
+    const auto geneva9Bytes = readFixtureBytes("cpp/resources/fonts/mac/Geneva-9.ttf");
+    const auto espySans9Bytes = readFixtureBytes("cpp/resources/fonts/mac/EspySans-9.ttf");
+    const auto espySansBold9Bytes = readFixtureBytes("cpp/resources/fonts/mac/EspySansBold-9.ttf");
     assert(!verdanaBoldBytes.empty());
     assert(!arialBytes.empty());
     assert(!geneva9Bytes.empty());
@@ -20904,7 +20904,7 @@ void testSpriteBakerFoundation() {
                                                               0);
     FontRegistry::clear();
     try {
-        FontRegistry::registerEmbeddedTtfFont("LegacyPixel", readFixtureBytes("player-core/src/main/resources/fonts/windows/Verdana.ttf"));
+        FontRegistry::registerEmbeddedTtfFont("LegacyPixel", readFixtureBytes("cpp/resources/fonts/windows/Verdana.ttf"));
         RecordingSpriteBakerTextRenderer legacyTextRenderer;
         SpriteBaker legacyTextBaker;
         legacyTextBaker.setTextRenderer(&legacyTextRenderer);
@@ -23692,7 +23692,7 @@ void testWasmExportsFoundation() {
     int bootstrapDiagLen = libreshockwave_wasm_get_bootstrap_diagnostics();
     assert(readStringBuffer(bootstrapDiagLen).find("stage=160x90") != std::string::npos);
     int scriptDiagLen = libreshockwave_wasm_get_script_diagnostics();
-    assert(readStringBuffer(scriptDiagLen).find("handler Logon=") != std::string::npos);
+    assert(readStringBuffer(scriptDiagLen).find("scriptSource source=main") != std::string::npos);
     assert(libreshockwave_wasm_trigger_test_error() == 0);
     int debugLogLen = libreshockwave_wasm_get_debug_log();
     assert(readStringBuffer(debugLogLen).find("triggerTestError") != std::string::npos);
@@ -23916,199 +23916,6 @@ void testWasmExportsFoundation() {
     runtime.shutdown();
 }
 
-void testWasmCppAdapterResourceFoundation() {
-    const auto repoRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
-    const auto adapterPath = repoRoot / "player-wasm" / "src" / "main" / "resources" / "web" /
-        "shockwave-cpp-wasm-adapter.js";
-    const auto workerPath = repoRoot / "player-wasm" / "src" / "main" / "resources" / "web" /
-        "shockwave-worker.js";
-    const auto cmakePath = repoRoot / "cpp" / "CMakeLists.txt";
-    const auto exportListPath = repoRoot / "cpp" / "cmake" / "libreshockwave-wasm-exports.json";
-    const auto headerPath = repoRoot / "cpp" / "include" / "libreshockwave" / "player" / "web" /
-        "WasmExports.hpp";
-
-    auto readTextFile = [](const std::filesystem::path& path) {
-        std::ifstream file(path);
-        assert(file.good());
-        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    };
-
-    const std::string adapter = readTextFile(adapterPath);
-    const std::string worker = readTextFile(workerPath);
-    const std::string cmake = readTextFile(cmakePath);
-    const std::string exportList = readTextFile(exportListPath);
-    const std::string header = readTextFile(headerPath);
-
-    auto isIdent = [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-            (ch >= '0' && ch <= '9') || ch == '_';
-    };
-
-    auto parseAdapterRequiredExports = [&isIdent](const std::string& source) {
-        std::set<std::pair<std::string, std::string>> entries;
-        const auto marker = std::string_view("var requiredExports");
-        auto pos = source.find(marker);
-        assert(pos != std::string::npos);
-        pos = source.find('{', pos);
-        assert(pos != std::string::npos);
-        const auto end = source.find("};", pos);
-        assert(end != std::string::npos);
-        while (pos < end) {
-            while (pos < end && !isIdent(source[pos])) {
-                ++pos;
-            }
-            if (pos >= end) {
-                break;
-            }
-            const auto nameStart = pos;
-            while (pos < end && isIdent(source[pos])) {
-                ++pos;
-            }
-            const auto publicName = source.substr(nameStart, pos - nameStart);
-            const auto suffixStartQuote = source.find('\'', pos);
-            assert(suffixStartQuote != std::string::npos && suffixStartQuote < end);
-            const auto suffixEndQuote = source.find('\'', suffixStartQuote + 1);
-            assert(suffixEndQuote != std::string::npos && suffixEndQuote < end);
-            entries.emplace(publicName, source.substr(suffixStartQuote + 1, suffixEndQuote - suffixStartQuote - 1));
-            pos = suffixEndQuote + 1;
-        }
-        assert(!entries.empty());
-        return entries;
-    };
-
-    auto parseHeaderExports = [&isIdent](const std::string& source) {
-        std::set<std::string> exports;
-        const auto marker = std::string_view("LIBRESHOCKWAVE_WASM_EXPORT");
-        std::size_t pos = 0;
-        while ((pos = source.find(marker, pos)) != std::string::npos) {
-            pos += marker.size();
-            const auto lineEnd = source.find('\n', pos);
-            const auto openParen = source.find('(', pos);
-            if (openParen == std::string::npos || (lineEnd != std::string::npos && openParen > lineEnd)) {
-                continue;
-            }
-            auto nameEnd = openParen;
-            while (nameEnd > pos && std::isspace(static_cast<unsigned char>(source[nameEnd - 1]))) {
-                --nameEnd;
-            }
-            auto nameStart = nameEnd;
-            while (nameStart > pos && isIdent(source[nameStart - 1])) {
-                --nameStart;
-            }
-            const auto exportName = source.substr(nameStart, nameEnd - nameStart);
-            if (exportName.starts_with("libreshockwave_wasm_")) {
-                exports.insert("_" + exportName);
-            }
-        }
-        assert(!exports.empty());
-        return exports;
-    };
-
-    auto parseCmakeExportList = [&isIdent](const std::string& source) {
-        std::set<std::string> exports;
-        std::size_t pos = 0;
-        while ((pos = source.find("\"_libreshockwave_wasm_", pos)) != std::string::npos) {
-            ++pos;
-            const auto start = pos;
-            while (pos < source.size() && isIdent(source[pos])) {
-                ++pos;
-            }
-            exports.insert(source.substr(start, pos - start));
-        }
-        assert(!exports.empty());
-        return exports;
-    };
-
-    const auto adapterRequiredExports = parseAdapterRequiredExports(adapter);
-    std::set<std::string> adapterNames;
-    std::set<std::string> adapterCExports;
-    for (const auto& [publicName, suffix] : adapterRequiredExports) {
-        adapterNames.insert(publicName);
-        adapterCExports.insert("_libreshockwave_wasm_" + suffix);
-    }
-    assert(adapterNames.size() == adapterRequiredExports.size());
-    assert(adapterCExports.size() == adapterRequiredExports.size());
-
-    assert(adapter.find("LibreShockwaveCppWasmAdapter") != std::string::npos);
-    assert(adapter.find("libreshockwave_wasm_") != std::string::npos);
-    assert(adapter.find("requiredExports") != std::string::npos);
-    assert(adapter.find("fallbackExports") != std::string::npos);
-    assert(adapter.find("createExports") != std::string::npos);
-    assert(adapter.find("createEngine") != std::string::npos);
-    assert(adapter.find("missingRequiredExports") != std::string::npos);
-    assert(adapter.find("get_render_buffer_address") != std::string::npos);
-    assert(adapter.find("get_cursor_bitmap_address") != std::string::npos);
-    assert(adapter.find("get_selected_text_length") != std::string::npos);
-    assert(adapter.find("get_window_sprite_diagnostics") != std::string::npos);
-    assert(adapter.find("fallbackExportNames: Object.keys(fallbackExports)") != std::string::npos);
-
-    std::set<std::string> workerExportNames;
-    std::size_t pos = 0;
-    while ((pos = worker.find("exports.", pos)) != std::string::npos) {
-        pos += std::string_view("exports.").size();
-        const auto start = pos;
-        while (pos < worker.size() && isIdent(worker[pos])) {
-            ++pos;
-        }
-        if (pos > start) {
-            workerExportNames.insert(worker.substr(start, pos - start));
-        }
-    }
-    assert(!workerExportNames.empty());
-    for (const auto& name : workerExportNames) {
-        assert(adapterNames.count(name) == 1);
-    }
-
-    assert(cmake.find("if(EMSCRIPTEN)") != std::string::npos);
-    assert(cmake.find("libreshockwave_cpp_wasm") != std::string::npos);
-    assert(cmake.find("libreshockwave-cpp-wasm") != std::string::npos);
-    assert(cmake.find("--no-entry") != std::string::npos);
-    assert(cmake.find("-sMODULARIZE=1") != std::string::npos);
-    assert(cmake.find("-sEXPORT_NAME=createLibreShockwaveCppWasm") != std::string::npos);
-    assert(cmake.find("-sALLOW_MEMORY_GROWTH=1") != std::string::npos);
-    assert(cmake.find("libreshockwave-wasm-exports.json") != std::string::npos);
-
-    const auto headerExports = parseHeaderExports(header);
-    const auto listedExports = parseCmakeExportList(exportList);
-    assert(listedExports == headerExports);
-
-    std::set<std::string> adapterOnlyExports;
-    std::set_difference(adapterCExports.begin(),
-                        adapterCExports.end(),
-                        listedExports.begin(),
-                        listedExports.end(),
-                        std::inserter(adapterOnlyExports, adapterOnlyExports.end()));
-    assert(adapterOnlyExports.empty());
-
-    std::set<std::string> abiOnlyExports;
-    std::set_difference(listedExports.begin(),
-                        listedExports.end(),
-                        adapterCExports.begin(),
-                        adapterCExports.end(),
-                        std::inserter(abiOnlyExports, abiOnlyExports.end()));
-    assert((abiOnlyExports == std::set<std::string>{
-        "_libreshockwave_wasm_debug_mus_destroy_instance",
-        "_libreshockwave_wasm_debug_mus_is_connected",
-        "_libreshockwave_wasm_debug_mus_message_content",
-        "_libreshockwave_wasm_debug_mus_message_error",
-        "_libreshockwave_wasm_debug_mus_message_sender",
-        "_libreshockwave_wasm_debug_mus_message_subject",
-        "_libreshockwave_wasm_debug_mus_poll_message_count",
-        "_libreshockwave_wasm_debug_mus_request_connect",
-        "_libreshockwave_wasm_debug_mus_request_disconnect",
-        "_libreshockwave_wasm_debug_mus_request_send_text",
-        "_libreshockwave_wasm_debug_call_handler",
-        "_libreshockwave_wasm_debug_call_handler_string_arg",
-        "_libreshockwave_wasm_debug_get_global_int",
-        "_libreshockwave_wasm_debug_get_global_string",
-        "_libreshockwave_wasm_debug_set_global_int",
-        "_libreshockwave_wasm_debug_set_global_string",
-        "_libreshockwave_wasm_get_script_diagnostics",
-        "_libreshockwave_wasm_get_script_timeout_ms",
-        "_libreshockwave_wasm_set_script_timeout_ms",
-    }));
-}
-
 void testCppWasmBrowserBootstrapResourceFoundation() {
     const auto repoRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
     const auto playerPath = repoRoot / "cpp" / "web" / "libreshockwave-cpp-player.js";
@@ -24239,8 +24046,6 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("musWebSocketSelfTest") != std::string::npos);
     assert(player.find("runCxxSmusBridgeSelfTest") != std::string::npos);
     assert(player.find("cxxSmusBridgeSelfTest") != std::string::npos);
-    assert(player.find("runFixtureMultiuserScriptSelfTest") != std::string::npos);
-    assert(player.find("fixtureMultiuserScriptSelfTest") != std::string::npos);
     assert(player.find("_requestDiagnostic") != std::string::npos);
     assert(player.find("Object.assign({}, payload || {}, { type: type, requestId: requestId })") != std::string::npos);
     assert(player.find("fetchWithTimeout") != std::string::npos);
@@ -24286,21 +24091,6 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("smusSequenceComplete") != std::string::npos);
     assert(worker.find("connectedBetweenMessages") != std::string::npos);
     assert(worker.find("expectedMessages") != std::string::npos);
-    assert(worker.find("_runFixtureMultiuserScriptSelfTest") != std::string::npos);
-    assert(worker.find("runFixtureMultiuserScriptSelfTest") != std::string::npos);
-    assert(worker.find("fixtureMultiuserScriptSelfTest") != std::string::npos);
-    assert(worker.find("inboundExpected") != std::string::npos);
-    assert(worker.find("inboundReplyExpected") != std::string::npos);
-    assert(worker.find("inboundSequenceComplete") != std::string::npos);
-    assert(worker.find("inboundReceivedCount") != std::string::npos);
-    assert(worker.find("connectionOkThroughoutInbound") != std::string::npos);
-    assert(worker.find("inboundHandledByMessage") != std::string::npos);
-    assert(worker.find("inboundReplyQueued") != std::string::npos);
-    assert(worker.find("handlerTickedAfterInbound") != std::string::npos);
-    assert(worker.find("_debugGetGlobalString('lastContent')") != std::string::npos);
-    assert(worker.find("debug_set_global_string") != std::string::npos);
-    assert(worker.find("debugCallHandlerStringArg") != std::string::npos);
-    assert(worker.find("_debugCallHandler('Logon')") != std::string::npos);
     assert(worker.find("read_next_goto_net_page") != std::string::npos);
     assert(worker.find("OffscreenCanvas") != std::string::npos);
     assert(worker.find("new WebSocket") != std::string::npos);
@@ -24371,9 +24161,6 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_debug_mus_request_connect") == 1);
     assert(workerExports.count("_libreshockwave_wasm_debug_mus_request_send_text") == 1);
     assert(workerExports.count("_libreshockwave_wasm_debug_mus_poll_message_count") == 1);
-    assert(workerExports.count("_libreshockwave_wasm_debug_call_handler") == 1);
-    assert(workerExports.count("_libreshockwave_wasm_debug_call_handler_string_arg") == 1);
-    assert(workerExports.count("_libreshockwave_wasm_debug_set_global_string") == 1);
     assert(workerExports.count("_libreshockwave_wasm_read_next_goto_net_page") == 1);
     assert(workerExports.count("_libreshockwave_wasm_go_to_frame") == 1);
     assert(workerExports.count("_libreshockwave_wasm_get_cursor_type") == 1);
@@ -29997,7 +29784,6 @@ int main() {
     testWasmPlayerWrapperFoundation();
     testWasmRuntimeBridgeFoundation();
     testWasmExportsFoundation();
-    testWasmCppAdapterResourceFoundation();
     testCppWasmBrowserBootstrapResourceFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
