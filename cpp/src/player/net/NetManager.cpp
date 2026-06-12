@@ -109,34 +109,9 @@ std::optional<std::vector<std::uint8_t>> readFileWithFallbacks(const std::filesy
         std::istreambuf_iterator<char>());
 }
 
-void addLocalCastLayoutCandidates(std::vector<std::filesystem::path>& candidates,
-                                  const std::filesystem::path& directory,
-                                  const std::string& fileName) {
-    if (directory.empty() || fileName.empty()) {
-        return;
-    }
-
-    candidates.push_back(directory / fileName);
-
-    const std::string stem = util::getFileNameWithoutExtension(fileName);
-    if (!stem.empty()) {
-        candidates.push_back(directory / stem / fileName);
-    }
-}
-
 std::optional<std::vector<std::uint8_t>> readLocalFetchFile(const std::filesystem::path& base,
                                                             std::string_view url) {
-    std::filesystem::path directory = base;
-    if (std::filesystem::is_regular_file(directory)) {
-        directory = directory.parent_path();
-    }
-
-    const std::string fileName = util::getFileName(url);
-    std::vector<std::filesystem::path> candidates;
-    addLocalCastLayoutCandidates(candidates, directory, fileName);
-    addLocalCastLayoutCandidates(candidates, directory.parent_path(), fileName);
-
-    for (const auto& candidate : candidates) {
+    for (const auto& candidate : util::getLocalFetchPathCandidates(base, url)) {
         if (auto data = readFileWithFallbacks(candidate)) {
             return data;
         }

@@ -1472,6 +1472,15 @@ void testUtilityFormatting() {
     const auto unknownUrls = libreshockwave::util::getUrlsWithFallbacks("image.png");
     assert((unknownUrls == std::vector<std::string>{"image.png"}));
 
+    const auto localCandidates = libreshockwave::util::getLocalFetchPathCandidates(
+        std::filesystem::path("/fixtures/project/loader"),
+        "casts/FuseScript.cst");
+    assert(localCandidates.size() == 4);
+    assert(localCandidates[0] == std::filesystem::path("/fixtures/project/loader/FuseScript.cst"));
+    assert(localCandidates[1] == std::filesystem::path("/fixtures/project/loader/FuseScript/FuseScript.cst"));
+    assert(localCandidates[2] == std::filesystem::path("/fixtures/project/FuseScript.cst"));
+    assert(localCandidates[3] == std::filesystem::path("/fixtures/project/FuseScript/FuseScript.cst"));
+
     assert(libreshockwave::util::truncate("abcdef", 6) == "abcdef");
     assert(libreshockwave::util::truncate("abcdef", 5) == "ab...");
     assert(libreshockwave::util::truncate("abcdef", 3) == "...");

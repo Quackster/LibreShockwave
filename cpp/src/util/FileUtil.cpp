@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
 namespace libreshockwave::util {
 namespace {
@@ -35,6 +36,21 @@ std::string replacePercent20(std::string_view value) {
 
 bool endsWith(std::string_view value, std::string_view suffix) {
     return value.size() >= suffix.size() && value.substr(value.size() - suffix.size()) == suffix;
+}
+
+void addLocalFetchCandidates(std::vector<std::filesystem::path>& candidates,
+                             const std::filesystem::path& directory,
+                             const std::string& fileName) {
+    if (directory.empty() || fileName.empty()) {
+        return;
+    }
+
+    candidates.push_back(directory / fileName);
+
+    const std::string stem = getFileNameWithoutExtension(fileName);
+    if (!stem.empty()) {
+        candidates.push_back(directory / stem / fileName);
+    }
 }
 
 } // namespace
@@ -96,6 +112,20 @@ std::string getFileNameWithoutExtension(std::string_view path) {
         return fileName;
     }
     return fileName.substr(0, lastDot);
+}
+
+std::vector<std::filesystem::path> getLocalFetchPathCandidates(const std::filesystem::path& basePath,
+                                                               std::string_view url) {
+    std::filesystem::path directory = basePath;
+    if (std::filesystem::is_regular_file(directory)) {
+        directory = directory.parent_path();
+    }
+
+    const std::string fileName = getFileName(url);
+    std::vector<std::filesystem::path> candidates;
+    addLocalFetchCandidates(candidates, directory, fileName);
+    addLocalFetchCandidates(candidates, directory.parent_path(), fileName);
+    return candidates;
 }
 
 } // namespace libreshockwave::util

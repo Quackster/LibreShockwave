@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "libreshockwave/player/web/WasmExports.hpp"
+#include "libreshockwave/util/FileUtil.hpp"
 
 namespace {
 
@@ -436,15 +437,19 @@ void addFetchPathCandidates(std::vector<fs::path>& candidates,
         if (value.empty()) {
             continue;
         }
-        fs::path path(value);
-        if (path.is_absolute()) {
-            candidates.push_back(path);
-        } else {
-            candidates.push_back(movieDir / path);
-        }
-        const auto fileName = path.filename();
-        if (!fileName.empty()) {
-            candidates.push_back(movieDir / fileName);
+        for (const auto& fallback : libreshockwave::util::getUrlsWithFallbacks(value)) {
+            fs::path path(fallback);
+            if (path.is_absolute()) {
+                candidates.push_back(path);
+            } else {
+                candidates.push_back(movieDir / path);
+            }
+            const auto fileName = path.filename();
+            if (!fileName.empty()) {
+                candidates.push_back(movieDir / fileName);
+            }
+            const auto localCandidates = libreshockwave::util::getLocalFetchPathCandidates(movieDir, fallback);
+            candidates.insert(candidates.end(), localCandidates.begin(), localCandidates.end());
         }
     }
 }
