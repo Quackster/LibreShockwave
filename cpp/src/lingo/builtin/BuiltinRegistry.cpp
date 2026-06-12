@@ -1789,7 +1789,7 @@ Datum SoundBuiltins::getProperty(BuiltinContext& context,
         return Datum::of(manager != nullptr ? manager->getVolume(channelNum) : 255);
     }
     if (prop == "pan") {
-        return Datum::of(0);
+        return Datum::of(manager != nullptr ? manager->getPan(channelNum) : 0);
     }
     if (prop == "status") {
         return Datum::of(manager != nullptr && manager->isPlaying(channelNum) ? 1 : 0);
@@ -1800,8 +1800,17 @@ Datum SoundBuiltins::getProperty(BuiltinContext& context,
     if (prop == "loopcount") {
         return Datum::of(manager != nullptr ? manager->getLoopCount(channelNum) : 1);
     }
-    if (prop == "loopstarttime" || prop == "loopendtime" || prop == "starttime" || prop == "endtime") {
-        return Datum::of(0);
+    if (prop == "starttime") {
+        return Datum::of(manager != nullptr ? manager->getStartTime(channelNum) : 0);
+    }
+    if (prop == "endtime") {
+        return Datum::of(manager != nullptr ? manager->getEndTime(channelNum) : 0);
+    }
+    if (prop == "loopstarttime") {
+        return Datum::of(manager != nullptr ? manager->getLoopStartTime(channelNum) : 0);
+    }
+    if (prop == "loopendtime") {
+        return Datum::of(manager != nullptr ? manager->getLoopEndTime(channelNum) : 0);
     }
     if (prop == "elapsedtime" || prop == "currenttime") {
         return Datum::of(manager != nullptr ? manager->getElapsedTime(channelNum) : 0);
@@ -1826,8 +1835,34 @@ bool SoundBuiltins::setProperty(BuiltinContext& context,
         }
         return true;
     }
-    if (prop == "pan" || prop == "starttime" || prop == "endtime" ||
-        prop == "loopstarttime" || prop == "loopendtime") {
+    if (prop == "pan") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setPan(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "starttime") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setStartTime(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "endtime") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setEndTime(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "loopstarttime") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setLoopStartTime(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "loopendtime") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setLoopEndTime(channel.channel, toIntLikeJava(value));
+        }
         return true;
     }
     return false;

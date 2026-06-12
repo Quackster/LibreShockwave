@@ -11407,6 +11407,16 @@ void testBuiltinRegistryFoundation() {
     assert(builtinSoundManager.getVolume(2) == 255);
     assert(libreshockwave::lingo::builtin::SoundBuiltins::setProperty(context, *builtinSoundChannel, "loopCount", Datum::of(3)));
     assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "loopCount").intValue() == 3);
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "pan", Datum::of(-20)));
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "pan").intValue() == -20);
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "startTime", Datum::of(100)));
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "endTime", Datum::of(500)));
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "loopStartTime", Datum::of(150)));
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "loopEndTime", Datum::of(450)));
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "startTime").intValue() == 100);
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "endTime").intValue() == 500);
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopStartTime").intValue() == 150);
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopEndTime").intValue() == 450);
     assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "loopCount", Datum::of(-2)));
     assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopCount").intValue() == 0);
     assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "loopCount", Datum::of(4)));
@@ -24750,6 +24760,12 @@ void testSoundManagerFoundation() {
     assert(manager.getVolume(9) == 255);
     assert(manager.getLoopCount(1) == 1);
     assert(manager.getLoopCount(9) == 1);
+    assert(manager.getPan(1) == 0);
+    assert(manager.getPan(9) == 0);
+    assert(manager.getStartTime(1) == 0);
+    assert(manager.getEndTime(1) == 0);
+    assert(manager.getLoopStartTime(1) == 0);
+    assert(manager.getLoopEndTime(1) == 0);
     assert(manager.getSoundLevel() == 7);
     assert(manager.soundKeepDevice());
     assert(manager.soundMixMedia());
@@ -24771,6 +24787,16 @@ void testSoundManagerFoundation() {
     manager.setLoopCount(2, -5);
     assert(manager.getLoopCount(2) == 0);
     manager.setLoopCount(2, 1);
+    manager.setPan(2, -35);
+    manager.setStartTime(2, 120);
+    manager.setEndTime(2, 900);
+    manager.setLoopStartTime(2, 200);
+    manager.setLoopEndTime(2, 800);
+    assert(manager.getPan(2) == -35);
+    assert(manager.getStartTime(2) == 120);
+    assert(manager.getEndTime(2) == 900);
+    assert(manager.getLoopStartTime(2) == 200);
+    assert(manager.getLoopEndTime(2) == 800);
     assert(!manager.isPlaying(2));
     assert(manager.getElapsedTime(2) == 0);
 

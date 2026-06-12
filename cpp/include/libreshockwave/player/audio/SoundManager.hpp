@@ -55,6 +55,16 @@ public:
     [[nodiscard]] int getVolume(int channelNum) const;
     void setLoopCount(int channelNum, int loopCount);
     [[nodiscard]] int getLoopCount(int channelNum) const;
+    void setPan(int channelNum, int pan);
+    [[nodiscard]] int getPan(int channelNum) const;
+    void setStartTime(int channelNum, int startTime);
+    [[nodiscard]] int getStartTime(int channelNum) const;
+    void setEndTime(int channelNum, int endTime);
+    [[nodiscard]] int getEndTime(int channelNum) const;
+    void setLoopStartTime(int channelNum, int loopStartTime);
+    [[nodiscard]] int getLoopStartTime(int channelNum) const;
+    void setLoopEndTime(int channelNum, int loopEndTime);
+    [[nodiscard]] int getLoopEndTime(int channelNum) const;
     [[nodiscard]] bool isPlaying(int channelNum) const;
     [[nodiscard]] int getElapsedTime(int channelNum) const;
 
@@ -90,6 +100,11 @@ private:
     bool soundMixMedia_{true};
     std::array<int, MAX_CHANNELS + 1> volumes_{};
     std::array<int, MAX_CHANNELS + 1> loopCounts_{};
+    std::array<int, MAX_CHANNELS + 1> pans_{};
+    std::array<int, MAX_CHANNELS + 1> startTimes_{};
+    std::array<int, MAX_CHANNELS + 1> endTimes_{};
+    std::array<int, MAX_CHANNELS + 1> loopStartTimes_{};
+    std::array<int, MAX_CHANNELS + 1> loopEndTimes_{};
     std::unordered_map<int, DirectorFile*> castLibFiles_;
     AudioResolver resolver_;
 };

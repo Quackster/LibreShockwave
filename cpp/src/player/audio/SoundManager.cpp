@@ -169,6 +169,56 @@ int SoundManager::getLoopCount(int channelNum) const {
     return loopCounts_[static_cast<std::size_t>(channelNum)];
 }
 
+void SoundManager::setPan(int channelNum, int pan) {
+    if (isValidChannel(channelNum)) {
+        pans_[static_cast<std::size_t>(channelNum)] = pan;
+    }
+}
+
+int SoundManager::getPan(int channelNum) const {
+    return isValidChannel(channelNum) ? pans_[static_cast<std::size_t>(channelNum)] : 0;
+}
+
+void SoundManager::setStartTime(int channelNum, int startTime) {
+    if (isValidChannel(channelNum)) {
+        startTimes_[static_cast<std::size_t>(channelNum)] = startTime;
+    }
+}
+
+int SoundManager::getStartTime(int channelNum) const {
+    return isValidChannel(channelNum) ? startTimes_[static_cast<std::size_t>(channelNum)] : 0;
+}
+
+void SoundManager::setEndTime(int channelNum, int endTime) {
+    if (isValidChannel(channelNum)) {
+        endTimes_[static_cast<std::size_t>(channelNum)] = endTime;
+    }
+}
+
+int SoundManager::getEndTime(int channelNum) const {
+    return isValidChannel(channelNum) ? endTimes_[static_cast<std::size_t>(channelNum)] : 0;
+}
+
+void SoundManager::setLoopStartTime(int channelNum, int loopStartTime) {
+    if (isValidChannel(channelNum)) {
+        loopStartTimes_[static_cast<std::size_t>(channelNum)] = loopStartTime;
+    }
+}
+
+int SoundManager::getLoopStartTime(int channelNum) const {
+    return isValidChannel(channelNum) ? loopStartTimes_[static_cast<std::size_t>(channelNum)] : 0;
+}
+
+void SoundManager::setLoopEndTime(int channelNum, int loopEndTime) {
+    if (isValidChannel(channelNum)) {
+        loopEndTimes_[static_cast<std::size_t>(channelNum)] = loopEndTime;
+    }
+}
+
+int SoundManager::getLoopEndTime(int channelNum) const {
+    return isValidChannel(channelNum) ? loopEndTimes_[static_cast<std::size_t>(channelNum)] : 0;
+}
+
 bool SoundManager::isPlaying(int channelNum) const {
     return enabled_ && backend_ != nullptr && isValidChannel(channelNum) && backend_->isPlaying(channelNum);
 }
