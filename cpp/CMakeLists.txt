@@ -288,6 +288,29 @@ if(ZLIB_FOUND)
     target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
 endif()
 
+if(NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
+    endif()
+    find_package(CURL QUIET)
+
+    if(GTK4_FOUND AND CURL_FOUND)
+        add_executable(libreshockwave_player
+            apps/player/NativePlayer.cpp
+        )
+        target_link_libraries(libreshockwave_player
+            PRIVATE
+                LibreShockwave::libreshockwave
+                PkgConfig::GTK4
+                CURL::libcurl
+        )
+        target_compile_features(libreshockwave_player PRIVATE cxx_std_20)
+    else()
+        message(STATUS "GTK4 or libcurl not found; libreshockwave_player target disabled. Install gtk4-devel and libcurl-devel to build it.")
+    endif()
+endif()
+
 if(LIBRESHOCKWAVE_BUILD_EDITOR)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)

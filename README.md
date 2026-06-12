@@ -90,6 +90,26 @@ The player can be used in two ways:
 - Native C++: link against `LibreShockwave::libreshockwave` and drive `libreshockwave::player::Player` directly.
 - Browser/WASM: build the Emscripten target and use the assets in `cpp/web/`.
 
+### Native Player
+
+The native build includes a GTK4 movie-player executable named `libreshockwave_player`.
+It loads local or HTTP(S) `.dcr`, `.dir`, `.dxr`, `.cct`, and `.cst` movies, remembers the last movie/settings in a
+small config file, applies external parameters, autoplays loaded movies, renders the stage with the software renderer, and provides
+open, reload, play/pause, stop, step-frame, parameter, and tempo override controls. Playback uses the
+movie/score tempo by default; use the UI override or `--tempo` to force a cadence.
+The target requires GTK4 and libcurl development packages.
+
+```bash
+./build.sh --target libreshockwave_player --no-tests
+./cmake-build-debug/cpp/libreshockwave_player movie.dcr --param sw1=alpha
+./cmake-build-debug/cpp/libreshockwave_player https://example.test/movie.dcr
+./cmake-build-debug/cpp/libreshockwave_player --tempo 24
+./cmake-build-debug/cpp/libreshockwave_player --use-movie-tempo
+```
+
+By default settings are stored at `~/.config/libreshockwave/player.conf`. Run `libreshockwave_player --help`
+for all options, including `--settings`, `--clear-params`, `--script-timeout-ms`, and external-cast preload controls.
+
 ## Using LibreShockwave As A Library
 
 When vendoring the repository inside another CMake project:
