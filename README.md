@@ -73,6 +73,15 @@ npm --prefix cpp/tools install
 node cpp/tools/browser_fixture_check.js --movie /dcr0910/loader.dcr --screenshot cmake-build-wasm/browser-smoke.png
 ```
 
+The same checker can batch movies while reusing one browser/server setup:
+
+```bash
+node cpp/tools/browser_fixture_check.js --discover-root dcr0910
+node cpp/tools/browser_fixture_check.js --fixtures /opt/git/v1_assets/projectorrays_lingo --discover-root .
+```
+
+Use `--movies /a.dcr,/b.dcr`, `--movie-list movies.txt`, `--limit N`, `--summary-only`, and `--screenshot-dir path` for smaller targeted runs.
+
 The `/dcr0910/loader.dcr` movie was used only as a completed load/render/networking proof. Reusable browser assets should remain movie-agnostic and should not depend on one movie's globals or handlers.
 
 ## Current Scope

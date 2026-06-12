@@ -50,6 +50,16 @@ const timeoutMs = Number(args.timeoutMs || 120000);
 const minFrames = Number(args.minFrames || 1);
 const minNonBlack = Number(args.minNonBlack || 1);
 const screenshotPath = args.screenshot ? path.resolve(args.screenshot) : '';
+const screenshotDir = (args.screenshotDir || args['screenshot-dir'])
+    ? path.resolve(args.screenshotDir || args['screenshot-dir'])
+    : '';
+const movieListPath = (args.movieList || args['movie-list'])
+    ? path.resolve(args.movieList || args['movie-list'])
+    : '';
+const moviesArg = args.movies || '';
+const discoverRootArg = args.discoverRoot || args['discover-root'] || args.discover || '';
+const movieLimit = Number(args.limit || 0);
+const summaryOnly = !!(args.summaryOnly || args['summary-only']);
 
 const MIME = {
     '.html': 'text/html',
@@ -183,6 +193,98 @@ function fileCandidatesForRequest(requestPath) {
         }
     }
     return candidates;
+}
+
+const MOVIE_EXTENSIONS = new Set(['.dcr', '.dir', '.dxr']);
+
+function normalizeMoviePath(value) {
+    let movie = String(value || '').trim();
+    if (!movie) {
+        return '';
+    }
+    movie = movie.replace(/\\/g, '/');
+    if (path.isAbsolute(movie)) {
+        const absolute = path.resolve(movie);
+        if (isInsideRoot(fixtureRoot, absolute)) {
+            movie = path.relative(fixtureRoot, absolute).split(path.sep).join('/');
+        }
+    }
+    movie = movie.replace(/^\.\//, '');
+    return movie.startsWith('/') ? movie : `/${movie}`;
+}
+
+function addMoviePath(movies, seen, value) {
+    const movie = normalizeMoviePath(value);
+    if (!movie || seen.has(movie)) {
+        return;
+    }
+    seen.add(movie);
+    movies.push(movie);
+}
+
+function discoverMoviePaths(root) {
+    const found = [];
+    function visit(directory) {
+        const entries = fs.readdirSync(directory, { withFileTypes: true })
+            .sort((a, b) => a.name.localeCompare(b.name));
+        for (const entry of entries) {
+            const entryPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                visit(entryPath);
+            } else if (entry.isFile() && MOVIE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+                found.push(entryPath);
+            }
+        }
+    }
+    visit(root);
+    return found;
+}
+
+function requestedMoviePaths() {
+    const movies = [];
+    const seen = new Set();
+
+    addMoviePath(movies, seen, moviePath);
+    for (const movie of moviesArg.split(',')) {
+        addMoviePath(movies, seen, movie);
+    }
+    if (movieListPath) {
+        const lines = fs.readFileSync(movieListPath, 'utf8').split(/\r?\n/);
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#')) {
+                addMoviePath(movies, seen, trimmed);
+            }
+        }
+    }
+    if (discoverRootArg) {
+        const root = path.resolve(fixtureRoot, String(discoverRootArg).replace(/^\/+/, ''));
+        if (!isInsideRoot(fixtureRoot, root) || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+            throw new Error(`Discover root not found under fixture root: ${root}`);
+        }
+        for (const found of discoverMoviePaths(root)) {
+            addMoviePath(movies, seen, found);
+        }
+    }
+
+    if (movieLimit > 0) {
+        return movies.slice(0, movieLimit);
+    }
+    return movies;
+}
+
+function screenshotPathForMovie(movie, movieCount) {
+    if (screenshotPath) {
+        if (movieCount !== 1) {
+            throw new Error('Use --screenshot-dir for batch checks; --screenshot is only valid with one movie');
+        }
+        return screenshotPath;
+    }
+    if (!screenshotDir) {
+        return '';
+    }
+    const safeName = movie.replace(/^\/+/, '').replace(/[^A-Za-z0-9_.-]+/g, '_');
+    return path.join(screenshotDir, `${safeName}.png`);
 }
 
 function createFixtureServer() {
@@ -335,16 +437,148 @@ async function waitForRenderedFrame(page) {
     throw new Error(`Movie did not produce the expected rendered frame before timeout: ${JSON.stringify({ state: last, diagnostics }, null, 2)}`);
 }
 
+function summarizeMus(mus) {
+    return {
+        connected: mus.connected,
+        sent: mus.sent,
+        received: mus.received,
+        disconnected: mus.disconnected,
+        errorDelivered: mus.errorDelivered,
+        receiveText: mus.receiveText,
+    };
+}
+
+function summarizeSmus(smus) {
+    return {
+        connected: smus.connected,
+        cppConnected: smus.cppConnected,
+        logonQueued: smus.logonQueued,
+        logonSent: smus.logonSent,
+        smusSendCount: smus.smusSendCount,
+        smusSequenceComplete: smus.smusSequenceComplete,
+        connectedBetweenMessages: smus.connectedBetweenMessages,
+        cppReceivedCount: smus.cppReceivedCount,
+        disconnectRequested: smus.disconnectRequested,
+        socketClosedAfterDisconnect: smus.socketClosedAfterDisconnect,
+        errorDelivered: smus.errorDelivered,
+    };
+}
+
+async function runMovieCheck(page, options) {
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message || String(error)));
+    await page.goto(`http://127.0.0.1:${options.httpPort}/test.html`, { waitUntil: 'load', timeout: timeoutMs });
+    await page.waitForFunction(() => window.__state && window.__state.ready, { timeout: timeoutMs });
+    await page.evaluate(url => window.player.load(url), options.movie);
+    const visual = await waitForRenderedFrame(page);
+    if (pageErrors.length > 0) {
+        throw new Error(`Browser page errors:\n${pageErrors.join('\n')}`);
+    }
+
+    const musStart = options.musReceived.length;
+    const smusStart = options.smusReceived.length;
+    const mus = await page.evaluate(async diagnosticOptions => {
+        return window.player.runMusWebSocketSelfTest(diagnosticOptions);
+    }, {
+        host: '127.0.0.1',
+        port: options.musWsPort,
+        payload: 'client-ping',
+        timeoutMs: Math.min(timeoutMs, 10000),
+    });
+    if (!mus || !mus.ok) {
+        throw new Error(`Multiuser WebSocket diagnostic failed: ${JSON.stringify(mus, null, 2)}`);
+    }
+
+    const smus = await page.evaluate(async diagnosticOptions => {
+        return window.player.runCxxSmusBridgeSelfTest(diagnosticOptions);
+    }, {
+        host: '127.0.0.1',
+        port: options.smusWsPort,
+        sender: 'browser-fixture-check',
+        subject: 'CHAT',
+        content: 'hello-smus',
+        messages: [
+            { sender: 'browser-fixture-check', subject: 'CHAT', content: 'hello-smus-1' },
+            { sender: 'browser-fixture-check', subject: 'CHAT', content: 'hello-smus-2' },
+        ],
+        timeoutMs: Math.min(timeoutMs, 10000),
+    });
+    if (!smus || !smus.ok) {
+        throw new Error(`C++ SMUS bridge diagnostic failed: ${JSON.stringify(smus, null, 2)}`);
+    }
+
+    if (options.screenshotPath) {
+        await page.screenshot({ path: options.screenshotPath });
+    }
+
+    const musReceived = options.musReceived.slice(musStart);
+    const smusReceived = options.smusReceived.slice(smusStart);
+    return {
+        ok: true,
+        movie: options.movie,
+        distPath,
+        fixtureRoot,
+        visual,
+        mus: summarizeMus(mus),
+        smus: summarizeSmus(smus),
+        musServerReceivedCount: musReceived.length,
+        musServerReceivedPreview: musReceived.map(bytes => bytes.subarray(0, 32).toString('hex')),
+        smusServerReceivedCount: smusReceived.length,
+        smusServerReceivedLengths: smusReceived.map(bytes => bytes.length),
+        smusServerReceivedPreview: smusReceived.map(bytes => bytes.subarray(0, 16).toString('hex')),
+        screenshot: options.screenshotPath || undefined,
+    };
+}
+
+function compactResult(result) {
+    return {
+        movie: result.movie,
+        frames: result.visual.frames,
+        frame: result.visual.frame ? result.visual.frame.frame : null,
+        frameCount: result.visual.frame ? result.visual.frame.frameCount : null,
+        spriteCount: result.visual.frame ? result.visual.frame.spriteCount : 0,
+        nonBlack: result.visual.nonBlack,
+        mus: result.mus.connected && result.mus.received,
+        smus: result.smus.connected && result.smus.smusSequenceComplete,
+    };
+}
+
+function summarizeBatch(results) {
+    const summary = {
+        ok: true,
+        movies: results.length,
+        distPath,
+        fixtureRoot,
+        totals: {
+            frames: results.reduce((sum, result) => sum + result.visual.frames, 0),
+            nonBlack: results.reduce((sum, result) => sum + result.visual.nonBlack, 0),
+            sprites: results.reduce((sum, result) => sum + (result.visual.frame ? result.visual.frame.spriteCount : 0), 0),
+        },
+    };
+    if (summaryOnly) {
+        summary.results = results.map(compactResult);
+    } else {
+        summary.results = results;
+    }
+    return summary;
+}
+
 async function main() {
-    if (!moviePath) {
-        throw new Error('Pass --movie /path/to/movie.dcr relative to the fixture root');
+    const movies = requestedMoviePaths();
+    if (movies.length === 0) {
+        throw new Error('Pass --movie /path/to/movie.dcr, --movies comma,list, --movie-list file, or --discover-root path');
     }
 
     assertFile(path.join(distPath, 'libreshockwave-cpp-player.js'));
     assertFile(path.join(distPath, 'libreshockwave-cpp-worker.js'));
     assertFile(path.join(distPath, 'libreshockwave-cpp-wasm.js'));
     assertFile(path.join(distPath, 'libreshockwave-cpp-wasm.wasm'));
-    assertFile(path.join(fixtureRoot, moviePath.replace(/^\/+/, '')));
+    for (const movie of movies) {
+        assertFile(path.join(fixtureRoot, movie.replace(/^\/+/, '')));
+    }
+    if (screenshotDir) {
+        fs.mkdirSync(screenshotDir, { recursive: true });
+    }
 
     const WebSocket = requireFromCandidates('ws');
     const { server, port: httpPort } = await createFixtureServer();
@@ -381,84 +615,24 @@ async function main() {
     try {
         const loadedBrowser = await createBrowser();
         browser = loadedBrowser.browser;
-        const page = await loadedBrowser.newPage();
-        const pageErrors = [];
-        page.on('pageerror', error => pageErrors.push(error.message || String(error)));
-        await page.goto(`http://127.0.0.1:${httpPort}/test.html`, { waitUntil: 'load', timeout: timeoutMs });
-        await page.waitForFunction(() => window.__state && window.__state.ready, { timeout: timeoutMs });
-        await page.evaluate(url => window.player.load(url), moviePath);
-        const visual = await waitForRenderedFrame(page);
-        if (pageErrors.length > 0) {
-            throw new Error(`Browser page errors:\n${pageErrors.join('\n')}`);
+        const results = [];
+        for (const movie of movies) {
+            const page = await loadedBrowser.newPage();
+            try {
+                results.push(await runMovieCheck(page, {
+                    movie,
+                    httpPort,
+                    musWsPort,
+                    smusWsPort,
+                    musReceived,
+                    smusReceived,
+                    screenshotPath: screenshotPathForMovie(movie, movies.length),
+                }));
+            } finally {
+                await page.close();
+            }
         }
-
-        const mus = await page.evaluate(async options => {
-            return window.player.runMusWebSocketSelfTest(options);
-        }, {
-            host: '127.0.0.1',
-            port: musWsPort,
-            payload: 'client-ping',
-            timeoutMs: Math.min(timeoutMs, 10000),
-        });
-        if (!mus || !mus.ok) {
-            throw new Error(`Multiuser WebSocket diagnostic failed: ${JSON.stringify(mus, null, 2)}`);
-        }
-
-        const smus = await page.evaluate(async options => {
-            return window.player.runCxxSmusBridgeSelfTest(options);
-        }, {
-            host: '127.0.0.1',
-            port: smusWsPort,
-            sender: 'browser-fixture-check',
-            subject: 'CHAT',
-            content: 'hello-smus',
-            messages: [
-                { sender: 'browser-fixture-check', subject: 'CHAT', content: 'hello-smus-1' },
-                { sender: 'browser-fixture-check', subject: 'CHAT', content: 'hello-smus-2' },
-            ],
-            timeoutMs: Math.min(timeoutMs, 10000),
-        });
-        if (!smus || !smus.ok) {
-            throw new Error(`C++ SMUS bridge diagnostic failed: ${JSON.stringify(smus, null, 2)}`);
-        }
-
-        if (screenshotPath) {
-            await page.screenshot({ path: screenshotPath });
-        }
-        console.log(JSON.stringify({
-            ok: true,
-            movie: moviePath,
-            distPath,
-            fixtureRoot,
-            visual,
-            mus: {
-                connected: mus.connected,
-                sent: mus.sent,
-                received: mus.received,
-                disconnected: mus.disconnected,
-                errorDelivered: mus.errorDelivered,
-                receiveText: mus.receiveText,
-            },
-            smus: {
-                connected: smus.connected,
-                cppConnected: smus.cppConnected,
-                logonQueued: smus.logonQueued,
-                logonSent: smus.logonSent,
-                smusSendCount: smus.smusSendCount,
-                smusSequenceComplete: smus.smusSequenceComplete,
-                connectedBetweenMessages: smus.connectedBetweenMessages,
-                cppReceivedCount: smus.cppReceivedCount,
-                disconnectRequested: smus.disconnectRequested,
-                socketClosedAfterDisconnect: smus.socketClosedAfterDisconnect,
-                errorDelivered: smus.errorDelivered,
-            },
-            musServerReceivedCount: musReceived.length,
-            musServerReceivedPreview: musReceived.map(bytes => bytes.subarray(0, 32).toString('hex')),
-            smusServerReceivedCount: smusReceived.length,
-            smusServerReceivedLengths: smusReceived.map(bytes => bytes.length),
-            smusServerReceivedPreview: smusReceived.map(bytes => bytes.subarray(0, 16).toString('hex')),
-            screenshot: screenshotPath || undefined,
-        }, null, 2));
+        console.log(JSON.stringify(results.length === 1 ? results[0] : summarizeBatch(results), null, 2));
     } finally {
         if (browser) {
             await browser.close();
