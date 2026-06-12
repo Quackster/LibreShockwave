@@ -17,6 +17,7 @@
 #include "libreshockwave/editor/score/ScoreDataBuilder.hpp"
 #include "libreshockwave/editor/scanning/FileProcessor.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
+#include "ProbeFixtureRoots.hpp"
 
 namespace {
 
@@ -108,7 +109,8 @@ std::string usage(const char* argv0) {
         << " <file-or-directory>...\n"
         << "Scans Director .cct/.cst/.dcr/.dir/.dxr files through the native C++ loader, editor member scan, "
         << "and score model builder.\n"
-        << "If no paths are supplied, /var/html is used.";
+        << "If no paths are supplied, /var/html is used when present; otherwise /var/www/html is used "
+        << "as the local fixture mapping.";
     return out.str();
 }
 
@@ -172,7 +174,7 @@ ProbeOptions parseOptions(int argc, char** argv) {
     }
 
     if (options.roots.empty()) {
-        options.roots.emplace_back("/var/html");
+        options.roots = libreshockwave::tools::defaultFixtureRoots();
     }
     return options;
 }
