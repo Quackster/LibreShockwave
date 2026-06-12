@@ -27129,6 +27129,24 @@ void testDirectorFileRifxLoader() {
                                                      0,
                                                      0,
                                                      0);
+    auto linkedInfo = file->getLinkedChunkInfoForMember(member7);
+    assert(linkedInfo.size() == 3);
+    assert(linkedInfo[0].id == ChunkId(4));
+    assert(linkedInfo[0].type() == ChunkType::STXT);
+    assert(linkedInfo[1].id == ChunkId(5));
+    assert(linkedInfo[1].type() == ChunkType::VWSC);
+    assert(linkedInfo[2].id == ChunkId(7));
+    assert(linkedInfo[2].type() == ChunkType::snd_);
+    auto linkedTextInfo = file->getLinkedChunkInfoForMember(member7, BinaryReader::fourCC("STXT"));
+    assert(linkedTextInfo.size() == 1);
+    assert(linkedTextInfo.front().id == ChunkId(4));
+    auto linkedChunks = file->getLinkedChunksForMember(member7);
+    assert(linkedChunks.size() == 3);
+    assert(linkedChunks[0]->type() == ChunkType::STXT);
+    assert(linkedChunks[1]->type() == ChunkType::VWSC);
+    assert(linkedChunks[2]->type() == ChunkType::snd_);
+    assert(file->getLinkedChunkInfoForMember(nullptr).empty());
+    assert(file->getLinkedChunksForMember(nullptr).empty());
     auto textChunks = file->getTextChunksForMember(member7);
     assert(textChunks.size() == 1);
     assert(textChunks.front()->text() == "Hello");
@@ -27175,6 +27193,10 @@ void testDirectorFileRifxLoader() {
                                                           0,
                                                           0,
                                                           0);
+    auto bitmapLinks = file->getLinkedChunkInfoForMember(bitmapMember);
+    assert(bitmapLinks.size() == 1);
+    assert(bitmapLinks.front().id == ChunkId(6));
+    assert(bitmapLinks.front().type() == ChunkType::BITD);
     Palette decodePalette({0x010203U, 0xA0B0C0U}, "decode");
     auto decodedBitmap = file->decodeBitmap(bitmapMember, &decodePalette);
     assert(decodedBitmap.has_value());
@@ -27187,10 +27209,14 @@ void testDirectorFileRifxLoader() {
     assert(decodedBitmap->imagePalette().get() == &decodePalette);
     file->releaseNonEssentialChunks();
     assert(file->chunks().size() == 6);
+    auto reparsedSoundLinks = file->getLinkedChunksForMember(member7, BinaryReader::fourCC("snd "));
+    assert(reparsedSoundLinks.size() == 1);
+    assert(reparsedSoundLinks.front()->type() == ChunkType::snd_);
+    assert(file->chunks().size() == 7);
     auto reparsedRaw = file->getChunk(ChunkId(2));
     assert(reparsedRaw.get() != nullptr);
     assert(reparsedRaw->type() == ChunkType::JUNK);
-    assert(file->chunks().size() == 7);
+    assert(file->chunks().size() == 8);
 }
 
 void testDirectorFileXfirLoader() {

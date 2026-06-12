@@ -231,11 +231,11 @@ std::shared_ptr<chunks::SoundChunk> SoundManager::findSoundForMember(
         return nullptr;
     }
 
-    for (const auto& entry : dirFile.keyTable()->getEntriesForOwner(member->id())) {
-        if (auto sound = std::dynamic_pointer_cast<chunks::SoundChunk>(dirFile.getChunk(entry.sectionId))) {
+    for (const auto& chunk : dirFile.getLinkedChunksForMember(member)) {
+        if (auto sound = std::dynamic_pointer_cast<chunks::SoundChunk>(chunk)) {
             return sound;
         }
-        if (auto media = std::dynamic_pointer_cast<chunks::MediaChunk>(dirFile.getChunk(entry.sectionId))) {
+        if (auto media = std::dynamic_pointer_cast<chunks::MediaChunk>(chunk)) {
             return std::make_shared<chunks::SoundChunk>(media->toSoundChunk());
         }
     }

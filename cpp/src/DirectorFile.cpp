@@ -86,6 +86,11 @@ bool shouldReplaceSelectedScore(const std::shared_ptr<chunks::ScoreChunk>& curre
     return candidate->frameIntervals().size() > current->frameIntervals().size();
 }
 
+bool matchesLinkedChunkFourCC(const chunks::KeyTableChunk::KeyTableEntry& entry,
+                              std::optional<std::uint32_t> fourcc) {
+    return !fourcc.has_value() || entry.fourcc == *fourcc;
+}
+
 } // namespace
 
 format::ChunkType DirectorChunkInfo::type() const {
@@ -436,33 +441,68 @@ std::optional<std::string> DirectorFile::getFontNameForId(int fontId) const {
 
 std::optional<cast::XmedStyledText> DirectorFile::getXmedStyledTextForMember(
     const std::shared_ptr<chunks::CastMemberChunk>& member) {
-    if (!member || !keyTable_) {
-        return std::nullopt;
-    }
-
-    for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
-        if (entry.fourcc != format::fourCC(format::ChunkType::XMED)) {
-            continue;
-        }
-        if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(getChunk(entry.sectionId))) {
+    for (const auto& chunk : getLinkedChunksForMember(member, format::fourCC(format::ChunkType::XMED))) {
+        if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
             return cast::XmedTextParser::parseStyled(raw->data(), member->specificData());
         }
     }
     return std::nullopt;
 }
 
-std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(
-    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+std::vector<DirectorChunkInfo> DirectorFile::getLinkedChunkInfoForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) const {
+    return getLinkedChunkInfoForMember(member, 0);
+}
+
+std::vector<DirectorChunkInfo> DirectorFile::getLinkedChunkInfoForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member,
+    std::uint32_t fourcc) const {
     if (!member || !keyTable_) {
-        return nullptr;
+        return {};
     }
 
+    const std::optional<std::uint32_t> filter = fourcc == 0 ? std::nullopt : std::make_optional(fourcc);
+    std::vector<DirectorChunkInfo> result;
     for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
-        if (entry.fourcc != format::fourCC(format::ChunkType::VWSC) &&
-            entry.fourcc != format::fourCC(format::ChunkType::SCVW)) {
+        if (!matchesLinkedChunkFourCC(entry, filter)) {
             continue;
         }
-        if (auto score = std::dynamic_pointer_cast<chunks::ScoreChunk>(getChunk(entry.sectionId))) {
+        if (const auto* info = getChunkInfo(entry.sectionId)) {
+            result.push_back(*info);
+        }
+    }
+    return result;
+}
+
+std::vector<std::shared_ptr<chunks::Chunk>> DirectorFile::getLinkedChunksForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    return getLinkedChunksForMember(member, 0);
+}
+
+std::vector<std::shared_ptr<chunks::Chunk>> DirectorFile::getLinkedChunksForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member,
+    std::uint32_t fourcc) {
+    if (!member || !keyTable_) {
+        return {};
+    }
+
+    const std::optional<std::uint32_t> filter = fourcc == 0 ? std::nullopt : std::make_optional(fourcc);
+    std::vector<std::shared_ptr<chunks::Chunk>> result;
+    for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
+        if (!matchesLinkedChunkFourCC(entry, filter)) {
+            continue;
+        }
+        if (auto chunk = getChunk(entry.sectionId)) {
+            result.push_back(std::move(chunk));
+        }
+    }
+    return result;
+}
+
+std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    for (const auto& chunk : getLinkedChunksForMember(member)) {
+        if (auto score = std::dynamic_pointer_cast<chunks::ScoreChunk>(chunk)) {
             return score;
         }
     }
@@ -471,16 +511,9 @@ std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(
 
 std::vector<std::shared_ptr<chunks::TextChunk>> DirectorFile::getTextChunksForMember(
     const std::shared_ptr<chunks::CastMemberChunk>& member) {
-    if (!member || !keyTable_) {
-        return {};
-    }
-
     std::vector<std::shared_ptr<chunks::TextChunk>> result;
-    for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
-        if (entry.fourcc != format::fourCC(format::ChunkType::STXT)) {
-            continue;
-        }
-        if (auto text = std::dynamic_pointer_cast<chunks::TextChunk>(getChunk(entry.sectionId))) {
+    for (const auto& chunk : getLinkedChunksForMember(member, format::fourCC(format::ChunkType::STXT))) {
+        if (auto text = std::dynamic_pointer_cast<chunks::TextChunk>(chunk)) {
             result.push_back(text);
         }
     }
@@ -571,20 +604,26 @@ std::optional<bitmap::Bitmap> DirectorFile::decodeBitmap(const std::shared_ptr<c
         std::shared_ptr<chunks::BitmapChunk> bitmapChunk;
         const std::vector<std::uint8_t>* ediMData = nullptr;
         const std::vector<std::uint8_t>* alfaData = nullptr;
-        for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
-            if (entry.fourcc == format::fourCC(format::ChunkType::BITD)) {
-                bitmapChunk = std::dynamic_pointer_cast<chunks::BitmapChunk>(getChunk(entry.sectionId));
-            } else if (entry.fourcc == format::fourCC(format::ChunkType::ediM)) {
-                auto chunk = getChunk(entry.sectionId);
-                if (auto media = std::dynamic_pointer_cast<chunks::MediaChunk>(chunk)) {
-                    ediMData = &media->audioData();
-                } else if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
-                    ediMData = &raw->data();
-                }
-            } else if (entry.fourcc == format::fourCC(format::ChunkType::ALFA)) {
-                if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(getChunk(entry.sectionId))) {
-                    alfaData = &raw->data();
-                }
+        for (const auto& chunk : getLinkedChunksForMember(member, format::fourCC(format::ChunkType::BITD))) {
+            if (auto bitmap = std::dynamic_pointer_cast<chunks::BitmapChunk>(chunk)) {
+                bitmapChunk = std::move(bitmap);
+                break;
+            }
+        }
+        for (const auto& chunk : getLinkedChunksForMember(member, format::fourCC(format::ChunkType::ediM))) {
+            if (auto media = std::dynamic_pointer_cast<chunks::MediaChunk>(chunk)) {
+                ediMData = &media->audioData();
+                break;
+            }
+            if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
+                ediMData = &raw->data();
+                break;
+            }
+        }
+        for (const auto& chunk : getLinkedChunksForMember(member, format::fourCC(format::ChunkType::ALFA))) {
+            if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
+                alfaData = &raw->data();
+                break;
             }
         }
         if (!bitmapChunk) {

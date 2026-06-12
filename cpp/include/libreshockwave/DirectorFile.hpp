@@ -144,6 +144,16 @@ public:
     [[nodiscard]] std::optional<std::string> getFontNameForId(int fontId) const;
     [[nodiscard]] std::optional<cast::XmedStyledText> getXmedStyledTextForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] std::vector<DirectorChunkInfo> getLinkedChunkInfoForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member) const;
+    [[nodiscard]] std::vector<DirectorChunkInfo> getLinkedChunkInfoForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member,
+        std::uint32_t fourcc) const;
+    [[nodiscard]] std::vector<std::shared_ptr<chunks::Chunk>> getLinkedChunksForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] std::vector<std::shared_ptr<chunks::Chunk>> getLinkedChunksForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member,
+        std::uint32_t fourcc);
     [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> getScoreForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::TextChunk>> getTextChunksForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member);

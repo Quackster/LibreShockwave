@@ -1167,21 +1167,19 @@ void CastLib::scanXmedFonts() {
         if (!member) {
             continue;
         }
-        auto entry = keyTable->findEntry(member->id(), xmedFourCC);
-        if (!entry.has_value()) {
-            continue;
-        }
-        auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(sourceFile_->getChunk(entry->sectionId));
-        if (!raw || raw->data().size() < 4) {
-            continue;
-        }
-        const auto& data = raw->data();
-        if (data[0] == static_cast<std::uint8_t>('P') &&
-            data[1] == static_cast<std::uint8_t>('F') &&
-            data[2] == static_cast<std::uint8_t>('R') &&
-            data[3] == static_cast<std::uint8_t>('1') &&
-            !member->name().empty()) {
-            FontRegistry::registerPfr1Font(member->name(), data);
+        for (const auto& chunk : sourceFile_->getLinkedChunksForMember(member, xmedFourCC)) {
+            auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk);
+            if (!raw || raw->data().size() < 4) {
+                continue;
+            }
+            const auto& data = raw->data();
+            if (data[0] == static_cast<std::uint8_t>('P') &&
+                data[1] == static_cast<std::uint8_t>('F') &&
+                data[2] == static_cast<std::uint8_t>('R') &&
+                data[3] == static_cast<std::uint8_t>('1') &&
+                !member->name().empty()) {
+                FontRegistry::registerPfr1Font(member->name(), data);
+            }
         }
     }
 }
