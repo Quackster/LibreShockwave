@@ -18,7 +18,7 @@ The Habbo browser movie load was a validation proof, not an ongoing product-spec
 
 The active goal now is the C++-first cleanup and parity work: keep the repository centered on the C++ runtime/player source, remove Java source and Gradle-era project material from the active tree, remove hardcoded Habbo/movie-specific debugging references and fixture-specific network-variable hooks, and maintain a README that documents the C++ source, CMake build, native probes, WASM build, and generic browser verification flow. Future movie fixtures, including `/opt/git/v1_assets/` and `/var/www/html/dcr0910`, should remain verification inputs rather than hardcoded runtime behavior.
 
-Current implementation work is continuing in small tested C++ runtime/player slices after that cleanup. The latest verified slice extends method-style Lingo list parity so `getFirst` works through list object dispatch as well as the existing global builtin path. Java/Gradle and editor work remain out of scope.
+Current implementation work is continuing in small tested C++ runtime/player slices after that cleanup. The latest verified slice locks C++ property-list `getAProp`/`getProperty`/`setProp`/`setAProp` method dispatch to the behavior used by the Java implementation on `master`, including untyped method reads and exact-case fallback for cross-type string/symbol writes. Java/Gradle and editor work remain out of scope.
 
 ## Current Cleanup Result
 
@@ -45,7 +45,7 @@ Current implementation work is continuing in small tested C++ runtime/player sli
 ## Verification
 
 - C++ coverage is verified through the `libreshockwave_cpp_tests` CTest executable.
-- Current Lingo list-builtin parity is covered by CTest assertions for global `findPos` over ordinary lists, `getFirst`, `join`, and deep-copying `duplicate` over nested lists/property lists, plus method-dispatcher and object-call assertions for the same list/property-list behavior, including method-style `getFirst` and `getLast`.
+- Current Lingo list-builtin parity is covered by CTest assertions for global `findPos` over ordinary lists, `getFirst`, `join`, and deep-copying `duplicate` over nested lists/property lists, plus method-dispatcher and object-call assertions for the same list/property-list behavior, including method-style `getFirst`, `getLast`, and master-aligned property-list `getAProp`/`getProperty`/`setProp`/`setAProp` string/symbol key behavior.
 - Current parent-script and inherited script-instance dispatch parity is covered by CTest assertions that parent scripts participate in global handler lookup and that a script instance can resolve a handler implemented by its ancestor while preserving the original child instance as `me`. This covers Director object-base callbacks such as timeout-driven `executeDelay`.
 - Current Director property-list text parsing is covered by CTest assertions for `convertToPropList`, including Director delimiter symbols and ordinary key/value lines.
 - Current sound-channel parity is covered by CTest assertions for per-channel `member` state, playback-updated `member` state, playlist `queue`/`setPlaylist`/`getPlaylist`/`playNext`, `loopCount` defaults, clamping, property get/set through the Lingo sound-channel dispatcher, method-style `pan` get/set, use of stored `loopCount` on subsequent `play`, explicit play-argument `loopCount` overrides, and stateful round-tripping of `pan`, `startTime`, `endTime`, `loopStartTime`, and `loopEndTime`.

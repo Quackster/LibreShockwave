@@ -6670,6 +6670,10 @@ void testLingoDatumTypes() {
     dispatcherProps.properties().emplace_back(Datum::symbol("items"), Datum::list({Datum::of(7), Datum::of(8)}));
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "count", {}).intValue() == 3);
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "count", {Datum::symbol("items")}).intValue() == 2);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAProp", {Datum::of(std::string("NAME"))})
+               .stringValue() == "first");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getProperty", {Datum::of(std::string("name"))})
+               .stringValue() == "first");
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getProp", {Datum::symbol("items"), Datum::of(2)})
                .intValue() == 8);
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("name")}).stringValue() ==
@@ -6685,6 +6689,24 @@ void testLingoDatumTypes() {
                .isVoid());
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("name")}).stringValue() ==
            "updated");
+    Datum setPropFallbackDatum = Datum::propList();
+    auto& setPropFallback = setPropFallbackDatum.propListValue();
+    setPropFallback.properties().emplace_back(Datum::symbol("bridge"), Datum::of(1));
+    assert(PropListMethodDispatcher::dispatch(setPropFallback,
+                                              "setProp",
+                                              {Datum::of(std::string("bridge")), Datum::of(2)})
+               .isVoid());
+    assert(setPropFallback.count() == 1);
+    assert(setPropFallback.properties()[0].first.asSymbol() != nullptr);
+    assert(PropListMethodDispatcher::dispatch(setPropFallback, "getAt", {Datum::symbol("bridge")}).intValue() == 2);
+    assert(PropListMethodDispatcher::dispatch(setPropFallback,
+                                              "setAProp",
+                                              {Datum::of(std::string("BRIDGE")), Datum::of(3)})
+               .isVoid());
+    assert(setPropFallback.count() == 2);
+    assert(PropListMethodDispatcher::dispatch(setPropFallback, "getAt", {Datum::symbol("bridge")}).intValue() == 2);
+    assert(PropListMethodDispatcher::dispatch(setPropFallback, "getAt", {Datum::of(std::string("bridge"))})
+               .intValue() == 3);
     assert(PropListMethodDispatcher::dispatch(dispatcherProps,
                                               "addProp",
                                               {Datum::symbol("name"), Datum::of(std::string("duplicate"))})
