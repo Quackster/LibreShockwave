@@ -13,7 +13,7 @@ It **won't** *just* be an emulator: the goal is to eventually become a full soft
 - zlib development headers, or a zlib-compatible zlib-ng package
 - Optional: Ninja for faster incremental builds
 - Optional: Emscripten for the browser/WASM target
-- Optional: Node.js and npm for browser fixture verification
+- Optional: Node.js and npm for browser/WASM verification
 
 ## Linux Package Setup
 
@@ -387,6 +387,14 @@ node cpp/tools/browser_fixture_check.js --fixtures /opt/git/v1_assets/projectorr
 
 Use `--movies /a.dcr,/b.dcr`, `--movie-list movies.txt`, `--limit N`, `--summary-only`, and `--screenshot-dir path` for smaller targeted runs.
 
+The browser index checker tests the generated `index.html` page itself. It serves `cmake-build-wasm/cpp/wasm-dist/` on an isolated local port, loads the default movie with `?autoload=1`, waits for the Habbo login screen, verifies frame/sprite and pixel-color thresholds, and checks that the stage display size was resized from the loaded movie dimensions. It stops at the login screen and does not click Login or Register:
+
+```bash
+npm --prefix cpp/tools run browser-index-check -- --timeoutMs 300000 --screenshot cmake-build-wasm/habbo-index-login-check.png
+```
+
+Pass `--dist path/to/wasm-dist` to test a non-default build output directory.
+
 ### Embedding
 
 The browser target exposes `LibreShockwaveCppPlayer` from `libreshockwave-cpp-player.js`.
@@ -444,6 +452,7 @@ docs/
 node --check cpp/web/libreshockwave-cpp-player.js
 node --check cpp/web/libreshockwave-cpp-worker.js
 node --check cpp/tools/browser_fixture_check.js
+node --check cpp/tools/browser_index_check.js
 ./build.sh
 git diff --check
 ```

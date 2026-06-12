@@ -336,6 +336,7 @@ if(EMSCRIPTEN)
         "-sEXPORT_NAME=createLibreShockwaveCppWasm"
         "-sENVIRONMENT=worker"
         "-sALLOW_MEMORY_GROWTH=1"
+        "-sSTACK_SIZE=8388608"
         "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/libreshockwave-wasm-exports.json"
     )
 

@@ -134,8 +134,9 @@
 
         canvas {
             display: block;
-            width: min(100%, 960px);
+            width: min(100%, var(--stage-display-width, 960px));
             height: auto;
+            max-width: var(--stage-display-width, 960px);
             background: black;
             border: 1px solid #111820;
         }
@@ -220,6 +221,7 @@
     <script>
         (function() {
             var DEFAULT_MOVIE = 'https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr';
+            var DEFAULT_SCRIPT_TIMEOUT_MS = 0;
             var DEFAULT_PARAMS = {
                 sw1: 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk',
                 sw2: 'connection.info.host=au.h4bbo.net;connection.info.port=30001',
@@ -236,6 +238,7 @@
             var fpsInput = document.getElementById('fps-input');
             var frameInput = document.getElementById('frame-number');
             var paramList = document.getElementById('param-list');
+            var stageCanvas = document.getElementById('stage');
             var query = new URLSearchParams(location.search);
 
             function copyDefaultParams() {
@@ -256,6 +259,15 @@
                     }
                 });
                 return externalParams;
+            }
+
+            function readScriptTimeoutMs() {
+                var value = query.get('scriptTimeoutMs') || query.get('script-timeout-ms');
+                if (value == null || value === '') {
+                    return DEFAULT_SCRIPT_TIMEOUT_MS;
+                }
+                var parsed = Number(value);
+                return isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SCRIPT_TIMEOUT_MS;
             }
 
             function createParamRow(key, value) {
@@ -314,6 +326,13 @@
                 player.setFps(fpsInput.value);
             }
 
+            function resizeStage(info) {
+                var width = Math.max(1, info && info.width ? info.width | 0 : stageCanvas.width);
+                var height = Math.max(1, info && info.height ? info.height | 0 : stageCanvas.height);
+                stageCanvas.style.setProperty('--stage-display-width', width + 'px');
+                stageCanvas.style.aspectRatio = width + ' / ' + height;
+            }
+
             function loadMovie() {
                 applyFps();
                 player.clearParams();
@@ -328,12 +347,14 @@
 
             var player = LibreShockwaveCppPlayer.create('stage', {
                 params: readQueryParams(),
+                scriptTimeoutMs: readScriptTimeoutMs(),
                 onReady: function() {
                     runtimeState.textContent = 'ready';
                     status.textContent = 'Runtime ready.';
                     applyFps();
                 },
                 onLoad: function(info) {
+                    resizeStage(info);
                     status.textContent = 'Loaded ' + info.width + 'x' + info.height + '.';
                     frameInput.max = String(Math.max(1, info.frameCount || 1));
                 },

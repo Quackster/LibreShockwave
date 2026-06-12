@@ -20,6 +20,8 @@ var _musErrors = {};
 var _musInbound = {};
 var _fetchRelayCounter = 0;
 var _fetchRelayMap = {};
+var _fetchResultCache = {};
+var _fetchInflight = {};
 var _fetchDiagnostics = {
     active: null,
     attempts: 0,
@@ -35,6 +37,8 @@ var _sharedFrameControl = null;
 var _sharedFrameCapacity = 0;
 var _sharedFrameSeq = 0;
 var _activeLoadSeq = 0;
+var _loadInProgress = false;
+var _tickInProgress = false;
 var _diagnosticDepth = 0;
 var _lastNativeOperation = null;
 
@@ -169,11 +173,21 @@ function _exportRoots(source) {
             roots.push(value);
         }
     }
+    function rootProperty(value, name) {
+        if (!value || (typeof value !== 'object' && typeof value !== 'function')) {
+            return null;
+        }
+        var descriptor = Object.getOwnPropertyDescriptor(value, name);
+        if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+            return null;
+        }
+        return descriptor.value;
+    }
     add(source);
-    add(source && source.exports);
-    add(source && source.asm);
-    add(source && source.wasmExports);
-    add(source && source.instance && source.instance.exports);
+    add(rootProperty(source, 'exports'));
+    add(rootProperty(source, 'asm'));
+    add(rootProperty(source, 'wasmExports'));
+    add(rootProperty(rootProperty(source, 'instance'), 'exports'));
     return roots;
 }
 
@@ -674,6 +688,71 @@ async function _fetchFirst(urls, method, postData) {
     return { error: true, status: lastStatus || 404 };
 }
 
+function _fetchRequestKey(request) {
+    if (!request || request.method !== 'GET') {
+        return '';
+    }
+    var resolvedUrls = [];
+    for (var i = 0; i < request.urls.length; i++) {
+        resolvedUrls.push(_resolveUrl(request.urls[i]));
+    }
+    return [request.method, request.postData || '', resolvedUrls.join('\n')].join('\u0000');
+}
+
+async function _fetchGroupedRequests(requests, loadSeq) {
+    var groups = [];
+    var groupByKey = {};
+    for (var i = 0; i < requests.length; i++) {
+        var request = requests[i];
+        var key = _fetchRequestKey(request);
+        if (key && groupByKey[key]) {
+            groupByKey[key].requests.push(request);
+            continue;
+        }
+        var group = {
+            key: key,
+            prototype: request,
+            requests: [request]
+        };
+        groups.push(group);
+        if (key) {
+            groupByKey[key] = group;
+        }
+    }
+
+    await Promise.all(groups.map(async function(group) {
+        if (_isStaleLoad(loadSeq)) {
+            group.result = { error: true, status: 0 };
+            return;
+        }
+        if (group.key && _fetchResultCache[group.key]) {
+            group.result = _fetchResultCache[group.key];
+            return;
+        }
+        if (group.key && _fetchInflight[group.key]) {
+            group.result = await _fetchInflight[group.key];
+            return;
+        }
+        var request = group.prototype;
+        var promise = _fetchFirst(request.urls, request.method, request.postData);
+        if (group.key) {
+            _fetchInflight[group.key] = promise;
+        }
+        try {
+            group.result = await promise;
+            if (group.key && group.result && group.result.data) {
+                _fetchResultCache[group.key] = group.result;
+            }
+        } finally {
+            if (group.key) {
+                delete _fetchInflight[group.key];
+            }
+        }
+    }));
+
+    return groups;
+}
+
 async function _drainFetches(maxRounds, loadSeq) {
     var delivered = 0;
     var failed = 0;
@@ -702,23 +781,27 @@ async function _drainFetches(maxRounds, loadSeq) {
             requests.push({ taskId: taskId, urls: urls, method: method, postData: postData });
         }
         _exports.drainPendingFetches();
-        for (var r = 0; r < requests.length; r++) {
-            var result = await _fetchFirst(requests[r].urls, requests[r].method, requests[r].postData);
+        var groups = await _fetchGroupedRequests(requests, loadSeq);
+        for (var g = 0; g < groups.length; g++) {
             if (_isStaleLoad(loadSeq)) {
                 return { delivered: delivered, failed: failed };
             }
-            if (result.error) {
-            _exports.deliverFetchError(requests[r].taskId, result.status);
-            _fetchDiagnostics.failedTaskIds.push(requests[r].taskId);
-            failed++;
-            continue;
-        }
-        var bytes = new Uint8Array(result.data);
-        var addr = _exports.allocateNetBuffer(bytes.length);
-        new Uint8Array(_mem(), addr, bytes.length).set(bytes);
-        _exports.deliverFetchResult(requests[r].taskId, bytes.length);
-        _fetchDiagnostics.deliveredTaskIds.push(requests[r].taskId);
-        delivered++;
+            var result = groups[g].result || { error: true, status: 0 };
+            for (var r = 0; r < groups[g].requests.length; r++) {
+                var request = groups[g].requests[r];
+                if (result.error) {
+                    _exports.deliverFetchError(request.taskId, result.status);
+                    _fetchDiagnostics.failedTaskIds.push(request.taskId);
+                    failed++;
+                    continue;
+                }
+                var bytes = new Uint8Array(result.data);
+                var addr = _exports.allocateNetBuffer(bytes.length);
+                new Uint8Array(_mem(), addr, bytes.length).set(bytes);
+                _exports.deliverFetchResult(request.taskId, bytes.length);
+                _fetchDiagnostics.deliveredTaskIds.push(request.taskId);
+                delivered++;
+            }
         }
     }
     return { delivered: delivered, failed: failed };
@@ -1578,9 +1661,12 @@ function _postFrame(loadSeq) {
 async function _loadMovie(message) {
     var loadSeq = message.loadSeq || (_activeLoadSeq + 1);
     _activeLoadSeq = loadSeq;
+    _loadInProgress = true;
     _jpegDecodeSeq++;
     _jpegDecodeQueue = [];
     _jpegDecodeInFlight = {};
+    _fetchResultCache = {};
+    _fetchInflight = {};
     _fetchDiagnostics = {
         active: null,
         attempts: 0,
@@ -1591,92 +1677,103 @@ async function _loadMovie(message) {
         deliveredTaskIds: [],
         failedTaskIds: []
     };
-    var movieBytes = new Uint8Array(message.data || new ArrayBuffer(0));
-    var basePathLength = _writeString(message.basePath || _basePath);
-    var movieAddr = _exports.allocateBuffer(movieBytes.length);
-    new Uint8Array(_mem(), movieAddr, movieBytes.length).set(movieBytes);
-    var copiedMoviePrefix = new Uint8Array(_mem(), movieAddr, Math.min(movieBytes.length, 16));
-    var packedStage = _exports.loadMovie(movieBytes.length, basePathLength);
-    if (message.scriptTimeoutMs != null) {
-        _exports.setScriptTimeoutMs(message.scriptTimeoutMs | 0);
-    }
-    if (message.debugPlayback != null) {
-        _exports.setDebugPlaybackEnabled(message.debugPlayback ? 1 : 0);
-    }
-    if (message.traceHandlers) {
-        for (var traceIndex = 0; traceIndex < message.traceHandlers.length; traceIndex++) {
-            _exports.addTraceHandler(_writeString(message.traceHandlers[traceIndex]));
+    try {
+        var movieBytes = new Uint8Array(message.data || new ArrayBuffer(0));
+        var basePathLength = _writeString(message.basePath || _basePath);
+        var movieAddr = _exports.allocateBuffer(movieBytes.length);
+        new Uint8Array(_mem(), movieAddr, movieBytes.length).set(movieBytes);
+        var copiedMoviePrefix = new Uint8Array(_mem(), movieAddr, Math.min(movieBytes.length, 16));
+        var packedStage = _exports.loadMovie(movieBytes.length, basePathLength);
+        if (message.scriptTimeoutMs != null) {
+            _exports.setScriptTimeoutMs(message.scriptTimeoutMs | 0);
         }
-    }
-    var key;
-    if (message.params) {
-        for (key in message.params) {
-            _setExternalParam(key, message.params[key]);
+        if (message.debugPlayback != null) {
+            _exports.setDebugPlaybackEnabled(message.debugPlayback ? 1 : 0);
         }
-    }
-    for (key in _externalParams) {
-        _setExternalParam(key, _externalParams[key]);
-    }
-    if (message.movieProperties) {
-        for (key in message.movieProperties) {
-            _setMovieProperty(key, message.movieProperties[key]);
+        if (message.traceHandlers) {
+            for (var traceIndex = 0; traceIndex < message.traceHandlers.length; traceIndex++) {
+                _exports.addTraceHandler(_writeString(message.traceHandlers[traceIndex]));
+            }
         }
-    }
-    if (message.initialBuiltinSymbols) {
-        for (key in message.initialBuiltinSymbols) {
-            _setInitialBuiltinSymbol(key, message.initialBuiltinSymbols[key]);
+        var key;
+        if (message.params) {
+            for (key in message.params) {
+                _setExternalParam(key, message.params[key]);
+            }
         }
-    }
-    await _driveHostQueues(32, loadSeq);
-    if (_isStaleLoad(loadSeq)) {
-        return;
-    }
-    _exports.preloadCasts();
-    await _driveHostQueues(32, loadSeq);
-    if (_isStaleLoad(loadSeq)) {
-        return;
-    }
-    if (!packedStage) {
-        var loadError = _readLastError() || ('C++ WASM movie load failed; bytes=' + movieBytes.length +
-            ' addr=' + movieAddr +
-            ' source=' + _hexPrefix(movieBytes, 16) +
-            ' wasm=' + _hexPrefix(copiedMoviePrefix, 16));
-        self.postMessage({ type: 'error', message: loadError, loadSeq: loadSeq });
-        return;
-    }
-    var width = (packedStage >>> 16) & 0xffff;
-    var height = packedStage & 0xffff;
-    self.postMessage({
-        type: 'loaded',
-        loadSeq: loadSeq,
-        width: width,
-        height: height,
-        frameCount: _exports.getFrameCount(),
-        tempo: _exports.getTempo()
-    });
-    _postFrame(loadSeq);
-    if (message.autoplay !== false) {
-        _playing = true;
-        _snapshotNativeOperation('play');
-        _exports.play();
+        for (key in _externalParams) {
+            _setExternalParam(key, _externalParams[key]);
+        }
+        if (message.movieProperties) {
+            for (key in message.movieProperties) {
+                _setMovieProperty(key, message.movieProperties[key]);
+            }
+        }
+        if (message.initialBuiltinSymbols) {
+            for (key in message.initialBuiltinSymbols) {
+                _setInitialBuiltinSymbol(key, message.initialBuiltinSymbols[key]);
+            }
+        }
+        await _driveHostQueues(32, loadSeq);
+        if (_isStaleLoad(loadSeq)) {
+            return;
+        }
+        _exports.preloadCasts();
         await _driveHostQueues(128, loadSeq);
+        if (_isStaleLoad(loadSeq)) {
+            return;
+        }
+        if (!packedStage) {
+            var loadError = _readLastError() || ('C++ WASM movie load failed; bytes=' + movieBytes.length +
+                ' addr=' + movieAddr +
+                ' source=' + _hexPrefix(movieBytes, 16) +
+                ' wasm=' + _hexPrefix(copiedMoviePrefix, 16));
+            self.postMessage({ type: 'error', message: loadError, loadSeq: loadSeq });
+            return;
+        }
+        var width = (packedStage >>> 16) & 0xffff;
+        var height = packedStage & 0xffff;
+        self.postMessage({
+            type: 'loaded',
+            loadSeq: loadSeq,
+            width: width,
+            height: height,
+            frameCount: _exports.getFrameCount(),
+            tempo: _exports.getTempo()
+        });
         _postFrame(loadSeq);
+        if (message.autoplay !== false) {
+            _playing = true;
+            _snapshotNativeOperation('play');
+            _exports.play();
+            await _driveHostQueues(128, loadSeq);
+            _postFrame(loadSeq);
+        }
+    } finally {
+        if (_activeLoadSeq === loadSeq) {
+            _loadInProgress = false;
+        }
     }
 }
 
 async function _tick() {
-    if (!_ready || _diagnosticActive()) {
+    if (!_ready || _loadInProgress || _tickInProgress || _diagnosticActive()) {
         return;
     }
-    await _driveHostQueues(32);
-    if (_playing) {
-        _snapshotNativeOperation('tick');
-        _exports.tick();
+    _tickInProgress = true;
+    try {
         await _driveHostQueues(32);
+        if (_playing) {
+            _snapshotNativeOperation('tick');
+            _exports.tick();
+            await _driveHostQueues(32);
+        }
+        _postLastError();
+        _flushDebugLog();
+        _postFrame();
+    } finally {
+        _tickInProgress = false;
     }
-    _postLastError();
-    _flushDebugLog();
-    _postFrame();
 }
 
 async function _init(message) {
