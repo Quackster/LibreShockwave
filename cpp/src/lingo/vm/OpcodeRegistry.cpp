@@ -4568,6 +4568,44 @@ bool notEq(ExecutionContext& context) {
     return true;
 }
 
+std::optional<int> spriteChannelFromDatum(const Datum& datum) {
+    if (const auto* spriteRef = datum.asSpriteRef()) {
+        return spriteRef->spriteNum();
+    }
+    if (datum.asInt() != nullptr || datum.asFloat() != nullptr) {
+        return toIntLikeJava(datum);
+    }
+    return std::nullopt;
+}
+
+bool spriteCollision(ExecutionContext& context, std::string_view methodName) {
+    const Datum second = context.pop();
+    const Datum first = context.pop();
+    const auto firstChannel = spriteChannelFromDatum(first);
+    auto* builtinContext = context.builtinContext();
+    if (!firstChannel.has_value() || *firstChannel <= 0 || builtinContext == nullptr) {
+        context.push(Datum::FALSE);
+        return true;
+    }
+
+    Datum result = Datum::voidValue();
+    if (builtinContext->spriteMethodHandler) {
+        result = builtinContext->spriteMethodHandler(*firstChannel, std::string(methodName), {second});
+    } else if (builtinContext->spriteProperties != nullptr) {
+        result = builtinContext->spriteProperties->callSpriteMethod(*firstChannel, methodName, {second});
+    }
+    context.push(!result.isVoid() && truthy(result) ? Datum::TRUE : Datum::FALSE);
+    return true;
+}
+
+bool spriteIntersects(ExecutionContext& context) {
+    return spriteCollision(context, "intersects");
+}
+
+bool spriteWithin(ExecutionContext& context) {
+    return spriteCollision(context, "within");
+}
+
 bool logicalAnd(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
@@ -5517,6 +5555,8 @@ void ComparisonOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::GT_EQ, gtEq);
     registry.registerHandler(Opcode::EQ, eq);
     registry.registerHandler(Opcode::NT_EQ, notEq);
+    registry.registerHandler(Opcode::ONTO_SPR, spriteIntersects);
+    registry.registerHandler(Opcode::INTO_SPR, spriteWithin);
 }
 
 void LogicalOpcodes::registerHandlers(OpcodeRegistry& registry) {

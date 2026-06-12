@@ -82,6 +82,46 @@ lingo::Datum normalizedColorDatum(const lingo::Datum& value, int rgb) {
     return value.asColorRef() != nullptr ? value : rgbColorDatum(rgb);
 }
 
+std::optional<int> spriteChannelFromDatum(const lingo::Datum& datum) {
+    if (const auto* spriteRef = datum.asSpriteRef()) {
+        return spriteRef->spriteNum();
+    }
+    if (datum.asInt() != nullptr || datum.asFloat() != nullptr) {
+        return datum.intValue();
+    }
+    return std::nullopt;
+}
+
+SpriteProperties::SpriteBounds normalizedBounds(SpriteProperties::SpriteBounds bounds) {
+    if (bounds.left > bounds.right) {
+        std::swap(bounds.left, bounds.right);
+    }
+    if (bounds.top > bounds.bottom) {
+        std::swap(bounds.top, bounds.bottom);
+    }
+    return bounds;
+}
+
+bool hasPositiveArea(const SpriteProperties::SpriteBounds& bounds) {
+    return bounds.right > bounds.left && bounds.bottom > bounds.top;
+}
+
+bool boundsIntersect(SpriteProperties::SpriteBounds first, SpriteProperties::SpriteBounds second) {
+    first = normalizedBounds(first);
+    second = normalizedBounds(second);
+    return hasPositiveArea(first) && hasPositiveArea(second) &&
+           first.right >= second.left && second.right >= first.left &&
+           first.bottom >= second.top && second.bottom >= first.top;
+}
+
+bool boundsWithin(SpriteProperties::SpriteBounds first, SpriteProperties::SpriteBounds second) {
+    first = normalizedBounds(first);
+    second = normalizedBounds(second);
+    return hasPositiveArea(first) && hasPositiveArea(second) &&
+           first.left >= second.left && first.top >= second.top &&
+           first.right <= second.right && first.bottom <= second.bottom;
+}
+
 } // namespace
 
 SpriteProperties::SpriteProperties(render::SpriteRegistry* registry)
@@ -446,6 +486,25 @@ lingo::Datum SpriteProperties::callSpriteMethod(int spriteNum,
     }
     if (method == "getmember") {
         return getSpriteProp(spriteNum, "member");
+    }
+    if (method == "intersects" || method == "within") {
+        if (args.empty()) {
+            return lingo::Datum::FALSE;
+        }
+        const auto otherSpriteNum = spriteChannelFromDatum(args.front());
+        if (!otherSpriteNum.has_value() || *otherSpriteNum <= 0) {
+            return lingo::Datum::FALSE;
+        }
+        auto first = registry_->get(spriteNum);
+        auto second = registry_->get(*otherSpriteNum);
+        if (first == nullptr || second == nullptr) {
+            return lingo::Datum::FALSE;
+        }
+        const auto firstBounds = resolveSpriteBounds(*first);
+        const auto secondBounds = resolveSpriteBounds(*second);
+        const bool result = method == "intersects" ? boundsIntersect(firstBounds, secondBounds)
+                                                   : boundsWithin(firstBounds, secondBounds);
+        return result ? lingo::Datum::TRUE : lingo::Datum::FALSE;
     }
 
     if (method != "setid" && method != "getid" &&

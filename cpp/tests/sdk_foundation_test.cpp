@@ -13043,6 +13043,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::GT_EQ));
     assert(opcodeRegistry.hasHandler(Opcode::EQ));
     assert(opcodeRegistry.hasHandler(Opcode::NT_EQ));
+    assert(opcodeRegistry.hasHandler(Opcode::ONTO_SPR));
+    assert(opcodeRegistry.hasHandler(Opcode::INTO_SPR));
     assert(opcodeRegistry.hasHandler(Opcode::AND));
     assert(opcodeRegistry.hasHandler(Opcode::OR));
     assert(opcodeRegistry.hasHandler(Opcode::NOT));
@@ -16423,6 +16425,32 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runBinary(Opcode::EQ, Datum::of(5), Datum::of(5.0F)).boolValue());
     assert(runBinary(Opcode::EQ, Datum::of(std::string("Door")), Datum::symbol("door")).boolValue());
     assert(runBinary(Opcode::NT_EQ, Datum::intPoint(1, 2), Datum::intPoint(1, 3)).boolValue());
+    SpriteRegistry opcodeSpriteRegistry;
+    SpriteProperties opcodeSpriteProps(&opcodeSpriteRegistry);
+    assert(opcodeSpriteProps.setSpriteProp(70, "rect", Datum::intRect(0, 0, 10, 10)));
+    assert(opcodeSpriteProps.setSpriteProp(71, "rect", Datum::intRect(10, 2, 20, 8)));
+    assert(opcodeSpriteProps.setSpriteProp(72, "rect", Datum::intRect(2, 2, 8, 8)));
+    assert(opcodeSpriteProps.setSpriteProp(73, "rect", Datum::intRect(20, 20, 30, 30)));
+    builtinContext.spriteProperties = &opcodeSpriteProps;
+    builtinContext.spriteMethodHandler = {};
+    auto runSpriteCollisionOpcode = [&](Opcode opcode, Datum first, Datum second) {
+        Scope spriteScope(&script, handler, {});
+        ExecutionContext spriteContext(spriteScope,
+                                       ScriptChunk::Instruction{0, opcode, libreshockwave::lingo::code(opcode), 0},
+                                       &registry,
+                                       &builtinContext,
+                                       callbacks);
+        spriteContext.push(std::move(first));
+        spriteContext.push(std::move(second));
+        assert(opcodeRegistry.execute(opcode, spriteContext));
+        return spriteContext.pop();
+    };
+    assert(runSpriteCollisionOpcode(Opcode::ONTO_SPR, Datum::of(70), Datum::spriteRef(ChannelId(71))).boolValue());
+    assert(!runSpriteCollisionOpcode(Opcode::ONTO_SPR, Datum::of(70), Datum::of(73)).boolValue());
+    assert(runSpriteCollisionOpcode(Opcode::INTO_SPR, Datum::spriteRef(ChannelId(72)), Datum::of(70)).boolValue());
+    assert(!runSpriteCollisionOpcode(Opcode::INTO_SPR, Datum::of(70), Datum::of(72)).boolValue());
+    assert(!runSpriteCollisionOpcode(Opcode::ONTO_SPR, Datum::of(0), Datum::of(70)).boolValue());
+    builtinContext.spriteProperties = nullptr;
     assert(runBinary(Opcode::AND, Datum::TRUE, Datum::of(std::string("x"))).boolValue());
     assert(!runBinary(Opcode::AND, Datum::TRUE, Datum::FALSE).boolValue());
     assert(runBinary(Opcode::OR, Datum::FALSE, Datum::symbol("x")).boolValue());
@@ -18216,6 +18244,19 @@ void testSpritePropertiesFoundation() {
 
     assert(props.callSpriteMethod(44, "missingMethod", {}).isVoid());
     assert(!props.getScriptInstanceList(44).has_value());
+
+    assert(props.setSpriteProp(30, "rect", Datum::intRect(10, 10, 30, 30)));
+    assert(props.setSpriteProp(31, "rect", Datum::intRect(25, 20, 40, 35)));
+    assert(props.setSpriteProp(32, "rect", Datum::intRect(30, 10, 45, 25)));
+    assert(props.setSpriteProp(33, "rect", Datum::intRect(11, 12, 29, 28)));
+    assert(props.setSpriteProp(34, "rect", Datum::intRect(50, 50, 60, 60)));
+    assert(props.callSpriteMethod(30, "intersects", {Datum::of(31)}).boolValue());
+    assert(props.callSpriteMethod(30, "intersects", {Datum::spriteRef(ChannelId(32))}).boolValue());
+    assert(!props.callSpriteMethod(30, "intersects", {Datum::of(34)}).boolValue());
+    assert(props.callSpriteMethod(33, "within", {Datum::of(30)}).boolValue());
+    assert(!props.callSpriteMethod(30, "within", {Datum::of(33)}).boolValue());
+    assert(!props.callSpriteMethod(30, "within", {}).boolValue());
+    assert(!props.callSpriteMethod(30, "intersects", {Datum::of(0)}).boolValue());
 
     assert(props.callSpriteMethod(42,
                                   "registerProcedure",
