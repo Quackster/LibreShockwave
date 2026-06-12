@@ -22556,6 +22556,8 @@ void testNetManagerFoundation() {
     writeLocalFile(localNetRoot / "movie.dir", {'D', 'I', 'R'});
     writeLocalFile(localNetRoot / "external.cst", {'L', 'O', 'C', 'A', 'L'});
     writeLocalFile(localNetRoot / "gamedata" / "vars.txt", {'R', 'O', 'O', 'T'});
+    std::filesystem::create_directories(localNetRoot / "External");
+    writeLocalFile(localNetRoot / "External" / "External.cst", {'S', 'I', 'D', 'E'});
 
     NetManager localFileManager;
     std::vector<std::string> localCompletedUrls;
@@ -22570,6 +22572,15 @@ void testNetManagerFoundation() {
     assert(localFileManager.getCachedData("external.cst").value() ==
            std::vector<std::uint8_t>({'L', 'O', 'C', 'A', 'L'}));
     assert(localCompletedUrls == std::vector<std::string>{"casts/external.cct:5"});
+
+    NetManager extractedCastLayoutManager;
+    extractedCastLayoutManager.setBasePath((localNetRoot / "movie").string());
+    const int extractedCastTask = extractedCastLayoutManager.preloadNetThing("casts/External.cct");
+    assert(extractedCastLayoutManager.netDone(extractedCastTask));
+    assert(extractedCastLayoutManager.netError(extractedCastTask) == 0);
+    assert(extractedCastLayoutManager.netTextResult(extractedCastTask) == "SIDE");
+    assert(extractedCastLayoutManager.getCachedData("External.cst").value() ==
+           std::vector<std::uint8_t>({'S', 'I', 'D', 'E'}));
 
     NetManager localHttpManager;
     localHttpManager.setBasePath("http://localhost:8080/movie.dir");
