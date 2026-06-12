@@ -18,6 +18,8 @@ var _musConnected = {};
 var _musDisconnected = {};
 var _musErrors = {};
 var _musInbound = {};
+var _musCloseDetails = {};
+var _musHistory = [];
 var _fetchRelayCounter = 0;
 var _fetchRelayMap = {};
 var _fetchResultCache = {};
@@ -39,6 +41,9 @@ var _sharedFrameSeq = 0;
 var _activeLoadSeq = 0;
 var _loadInProgress = false;
 var _tickInProgress = false;
+var _tickTimer = null;
+var _tickIntervalMs = 33;
+var _nextTickAt = 0;
 var _diagnosticDepth = 0;
 var _lastNativeOperation = null;
 
@@ -380,6 +385,12 @@ function _runtimeDiagnostics() {
         ready: _ready,
         playing: _playing,
         loadSeq: _activeLoadSeq,
+        scheduler: {
+            tickIntervalMs: _tickIntervalMs,
+            timerActive: _tickTimer !== null,
+            tickInProgress: _tickInProgress,
+            nextTickInMs: _nextTickAt > 0 ? Math.max(0, Math.round(_nextTickAt - _nowMs())) : 0
+        },
         params: Object.assign({}, _externalParams),
         jpeg: {
             queuedResults: _jpegDecodeQueue.length,
@@ -387,10 +398,15 @@ function _runtimeDiagnostics() {
         },
         mus: {
             sockets: Object.keys(_musSockets).length,
+            socketStates: _musSocketStates(),
             connectedEvents: Object.keys(_musConnected).length,
             disconnectedEvents: Object.keys(_musDisconnected).length,
             errorEvents: Object.keys(_musErrors).length,
-            inboundInstances: Object.keys(_musInbound).length
+            inboundInstances: Object.keys(_musInbound).length,
+            pendingCount: _exports ? _exports.getMusPendingCount() : 0,
+            pending: _snapshotPendingMusRequests(8),
+            closeDetails: Object.assign({}, _musCloseDetails),
+            history: _musHistory.slice(-20)
         },
         fetchRelay: {
             pending: Object.keys(_fetchRelayMap).length
@@ -413,6 +429,61 @@ function _runtimeDiagnostics() {
             sequence: _sharedFrameSeq
         }
     };
+}
+
+function _recordMusEvent(event) {
+    var entry = Object.assign({
+        t: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) / 100) / 10
+    }, event || {});
+    _musHistory.push(entry);
+    if (_musHistory.length > 50) {
+        _musHistory.splice(0, _musHistory.length - 50);
+    }
+    if (_debugLogsEnabled) {
+        self.postMessage({
+            type: 'debugLog',
+            message: '[MUS] ' + JSON.stringify(entry),
+            msg: '[MUS] ' + JSON.stringify(entry)
+        });
+    }
+}
+
+function _musSocketStates() {
+    var states = {};
+    for (var id in _musSockets) {
+        var socket = _musSockets[id];
+        states[id] = socket ? socket.readyState : -1;
+    }
+    return states;
+}
+
+function _snapshotPendingMusRequests(limit) {
+    if (!_exports) {
+        return [];
+    }
+    var count = _exports.getMusPendingCount();
+    var requests = [];
+    var capped = Math.min(count, limit || count);
+    for (var i = 0; i < capped; i++) {
+        var type = _exports.getMusPendingType(i);
+        var request = {
+            index: i,
+            type: type,
+            instanceId: _exports.getMusPendingInstanceId(i)
+        };
+        if (type === 0) {
+            request.host = _readString(_exports.getMusPendingHost(i));
+            request.port = _exports.getMusPendingPort(i);
+        } else if (type === 1) {
+            var dataLength = _exports.getMusPendingSendData(i);
+            request.dataLength = dataLength;
+            request.dataHexPrefix = dataLength > 0
+                ? _hexPrefix(_stringBufferView().subarray(0, dataLength), 24)
+                : '';
+        }
+        requests.push(request);
+    }
+    return requests;
 }
 
 function _snapshotNativeOperation(label) {
@@ -549,6 +620,7 @@ function _clearMusInstance(instanceId) {
     delete _musDisconnected[instanceId];
     delete _musErrors[instanceId];
     delete _musInbound[instanceId];
+    delete _musCloseDetails[instanceId];
 }
 
 function _waitForMusState(instanceId, predicate, timeoutMs) {
@@ -950,29 +1022,65 @@ function _musConnect(instanceId, url) {
     }
     var socket;
     try {
+        _recordMusEvent({ type: 'connect', instanceId: instanceId, url: url });
         socket = new WebSocket(url);
     } catch (e) {
         _musErrors[instanceId] = -3;
+        _recordMusEvent({
+            type: 'connectException',
+            instanceId: instanceId,
+            url: url,
+            message: e && e.message ? e.message : String(e)
+        });
         return;
     }
     socket.binaryType = 'arraybuffer';
     _musSockets[instanceId] = socket;
     socket.onopen = function() {
         _musConnected[instanceId] = true;
+        _recordMusEvent({ type: 'open', instanceId: instanceId, url: url });
     };
     socket.onmessage = function(event) {
         if (!_musInbound[instanceId]) {
             _musInbound[instanceId] = [];
         }
-        _musInbound[instanceId].push(typeof event.data === 'string'
+        var inbound = typeof event.data === 'string'
             ? _binaryStringToBytes(event.data)
-            : new Uint8Array(event.data));
+            : new Uint8Array(event.data);
+        _musInbound[instanceId].push(inbound);
+        _recordMusEvent({
+            type: 'message',
+            instanceId: instanceId,
+            url: url,
+            length: inbound.byteLength,
+            hexPrefix: _hexPrefix(inbound, 24),
+            textPrefix: _bytesToText(inbound.slice(0, 24))
+        });
     };
-    socket.onerror = function() {
+    socket.onerror = function(event) {
         _musErrors[instanceId] = -2;
+        _recordMusEvent({
+            type: 'error',
+            instanceId: instanceId,
+            url: url,
+            message: event && event.message ? event.message : ''
+        });
     };
-    socket.onclose = function() {
+    socket.onclose = function(event) {
         _musDisconnected[instanceId] = true;
+        _musCloseDetails[instanceId] = {
+            code: event && typeof event.code === 'number' ? event.code : 0,
+            reason: event && event.reason ? String(event.reason) : '',
+            wasClean: !!(event && event.wasClean)
+        };
+        _recordMusEvent({
+            type: 'close',
+            instanceId: instanceId,
+            url: url,
+            code: _musCloseDetails[instanceId].code,
+            reason: _musCloseDetails[instanceId].reason,
+            wasClean: _musCloseDetails[instanceId].wasClean
+        });
         delete _musSockets[instanceId];
     };
 }
@@ -1021,7 +1129,23 @@ function _pumpMusRequests() {
             var data = new Uint8Array(_stringBufferView().subarray(0, dataLen));
             var socket = _musSockets[instanceId];
             if (socket && socket.readyState === WebSocket.OPEN) {
+                _recordMusEvent({
+                    type: 'send',
+                    instanceId: instanceId,
+                    length: data.byteLength,
+                    hexPrefix: _hexPrefix(data, 32),
+                    textPrefix: _bytesToText(data.slice(0, 32))
+                });
                 socket.send(data.buffer);
+            } else {
+                _recordMusEvent({
+                    type: 'sendSkipped',
+                    instanceId: instanceId,
+                    length: data.byteLength,
+                    hexPrefix: _hexPrefix(data, 32),
+                    textPrefix: _bytesToText(data.slice(0, 32)),
+                    readyState: socket ? socket.readyState : -1
+                });
             }
         } else if (type === 2) {
             var existing = _musSockets[instanceId];
@@ -1515,6 +1639,80 @@ function _setInitialBuiltinSymbol(key, value) {
     _exports.setInitialBuiltinSymbol(lengths.keyLength, lengths.valueLength);
 }
 
+function _yieldToEventLoop() {
+    return new Promise(function(resolve) {
+        setTimeout(resolve, 0);
+    });
+}
+
+function _nowMs() {
+    return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+}
+
+function _normalizeTickIntervalMs(value) {
+    var numeric = Number(value);
+    if (!isFinite(numeric) || numeric <= 0) {
+        return 33;
+    }
+    return Math.max(1, Math.min(1000, Math.round(numeric)));
+}
+
+function _clearPlaybackTimer() {
+    if (_tickTimer !== null) {
+        clearTimeout(_tickTimer);
+        _tickTimer = null;
+    }
+}
+
+function _schedulePlaybackTick(delayMs) {
+    if (!_playing || _tickTimer !== null) {
+        return;
+    }
+    var delay = Math.max(0, Math.min(2147483647, Math.round(delayMs || 0)));
+    _tickTimer = setTimeout(_playbackTickLoop, delay);
+}
+
+function _startPlaybackTimer(immediate) {
+    _clearPlaybackTimer();
+    if (!_playing) {
+        return;
+    }
+    var now = _nowMs();
+    _nextTickAt = now + (immediate ? 0 : _tickIntervalMs);
+    _schedulePlaybackTick(_nextTickAt - now);
+}
+
+function _stopPlaybackTimer() {
+    _clearPlaybackTimer();
+    _nextTickAt = 0;
+}
+
+function _setTickIntervalMs(value) {
+    _tickIntervalMs = _normalizeTickIntervalMs(value);
+    if (_playing) {
+        _startPlaybackTimer(false);
+    }
+}
+
+async function _playbackTickLoop() {
+    _tickTimer = null;
+    if (!_playing) {
+        return;
+    }
+    await _tick();
+    if (!_playing) {
+        return;
+    }
+    var now = _nowMs();
+    if (_nextTickAt <= 0) {
+        _nextTickAt = now + _tickIntervalMs;
+    }
+    while (_nextTickAt <= now) {
+        _nextTickAt += _tickIntervalMs;
+    }
+    _schedulePlaybackTick(_nextTickAt - now);
+}
+
 async function _driveHostQueues(fetchRounds, loadSeq) {
     if (_isStaleLoad(loadSeq)) {
         return;
@@ -1525,7 +1723,10 @@ async function _driveHostQueues(fetchRounds, loadSeq) {
     if (_isStaleLoad(loadSeq)) {
         return;
     }
-    _pumpMusRequests();
+    var musRequests = _pumpMusRequests();
+    if (musRequests > 0) {
+        await _yieldToEventLoop();
+    }
     _pumpAudioCommands();
     _pumpJpegDecodeRequests();
     _drainNavigation();
@@ -1662,6 +1863,11 @@ async function _loadMovie(message) {
     var loadSeq = message.loadSeq || (_activeLoadSeq + 1);
     _activeLoadSeq = loadSeq;
     _loadInProgress = true;
+    _playing = false;
+    _stopPlaybackTimer();
+    if (message.tickMs != null) {
+        _setTickIntervalMs(message.tickMs);
+    }
     _jpegDecodeSeq++;
     _jpegDecodeQueue = [];
     _jpegDecodeInFlight = {};
@@ -1752,13 +1958,16 @@ async function _loadMovie(message) {
     } finally {
         if (_activeLoadSeq === loadSeq) {
             _loadInProgress = false;
+            if (_playing) {
+                _startPlaybackTimer(true);
+            }
         }
     }
 }
 
 async function _tick() {
     if (!_ready || _loadInProgress || _tickInProgress || _diagnosticActive()) {
-        return;
+        return false;
     }
     _tickInProgress = true;
     try {
@@ -1771,6 +1980,7 @@ async function _tick() {
         _postLastError();
         _flushDebugLog();
         _postFrame();
+        return true;
     } finally {
         _tickInProgress = false;
     }
@@ -1831,20 +2041,29 @@ self.onmessage = function(event) {
                 break;
             }
             case 'play':
+                if (message.tickMs != null) {
+                    _setTickIntervalMs(message.tickMs);
+                }
                 _playing = true;
                 _snapshotNativeOperation('play-message');
                 _exports.play();
                 await _driveHostQueues(8);
                 _postFrame();
+                _startPlaybackTimer(true);
                 break;
             case 'pause':
                 _playing = false;
+                _stopPlaybackTimer();
                 _exports.pause();
                 break;
             case 'stop':
                 _playing = false;
+                _stopPlaybackTimer();
                 _exports.stop();
                 _postFrame();
+                break;
+            case 'setTickInterval':
+                _setTickIntervalMs(message.tickMs);
                 break;
             case 'goToFrame':
                 _snapshotNativeOperation('goToFrame');

@@ -44,7 +44,6 @@ var LibreShockwaveCppPlayer = (function() {
         this.playing = false;
         this.loadSeq = 0;
         this.lastFrame = null;
-        this.timer = null;
         this.tickMs = options.tickMs || 33;
         this.scriptTimeoutMs = options.scriptTimeoutMs == null ? 1000 : options.scriptTimeoutMs;
         this.params = options.params || {};
@@ -610,35 +609,24 @@ var LibreShockwaveCppPlayer = (function() {
             movieProperties: loadOptions.movieProperties || this.movieProperties,
             initialBuiltinSymbols: loadOptions.initialBuiltinSymbols || this.initialBuiltinSymbols,
             debugPlayback: loadOptions.debugPlayback == null ? this.debugPlayback : !!loadOptions.debugPlayback,
-            traceHandlers: loadOptions.traceHandlers || this.traceHandlers
+            traceHandlers: loadOptions.traceHandlers || this.traceHandlers,
+            tickMs: this.tickMs
         }, [buffer]);
-        if (loadOptions.autoplay !== false) {
-            this.startTicks();
-        }
+        this.playing = loadOptions.autoplay !== false;
     };
 
     Player.prototype.startTicks = function() {
-        var self = this;
         this.playing = true;
-        if (this.timer) {
-            return;
-        }
-        this.timer = setInterval(function() {
-            self._post({ type: 'tick' });
-        }, this.tickMs);
+        this._post({ type: 'setTickInterval', tickMs: this.tickMs });
     };
 
     Player.prototype.stopTicks = function() {
         this.playing = false;
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
-        }
     };
 
     Player.prototype.play = function() {
-        this._post({ type: 'play' });
-        this.startTicks();
+        this.playing = true;
+        this._post({ type: 'play', tickMs: this.tickMs });
     };
 
     Player.prototype.setFps = function(fps) {
@@ -648,10 +636,7 @@ var LibreShockwaveCppPlayer = (function() {
         }
         numericFps = Math.max(1, Math.min(120, numericFps));
         this.tickMs = Math.max(1, Math.round(1000 / numericFps));
-        if (this.playing) {
-            this.stopTicks();
-            this.startTicks();
-        }
+        this._post({ type: 'setTickInterval', tickMs: this.tickMs });
     };
 
     Player.prototype.pause = function() {

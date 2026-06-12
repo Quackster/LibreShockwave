@@ -154,6 +154,7 @@ void WasmPlayer::stepFrame() {
 void WasmPlayer::setScriptTimeoutMs(int milliseconds) {
     if (player_) {
         player_->vm().setTickDeadlineMs(milliseconds);
+        player_->vm().setHandlerTimeoutMs(milliseconds);
     }
 }
 

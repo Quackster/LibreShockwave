@@ -12431,11 +12431,12 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(messages[0].subject == "keepalive");
     assert(messages[0].content.stringValue() == std::string("@r", 2) + char(1));
 
-    const auto pendingBeforeSuppressedPong = bridge.pendingRequests().size();
+    const auto pendingBeforePong = bridge.pendingRequests().size();
     bridge.requestSend(7, "me", "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong);
+    assert(bridge.pendingRequests().size() == pendingBeforePong + 1);
+    assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
     bridge.requestSend(7, "me", "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong + 1);
+    assert(bridge.pendingRequests().size() == pendingBeforePong + 2);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
 
     bridge.deliverMessageBytes(7, {'A', 0x00, 0xFF});
@@ -17202,9 +17203,10 @@ void testLingoVmRuntimeFoundation() {
     vm.addTraceHandler("HANDLER#3");
     assert(vm.tracedHandlers().contains("handler#3"));
     assert(vm.executeHandler(script, paramHandler, {Datum::of(321)}).intValue() == 321);
-    assert(traceLines.size() == 2);
+    assert(traceLines.size() == 3);
     assert(traceLines[0] == "[TRACE] handler#3(321) in \"script#960\"");
     assert(traceLines[1].find("Lingo call stack: (empty)") != std::string::npos);
+    assert(traceLines[2] == "[TRACE] handler#3 returned 321");
     vm.removeTraceHandler("handler#3");
     assert(!vm.tracedHandlers().contains("handler#3"));
     traceLines.clear();
@@ -24421,6 +24423,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("sharedFrameCapacity") != std::string::npos);
     assert(player.find("Atomics.load") != std::string::npos);
     assert(player.find("rgba.set(new Uint8ClampedArray(this._sharedFrameBuffer") != std::string::npos);
+    assert(player.find("_post({ type: 'tick'") == std::string::npos);
+    assert(player.find("type: 'setTickInterval', tickMs: this.tickMs") != std::string::npos);
+    assert(player.find("type: 'play', tickMs: this.tickMs") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -24438,6 +24443,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("_diagnosticDepth") != std::string::npos);
     assert(worker.find("_diagnosticActive") != std::string::npos);
     assert(worker.find("_runExclusiveDiagnostic") != std::string::npos);
+    assert(worker.find("_tickTimer") != std::string::npos);
+    assert(worker.find("setTimeout(_playbackTickLoop") != std::string::npos);
+    assert(worker.find("case 'setTickInterval'") != std::string::npos);
+    assert(worker.find("scheduler:") != std::string::npos);
     assert(worker.find("if (!_ready || _loadInProgress || _tickInProgress || _diagnosticActive())") != std::string::npos);
     assert(worker.find("_runMusWebSocketSelfTest") != std::string::npos);
     assert(worker.find("runMusWebSocketSelfTest") != std::string::npos);

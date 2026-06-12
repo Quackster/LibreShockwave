@@ -74,6 +74,8 @@ public:
     [[nodiscard]] std::int64_t tickDeadlineMs() const;
     void setTickDeadline(std::int64_t deadlineMillis);
     [[nodiscard]] std::int64_t tickDeadline() const;
+    void setHandlerTimeoutMs(std::int64_t milliseconds);
+    [[nodiscard]] std::int64_t handlerTimeoutMs() const;
     void armTickDeadline();
     void setTimeProvider(std::function<std::int64_t()> provider);
     static void setGcCallback(std::function<void()> callback);
@@ -212,6 +214,7 @@ private:
     int stepLimit_{0};
     std::int64_t tickDeadlineMs_{0};
     std::int64_t tickDeadline_{0};
+    std::int64_t handlerTimeoutMs_{0};
     int randomSeed_{0};
     std::int64_t randomState_{0};
     std::function<std::int64_t()> timeProvider_;

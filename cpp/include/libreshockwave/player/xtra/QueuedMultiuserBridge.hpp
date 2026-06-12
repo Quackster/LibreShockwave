@@ -75,9 +75,6 @@ private:
                                                             const lingo::Datum& content) const;
     void deliverSmusMessage(int instanceId, const std::vector<std::uint8_t>& data);
     void queueMessage(int instanceId, NetMessage message);
-    [[nodiscard]] bool shouldSuppressPlaintextPong(int instanceId, std::string_view content);
-    [[nodiscard]] static bool isLegacyPlaintextKeepalive(std::string_view content);
-    [[nodiscard]] static bool isLegacyPlaintextPong(std::string_view content);
     [[nodiscard]] static std::vector<std::uint8_t> packSmusFrame(int errorCode,
                                                                  int timestamp,
                                                                  std::string_view subject,
@@ -94,7 +91,6 @@ private:
     std::map<int, bool> connected_;
     std::map<int, std::vector<NetMessage>> messageQueues_;
     std::map<int, int> modes_;
-    std::map<int, bool> suppressNextPlaintextPong_;
 };
 
 } // namespace libreshockwave::player::xtra

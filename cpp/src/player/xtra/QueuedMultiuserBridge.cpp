@@ -9,7 +9,6 @@
 namespace libreshockwave::player::xtra {
 namespace {
 
-constexpr int legacyPongCommand = 196;
 constexpr int smusMode = 0;
 constexpr int smusHeaderSize = 6;
 
@@ -337,9 +336,6 @@ void QueuedMultiuserBridge::requestSend(int instanceId,
                                         const std::string& subject,
                                         const lingo::Datum& content) {
     const auto contentString = safeDatumString(content);
-    if (shouldSuppressPlaintextPong(instanceId, contentString)) {
-        return;
-    }
 
     PendingRequest request;
     request.type = REQ_SEND;
@@ -360,7 +356,6 @@ void QueuedMultiuserBridge::requestDisconnect(int instanceId) {
     pendingRequests_.push_back(std::move(request));
     connected_.erase(instanceId);
     modes_.erase(instanceId);
-    suppressNextPlaintextPong_.erase(instanceId);
 }
 
 bool QueuedMultiuserBridge::isConnected(int instanceId) const {
@@ -382,7 +377,6 @@ void QueuedMultiuserBridge::destroyInstance(int instanceId) {
     connected_.erase(instanceId);
     messageQueues_.erase(instanceId);
     modes_.erase(instanceId);
-    suppressNextPlaintextPong_.erase(instanceId);
 }
 
 const std::vector<QueuedMultiuserBridge::PendingRequest>& QueuedMultiuserBridge::pendingRequests() const {
@@ -415,7 +409,6 @@ void QueuedMultiuserBridge::notifyConnected(int instanceId) {
 
 void QueuedMultiuserBridge::notifyDisconnected(int instanceId) {
     connected_.erase(instanceId);
-    suppressNextPlaintextPong_.erase(instanceId);
 }
 
 void QueuedMultiuserBridge::notifyError(int instanceId, int errorCode) {
@@ -430,9 +423,6 @@ void QueuedMultiuserBridge::deliverMessage(int instanceId,
     if (isSmusInstance(instanceId)) {
         deliverSmusMessage(instanceId, bytesFromString(content));
         return;
-    }
-    if (isLegacyPlaintextKeepalive(content)) {
-        suppressNextPlaintextPong_[instanceId] = true;
     }
     queueMessage(instanceId, NetMessage{errorCode, std::move(senderID), std::move(subject), lingo::Datum::of(std::move(content))});
 }
@@ -504,30 +494,6 @@ void QueuedMultiuserBridge::deliverSmusMessage(int instanceId, const std::vector
 
 void QueuedMultiuserBridge::queueMessage(int instanceId, NetMessage message) {
     messageQueues_[instanceId].push_back(std::move(message));
-}
-
-bool QueuedMultiuserBridge::shouldSuppressPlaintextPong(int instanceId, std::string_view content) {
-    const auto found = suppressNextPlaintextPong_.find(instanceId);
-    if (found == suppressNextPlaintextPong_.end() || !found->second || !isLegacyPlaintextPong(content)) {
-        return false;
-    }
-    suppressNextPlaintextPong_.erase(found);
-    return true;
-}
-
-bool QueuedMultiuserBridge::isLegacyPlaintextKeepalive(std::string_view content) {
-    return content.size() == 3 &&
-           content[0] == '@' &&
-           content[1] == 'r' &&
-           static_cast<unsigned char>(content[2]) == 1U;
-}
-
-bool QueuedMultiuserBridge::isLegacyPlaintextPong(std::string_view content) {
-    return content.size() == 5 &&
-           content[0] == '@' &&
-           content[1] == '@' &&
-           content[2] == 'B' &&
-           decodeShockwaveCommand(content[3], content[4]) == legacyPongCommand;
 }
 
 std::vector<std::uint8_t> QueuedMultiuserBridge::packSmusFrame(int errorCode,

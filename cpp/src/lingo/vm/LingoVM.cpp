@@ -1,6 +1,7 @@
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cerrno>
 #include <chrono>
 #include <cctype>
@@ -51,6 +52,20 @@ std::string lower(std::string_view value) {
         return static_cast<char>(std::tolower(ch));
     });
     return result;
+}
+
+std::optional<int> parseTraceSlotIndex(std::string_view name, std::string_view prefix) {
+    if (!name.starts_with(prefix)) {
+        return std::nullopt;
+    }
+    int value = 0;
+    const auto begin = name.data() + static_cast<std::ptrdiff_t>(prefix.size());
+    const auto end = name.data() + static_cast<std::ptrdiff_t>(name.size());
+    const auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec != std::errc() || ptr != end || value < 0) {
+        return std::nullopt;
+    }
+    return value;
 }
 
 int variableMultiplierForScript(const chunks::ScriptChunk& script) {
@@ -139,6 +154,7 @@ std::function<void()> LingoVM::gcCallback_;
 
 LingoVM::LingoVM(DirectorFile* file)
     : file_(file) {
+    setHandlerTimeoutMs(HANDLER_TIMEOUT_MS);
     setRandomSeed(0);
     if (const auto initialRandomSeed = parseInitialRandomSeed(std::getenv("LS_INITIAL_RANDOM_SEED"))) {
         setRandomSeed(*initialRandomSeed);
@@ -299,6 +315,14 @@ void LingoVM::setTickDeadline(std::int64_t deadlineMillis) {
 
 std::int64_t LingoVM::tickDeadline() const {
     return tickDeadline_;
+}
+
+void LingoVM::setHandlerTimeoutMs(std::int64_t milliseconds) {
+    handlerTimeoutMs_ = std::max<std::int64_t>(0, milliseconds);
+}
+
+std::int64_t LingoVM::handlerTimeoutMs() const {
+    return handlerTimeoutMs_;
 }
 
 void LingoVM::armTickDeadline() {
@@ -705,6 +729,9 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         if (traceEnabled_ && handlerInfo.has_value()) {
             emitConsoleHandlerExit(*handlerInfo, result);
         }
+        if (tracedHandlers_.contains(normalizedHandlerName)) {
+            traceOutput("[TRACE] " + currentHandlerName + " returned " + formatTraceArgument(result));
+        }
         if (alertHookDepthIncremented) {
             alertHookHandler_.decrementDepth();
             alertHookDepthIncremented = false;
@@ -748,8 +775,9 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
                         }
                         lastGcTime = now;
                     }
-                    if (now - startTime > HANDLER_TIMEOUT_MS) {
-                        throw LingoException("Handler timeout (60s, " + std::to_string(steps) +
+                    if (handlerTimeoutMs_ > 0 && now - startTime > handlerTimeoutMs_) {
+                        throw LingoException("Handler timeout (" + std::to_string(handlerTimeoutMs_ / 1000) +
+                                             "s, " + std::to_string(steps) +
                                              " instructions) in handler '" + currentHandlerName + "'");
                     }
                     if (tickDeadline_ > 0 && now > tickDeadline_) {
@@ -853,6 +881,32 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& scr
         if (traceListener_) {
             traceListener_->onVariableSet(type, name, value);
         }
+        const Scope* scope = currentScope();
+        if (scope == nullptr || scope->script() == nullptr) {
+            return;
+        }
+        const std::string currentHandlerName = handlerName(*scope->script(), scope->handler());
+        if (!tracedHandlers_.contains(normalizeLookupName(currentHandlerName))) {
+            return;
+        }
+
+        std::string displayName(name);
+        const auto names = scriptNamesForScript(*scope->script());
+        const auto& handler = scope->handler();
+        if (type == "local") {
+            if (const auto index = parseTraceSlotIndex(name, "local");
+                index.has_value() && *index < static_cast<int>(handler.localNameIds.size())) {
+                displayName = scope->script()->resolveName(handler.localNameIds[static_cast<std::size_t>(*index)],
+                                                           names.get());
+            }
+        } else if (type == "param") {
+            if (const auto index = parseTraceSlotIndex(name, "param");
+                index.has_value() && *index < static_cast<int>(handler.argNameIds.size())) {
+                displayName = scope->script()->resolveName(handler.argNameIds[static_cast<std::size_t>(*index)],
+                                                           names.get());
+            }
+        }
+        traceOutput("[TRACE] set " + std::string(type) + " " + displayName + "=" + formatTraceArgument(value));
     };
     return callbacks;
 }

@@ -20,6 +20,7 @@
 #include <charconv>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <limits>
@@ -2188,7 +2189,8 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     }
     auto* builtinContext = context.builtinContext();
     (void)dispatch::MemberRegistryMethodDispatcher::prefill(instance, methodName, args, builtinContext);
-    if (const auto handler = findScriptInstanceScriptHandler(context, instance, methodName)) {
+    const auto handler = findScriptInstanceScriptHandler(context, instance, methodName);
+    if (handler) {
         return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
     }
     const auto registryResult =
@@ -4176,18 +4178,72 @@ Datum fallbackScriptInstance(const Datum& scriptArg) {
     return Datum::scriptInstance(toStringLikeJava(scriptArg));
 }
 
-Datum resolveScriptConstructorTarget(ExecutionContext& context, const Datum& scriptArg) {
+struct ScriptConstructorTarget {
+    Datum target{Datum::voidValue()};
+    std::size_t consumedArgs{1};
+};
+
+std::optional<int> resolveScriptConstructorScope(builtin::BuiltinContext& builtinContext, const Datum& scopeArg) {
+    if (const auto* castLib = scopeArg.asCastLibRef()) {
+        return castLib->castLib >= 1 ? std::optional<int>(castLib->castLib) : std::nullopt;
+    }
+    if ((scopeArg.isString() || scopeArg.asSymbol() != nullptr) && builtinContext.castLibNameResolver) {
+        const int castLib = builtinContext.castLibNameResolver(keyNameLikeJava(scopeArg));
+        return castLib >= 1 ? std::optional<int>(castLib) : std::nullopt;
+    }
+    return std::nullopt;
+}
+
+Datum resolveNamedScriptConstructorTarget(builtin::BuiltinContext& builtinContext,
+                                          const Datum& identifier,
+                                          std::optional<int> scopedCastLib) {
+    if (!builtinContext.castMemberNameResolver || (!identifier.isString() && identifier.asSymbol() == nullptr)) {
+        return Datum::voidValue();
+    }
+    const int castLib = scopedCastLib.value_or(0);
+    const Datum memberRef = builtinContext.castMemberNameResolver(castLib, keyNameLikeJava(identifier));
+    if (const auto* member = memberRef.asCastMemberRef()) {
+        return Datum::scriptRef(*member);
+    }
+    return Datum::voidValue();
+}
+
+ScriptConstructorTarget resolveScriptConstructorTarget(ExecutionContext& context, const std::vector<Datum>& args) {
+    const Datum& scriptArg = args.front();
     if (scriptArg.asScriptRef() != nullptr || scriptArg.asCastMemberRef() != nullptr) {
-        return scriptArg;
+        return ScriptConstructorTarget{scriptArg, 1};
     }
     auto* builtinContext = context.builtinContext();
+    if (builtinContext != nullptr && args.size() >= 2) {
+        if (const auto scopedCastLib = resolveScriptConstructorScope(*builtinContext, args[1])) {
+            if (builtinContext->castMemberNameResolver) {
+                Datum scopedResolved = resolveNamedScriptConstructorTarget(*builtinContext, scriptArg, scopedCastLib);
+                if (scopedResolved.asScriptRef() != nullptr || scopedResolved.asCastMemberRef() != nullptr) {
+                    return ScriptConstructorTarget{std::move(scopedResolved), 2};
+                }
+            }
+            if ((args[1].asCastLibRef() != nullptr || args[1].isString() || args[1].asSymbol() != nullptr) &&
+                builtinContext->scriptResolver) {
+                Datum resolved = builtinContext->scriptResolver(scriptArg, args[1]);
+                if (resolved.asScriptRef() != nullptr || resolved.asCastMemberRef() != nullptr) {
+                    return ScriptConstructorTarget{std::move(resolved), 2};
+                }
+            }
+        }
+    }
+    if (builtinContext != nullptr) {
+        Datum resolved = resolveNamedScriptConstructorTarget(*builtinContext, scriptArg, std::nullopt);
+        if (resolved.asScriptRef() != nullptr || resolved.asCastMemberRef() != nullptr) {
+            return ScriptConstructorTarget{std::move(resolved), 1};
+        }
+    }
     if (builtinContext != nullptr && builtinContext->scriptResolver) {
         Datum resolved = builtinContext->scriptResolver(scriptArg, std::nullopt);
         if (resolved.asScriptRef() != nullptr || resolved.asCastMemberRef() != nullptr) {
-            return resolved;
+            return ScriptConstructorTarget{std::move(resolved), 1};
         }
     }
-    return scriptArg;
+    return ScriptConstructorTarget{scriptArg, 1};
 }
 
 std::optional<Datum::CastMemberRef> scriptConstructorMemberRef(const Datum& scriptArg) {
@@ -4227,16 +4283,11 @@ void initializeDeclaredScriptProperties(ExecutionContext& context, Datum& instan
     }
 }
 
-Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum>& args, Datum& receiver) {
-    std::vector<Datum> extraArgs;
-    if (args.size() > 1) {
-        extraArgs.assign(args.begin() + 1, args.end());
-    }
-
+Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum>& constructorArgs, Datum& receiver) {
     if (receiver.type() == DatumType::ScriptInstanceRef) {
         auto& instance = receiver.scriptInstanceValue();
         if (const auto handler = findScriptInstanceScriptHandler(context, instance, "new")) {
-            return safeExecuteHandler(context, *handler->script, handler->handler, extraArgs, receiver);
+            return safeExecuteHandler(context, *handler->script, handler->handler, constructorArgs, receiver);
         }
     }
 
@@ -4244,7 +4295,7 @@ Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum
     if (!handler) {
         return Datum::voidValue();
     }
-    return safeExecuteHandler(context, *handler->script, handler->handler, extraArgs, receiver);
+    return safeExecuteHandler(context, *handler->script, handler->handler, constructorArgs, receiver);
 }
 
 bool newObj(ExecutionContext& context) {
@@ -4268,11 +4319,17 @@ bool newObj(ExecutionContext& context) {
         }
     }
 
-    const Datum constructorTarget = resolveScriptConstructorTarget(context, args.front());
-    Datum instance = fallbackScriptInstance(constructorTarget);
-    if (const auto memberRef = scriptConstructorMemberRef(constructorTarget)) {
+    const ScriptConstructorTarget constructorTarget = resolveScriptConstructorTarget(context, args);
+    Datum instance = fallbackScriptInstance(constructorTarget.target);
+    if (const auto memberRef = scriptConstructorMemberRef(constructorTarget.target)) {
         initializeDeclaredScriptProperties(context, instance, *memberRef);
-        (void)executeScriptNewHandler(context, args, instance);
+        std::vector<Datum> constructorArgs;
+        if (constructorTarget.consumedArgs < args.size()) {
+            constructorArgs.assign(args.begin() +
+                                       static_cast<std::vector<Datum>::difference_type>(constructorTarget.consumedArgs),
+                                   args.end());
+        }
+        (void)executeScriptNewHandler(context, constructorArgs, instance);
     }
     context.push(std::move(instance));
     return true;
@@ -5370,8 +5427,23 @@ bool extCall(ExecutionContext& context) {
     std::vector<Datum> args = argListItems(argListDatum);
 
     Datum result = Datum::voidValue();
-    if (const auto handler = context.findHandler(handlerName)) {
-        result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+    if (equalsIgnoreCase(handlerName, "new")) {
+        if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
+            result = *builtinResult;
+        } else if (const auto handler = context.findHandler(handlerName)) {
+            result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+        }
+    } else if (const auto handler = context.findHandler(handlerName)) {
+        if (handler->script != nullptr &&
+            handler->script->resolvedScriptType() == chunks::ScriptChunkType::Parent) {
+            if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
+                result = *builtinResult;
+            } else {
+                result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+            }
+        } else {
+            result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+        }
     } else if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
         result = *builtinResult;
     } else if (!args.empty()) {
