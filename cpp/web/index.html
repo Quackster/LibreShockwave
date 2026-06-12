@@ -18,7 +18,7 @@
         }
 
         main {
-            width: min(1080px, calc(100% - 24px));
+            width: min(1180px, calc(100% - 24px));
             margin: 12px auto;
             border: 1px solid #8c99a6;
             background: #f5f7f9;
@@ -34,30 +34,54 @@
             font-weight: bold;
         }
 
-        .controls {
-            display: grid;
-            grid-template-columns: auto 1fr auto auto auto;
-            gap: 8px;
-            align-items: center;
+        .toolbar,
+        .params {
             padding: 10px;
             border-bottom: 1px solid #bcc7d1;
             background: #edf2f6;
+        }
+
+        .toolbar {
+            display: grid;
+            grid-template-columns: auto minmax(220px, 1fr) repeat(8, auto);
+            gap: 8px;
+            align-items: center;
         }
 
         label {
             font-weight: bold;
         }
 
-        input {
+        input,
+        textarea {
             min-width: 0;
-            height: 28px;
-            padding: 4px 7px;
             border: 1px solid #8c99a6;
+            background: white;
+            color: #1f2933;
             font: inherit;
         }
 
-        button {
+        input {
             height: 28px;
+            padding: 4px 7px;
+        }
+
+        input[type="number"] {
+            width: 70px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 48px;
+            resize: vertical;
+            padding: 5px 7px;
+            line-height: 1.35;
+        }
+
+        button {
+            min-width: 58px;
+            height: 28px;
+            padding: 0 10px;
             border: 1px solid #2a5580;
             background: #336699;
             color: white;
@@ -71,6 +95,33 @@
             background: #e6ebef;
             color: #1f2933;
             font-weight: normal;
+        }
+
+        button.danger {
+            border-color: #9f4f4f;
+            background: #f0dddd;
+            color: #5f1f1f;
+            font-weight: normal;
+        }
+
+        .params-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .param-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .param-row {
+            display: grid;
+            grid-template-columns: 84px minmax(180px, 1fr) auto;
+            gap: 8px;
+            align-items: start;
         }
 
         .stage {
@@ -99,7 +150,7 @@
             background: #f7f7f7;
         }
 
-        @media (max-width: 760px) {
+        @media (max-width: 980px) {
             main {
                 width: 100%;
                 margin: 0;
@@ -107,12 +158,20 @@
                 border-right: 0;
             }
 
-            .controls {
-                grid-template-columns: 1fr 1fr;
+            .toolbar {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
             }
 
-            .controls label,
-            .controls input {
+            .toolbar label,
+            .toolbar #movie-url {
+                grid-column: 1 / -1;
+            }
+
+            .param-row {
+                grid-template-columns: 1fr auto;
+            }
+
+            .param-row textarea {
                 grid-column: 1 / -1;
             }
         }
@@ -124,12 +183,29 @@
             <span>LibreShockwave C++ WASM Player</span>
             <span id="runtime-state">idle</span>
         </header>
-        <section class="controls">
+        <section class="toolbar">
             <label for="movie-url">Movie URL</label>
-            <input id="movie-url" type="text" placeholder="/path/to/movie.dcr" value="">
+            <input id="movie-url" type="text" value="https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr">
             <button id="load-button" type="button">Load</button>
             <button id="play-button" type="button" class="secondary">Play</button>
-            <button id="step-button" type="button" class="secondary">Step</button>
+            <button id="pause-button" type="button" class="secondary">Pause</button>
+            <button id="prev-frame-button" type="button" class="secondary">Prev</button>
+            <button id="next-frame-button" type="button" class="secondary">Next</button>
+            <label for="frame-number">Frame</label>
+            <input id="frame-number" type="number" min="1" step="1" value="1">
+            <button id="go-frame-button" type="button" class="secondary">Go</button>
+            <label for="fps-input">FPS</label>
+            <input id="fps-input" type="number" min="1" max="120" step="1" value="12">
+        </section>
+        <section class="params">
+            <div class="params-header">
+                <label>External params</label>
+                <div>
+                    <button id="add-param-button" type="button" class="secondary">Add</button>
+                    <button id="reset-params-button" type="button" class="secondary">Reset</button>
+                </div>
+            </div>
+            <div id="param-list" class="param-list"></div>
         </section>
         <section class="stage">
             <canvas id="stage" width="640" height="480"></canvas>
@@ -143,34 +219,129 @@
     <script src="libreshockwave-cpp-player.js"></script>
     <script>
         (function() {
+            var DEFAULT_MOVIE = 'https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr';
+            var DEFAULT_PARAMS = {
+                sw1: 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk',
+                sw2: 'connection.info.host=au.h4bbo.net;connection.info.port=30001',
+                sw3: 'client.reload.url=https://sandbox.h4bbo.net/',
+                sw4: 'connection.mus.host=au.h4bbo.net;connection.mus.port=38101',
+                sw5: 'external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt'
+            };
+            var DEFAULT_PARAM_ORDER = ['sw1', 'sw2', 'sw3', 'sw4', 'sw5'];
+
             var status = document.getElementById('status');
             var frameInfo = document.getElementById('frame-info');
             var runtimeState = document.getElementById('runtime-state');
             var urlInput = document.getElementById('movie-url');
-            var params = new URLSearchParams(location.search);
-            var externalParams = {};
+            var fpsInput = document.getElementById('fps-input');
+            var frameInput = document.getElementById('frame-number');
+            var paramList = document.getElementById('param-list');
+            var query = new URLSearchParams(location.search);
 
-            params.forEach(function(value, key) {
-                if (key.indexOf('param.') === 0 && key.length > 6) {
-                    externalParams[key.substring(6)] = value;
-                } else if (/^sw\d+$/i.test(key) || key === 'swText') {
-                    externalParams[key] = value;
-                }
-            });
+            function copyDefaultParams() {
+                var copied = {};
+                Object.keys(DEFAULT_PARAMS).forEach(function(key) {
+                    copied[key] = DEFAULT_PARAMS[key];
+                });
+                return copied;
+            }
+
+            function readQueryParams() {
+                var externalParams = copyDefaultParams();
+                query.forEach(function(value, key) {
+                    if (key.indexOf('param.') === 0 && key.length > 6) {
+                        externalParams[key.substring(6)] = value;
+                    } else if (/^sw\d+$/i.test(key) || key === 'swText') {
+                        externalParams[key] = value;
+                    }
+                });
+                return externalParams;
+            }
+
+            function createParamRow(key, value) {
+                var row = document.createElement('div');
+                row.className = 'param-row';
+
+                var keyInput = document.createElement('input');
+                keyInput.type = 'text';
+                keyInput.value = key || '';
+                keyInput.setAttribute('aria-label', 'Parameter name');
+
+                var valueInput = document.createElement('textarea');
+                valueInput.value = value || '';
+                valueInput.setAttribute('aria-label', 'Parameter value');
+
+                var remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'danger';
+                remove.textContent = 'Remove';
+                remove.addEventListener('click', function() {
+                    row.remove();
+                });
+
+                row.appendChild(keyInput);
+                row.appendChild(valueInput);
+                row.appendChild(remove);
+                return row;
+            }
+
+            function setParamRows(params) {
+                var keys = DEFAULT_PARAM_ORDER.slice();
+                Object.keys(params).forEach(function(key) {
+                    if (keys.indexOf(key) === -1) {
+                        keys.push(key);
+                    }
+                });
+                paramList.textContent = '';
+                keys.forEach(function(key) {
+                    paramList.appendChild(createParamRow(key, params[key] || ''));
+                });
+            }
+
+            function currentParams() {
+                var params = {};
+                Array.prototype.forEach.call(paramList.querySelectorAll('.param-row'), function(row) {
+                    var key = row.querySelector('input').value.trim();
+                    var value = row.querySelector('textarea').value;
+                    if (key) {
+                        params[key] = value;
+                    }
+                });
+                return params;
+            }
+
+            function applyFps() {
+                player.setFps(fpsInput.value);
+            }
+
+            function loadMovie() {
+                applyFps();
+                player.clearParams();
+                var params = currentParams();
+                Object.keys(params).forEach(function(key) {
+                    player.setParam(key, params[key]);
+                });
+                runtimeState.textContent = 'loading';
+                status.textContent = 'Loading movie...';
+                player.load(urlInput.value, { params: params });
+            }
 
             var player = LibreShockwaveCppPlayer.create('stage', {
-                params: externalParams,
+                params: readQueryParams(),
                 onReady: function() {
                     runtimeState.textContent = 'ready';
                     status.textContent = 'Runtime ready.';
+                    applyFps();
                 },
                 onLoad: function(info) {
                     status.textContent = 'Loaded ' + info.width + 'x' + info.height + '.';
+                    frameInput.max = String(Math.max(1, info.frameCount || 1));
                 },
                 onFrame: function(frame) {
-                    runtimeState.textContent = 'rendering';
+                    runtimeState.textContent = player.playing ? 'playing' : 'paused';
                     frameInfo.textContent = 'frame ' + frame.frame + ' / ' + frame.frameCount +
                         ', sprites ' + frame.spriteCount;
+                    frameInput.value = String(Math.max(1, frame.frame || 1));
                     window.__libreshockwaveCppLastFrame = frame;
                 },
                 onError: function(message) {
@@ -180,21 +351,44 @@
                 }
             });
 
-            document.getElementById('load-button').addEventListener('click', function() {
-                runtimeState.textContent = 'loading';
-                status.textContent = 'Loading movie...';
-                player.load(urlInput.value);
-            });
+            document.getElementById('load-button').addEventListener('click', loadMovie);
             document.getElementById('play-button').addEventListener('click', function() {
+                applyFps();
                 player.play();
+                runtimeState.textContent = 'playing';
             });
-            document.getElementById('step-button').addEventListener('click', function() {
+            document.getElementById('pause-button').addEventListener('click', function() {
+                player.pause();
+                runtimeState.textContent = 'paused';
+            });
+            document.getElementById('prev-frame-button').addEventListener('click', function() {
+                player.pause();
+                player.stepBackward();
+            });
+            document.getElementById('next-frame-button').addEventListener('click', function() {
+                player.pause();
                 player.stepForward();
             });
+            document.getElementById('go-frame-button').addEventListener('click', function() {
+                player.pause();
+                player.goToFrame(parseInt(frameInput.value, 10) || 1);
+            });
+            fpsInput.addEventListener('change', applyFps);
+            document.getElementById('add-param-button').addEventListener('click', function() {
+                paramList.appendChild(createParamRow('', ''));
+            });
+            document.getElementById('reset-params-button').addEventListener('click', function() {
+                setParamRows(copyDefaultParams());
+            });
 
-            if (params.has('movie')) {
-                urlInput.value = params.get('movie');
-                document.getElementById('load-button').click();
+            urlInput.value = query.get('movie') || DEFAULT_MOVIE;
+            if (query.has('fps')) {
+                fpsInput.value = query.get('fps');
+            }
+            setParamRows(readQueryParams());
+
+            if (query.has('movie') || query.get('autoload') === '1') {
+                loadMovie();
             }
         })();
     </script>

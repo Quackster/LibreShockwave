@@ -641,6 +641,19 @@ var LibreShockwaveCppPlayer = (function() {
         this.startTicks();
     };
 
+    Player.prototype.setFps = function(fps) {
+        var numericFps = Number(fps);
+        if (!isFinite(numericFps) || numericFps <= 0) {
+            numericFps = 12;
+        }
+        numericFps = Math.max(1, Math.min(120, numericFps));
+        this.tickMs = Math.max(1, Math.round(1000 / numericFps));
+        if (this.playing) {
+            this.stopTicks();
+            this.startTicks();
+        }
+    };
+
     Player.prototype.pause = function() {
         this.stopTicks();
         this._post({ type: 'pause' });
