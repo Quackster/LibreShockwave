@@ -11405,6 +11405,16 @@ void testBuiltinRegistryFoundation() {
     assert(!builtinSoundBackend.isPlaying(2));
     assert(libreshockwave::lingo::builtin::SoundBuiltins::setProperty(context, *builtinSoundChannel, "volume", Datum::of(300)));
     assert(builtinSoundManager.getVolume(2) == 255);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::setProperty(context, *builtinSoundChannel, "loopCount", Datum::of(3)));
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "loopCount").intValue() == 3);
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "loopCount", Datum::of(-2)));
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopCount").intValue() == 0);
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "loopCount", Datum::of(4)));
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context,
+                                                                       *builtinSoundChannel,
+                                                                       "play",
+                                                                       {Datum::castMemberRef(CastLibId(1), MemberId(8))}).isVoid());
+    assert(builtinSoundBackend.lastLoopCount == 4);
 
     auto assertColor = [](const Datum& datum, int r, int g, int b) {
         const auto* color = datum.asColorRef();
@@ -24728,6 +24738,9 @@ void testSoundManagerFoundation() {
     assert(SoundManager::clampVolume(-10) == 0);
     assert(SoundManager::clampVolume(123) == 123);
     assert(SoundManager::clampVolume(300) == 255);
+    assert(SoundManager::clampLoopCount(-10) == 0);
+    assert(SoundManager::clampLoopCount(0) == 0);
+    assert(SoundManager::clampLoopCount(3) == 3);
     assert(SoundManager::detectFormat({'R', 'I', 'F', 'F'}) == "wav");
     assert(SoundManager::detectFormat({0xFF, 0xFB, 0x90}) == "mp3");
 
@@ -24735,6 +24748,8 @@ void testSoundManagerFoundation() {
     assert(manager.backend() == nullptr);
     assert(manager.getVolume(1) == 255);
     assert(manager.getVolume(9) == 255);
+    assert(manager.getLoopCount(1) == 1);
+    assert(manager.getLoopCount(9) == 1);
     assert(manager.getSoundLevel() == 7);
     assert(manager.soundKeepDevice());
     assert(manager.soundMixMedia());
@@ -24751,6 +24766,11 @@ void testSoundManagerFoundation() {
     assert(manager.getVolume(2) == 0);
     manager.setVolume(2, 300);
     assert(manager.getVolume(2) == 255);
+    manager.setLoopCount(2, 4);
+    assert(manager.getLoopCount(2) == 4);
+    manager.setLoopCount(2, -5);
+    assert(manager.getLoopCount(2) == 0);
+    manager.setLoopCount(2, 1);
     assert(!manager.isPlaying(2));
     assert(manager.getElapsedTime(2) == 0);
 

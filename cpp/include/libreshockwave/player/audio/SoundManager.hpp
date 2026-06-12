@@ -53,6 +53,8 @@ public:
     void stopAll();
     void setVolume(int channelNum, int volume);
     [[nodiscard]] int getVolume(int channelNum) const;
+    void setLoopCount(int channelNum, int loopCount);
+    [[nodiscard]] int getLoopCount(int channelNum) const;
     [[nodiscard]] bool isPlaying(int channelNum) const;
     [[nodiscard]] int getElapsedTime(int channelNum) const;
 
@@ -62,6 +64,7 @@ public:
 
     [[nodiscard]] static bool isValidChannel(int channelNum);
     [[nodiscard]] static int clampVolume(int volume);
+    [[nodiscard]] static int clampLoopCount(int loopCount);
     [[nodiscard]] static std::string_view detectFormat(const std::vector<std::uint8_t>& audioData);
     [[nodiscard]] static std::optional<std::vector<std::uint8_t>> convertSoundToPlayable(
         const chunks::SoundChunk& sound);
@@ -72,7 +75,7 @@ public:
 private:
     struct PlayArgs {
         std::optional<lingo::Datum::CastMemberRef> memberRef;
-        int loopCount{1};
+        std::optional<int> loopCount;
     };
 
     [[nodiscard]] static PlayArgs extractPlayArgs(const lingo::Datum& args);
@@ -86,6 +89,7 @@ private:
     bool soundKeepDevice_{true};
     bool soundMixMedia_{true};
     std::array<int, MAX_CHANNELS + 1> volumes_{};
+    std::array<int, MAX_CHANNELS + 1> loopCounts_{};
     std::unordered_map<int, DirectorFile*> castLibFiles_;
     AudioResolver resolver_;
 };

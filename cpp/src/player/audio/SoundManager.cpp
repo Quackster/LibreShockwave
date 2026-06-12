@@ -27,6 +27,8 @@ lingo::Datum getProp(const lingo::Datum::PropList& props, std::string_view name)
 SoundManager::SoundManager() {
     volumes_.fill(255);
     volumes_[0] = 0;
+    loopCounts_.fill(1);
+    loopCounts_[0] = 0;
 }
 
 SoundManager::SoundManager(DirectorFile* sourceFile) : SoundManager() {
@@ -119,7 +121,8 @@ void SoundManager::play(int channelNum, const lingo::Datum& args) {
         return;
     }
 
-    backend_->play(channelNum, *audioData, detectFormat(*audioData), parsed.loopCount);
+    const int loopCount = parsed.loopCount.value_or(getLoopCount(channelNum));
+    backend_->play(channelNum, *audioData, detectFormat(*audioData), loopCount);
     applyVolume(channelNum);
 }
 
@@ -150,6 +153,20 @@ int SoundManager::getVolume(int channelNum) const {
         return 255;
     }
     return volumes_[static_cast<std::size_t>(channelNum)];
+}
+
+void SoundManager::setLoopCount(int channelNum, int loopCount) {
+    if (!isValidChannel(channelNum)) {
+        return;
+    }
+    loopCounts_[static_cast<std::size_t>(channelNum)] = clampLoopCount(loopCount);
+}
+
+int SoundManager::getLoopCount(int channelNum) const {
+    if (!isValidChannel(channelNum)) {
+        return 1;
+    }
+    return loopCounts_[static_cast<std::size_t>(channelNum)];
 }
 
 bool SoundManager::isPlaying(int channelNum) const {
@@ -194,6 +211,10 @@ bool SoundManager::isValidChannel(int channelNum) {
 
 int SoundManager::clampVolume(int volume) {
     return std::clamp(volume, 0, 255);
+}
+
+int SoundManager::clampLoopCount(int loopCount) {
+    return std::max(0, loopCount);
 }
 
 std::string_view SoundManager::detectFormat(const std::vector<std::uint8_t>& audioData) {
@@ -258,7 +279,7 @@ SoundManager::PlayArgs SoundManager::extractPlayArgs(const lingo::Datum& args) {
         }
         const auto loopCount = getProp(props, "loopCount");
         if (!loopCount.isVoid()) {
-            result.loopCount = loopCount.intValue();
+            result.loopCount = clampLoopCount(loopCount.intValue());
         }
         return result;
     }

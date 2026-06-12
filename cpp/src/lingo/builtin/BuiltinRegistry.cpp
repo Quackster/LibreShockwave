@@ -1798,7 +1798,7 @@ Datum SoundBuiltins::getProperty(BuiltinContext& context,
         return Datum::voidValue();
     }
     if (prop == "loopcount") {
-        return Datum::of(1);
+        return Datum::of(manager != nullptr ? manager->getLoopCount(channelNum) : 1);
     }
     if (prop == "loopstarttime" || prop == "loopendtime" || prop == "starttime" || prop == "endtime") {
         return Datum::of(0);
@@ -1820,7 +1820,13 @@ bool SoundBuiltins::setProperty(BuiltinContext& context,
         }
         return true;
     }
-    if (prop == "pan" || prop == "loopcount" || prop == "starttime" || prop == "endtime" ||
+    if (prop == "loopcount") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setLoopCount(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "pan" || prop == "starttime" || prop == "endtime" ||
         prop == "loopstarttime" || prop == "loopendtime") {
         return true;
     }
