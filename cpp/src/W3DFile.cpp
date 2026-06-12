@@ -222,6 +222,49 @@ std::optional<w3d::W3DResourceRef> W3DFile::resourceRefForNode(std::string_view 
     return findResourceRef(node->refName);
 }
 
+std::optional<W3DRenderableMesh> W3DFile::renderableMeshForNode(std::string_view nodeName) const {
+    auto node = findNode(nodeName);
+    if (!node.has_value()) {
+        return std::nullopt;
+    }
+
+    auto mesh = meshResourceForNode(nodeName);
+    if (!mesh.has_value() || !mesh->hasDecodedGeometry()) {
+        return std::nullopt;
+    }
+
+    auto transform = worldTransformForNode(nodeName);
+    if (!transform.has_value()) {
+        return std::nullopt;
+    }
+
+    auto material = materialForNode(nodeName);
+    std::optional<w3d::W3DTexture> texture;
+    if (material.has_value() && !material->textureName.empty()) {
+        texture = findTexture(material->textureName);
+    }
+
+    return W3DRenderableMesh{
+        std::move(*node),
+        std::move(*mesh),
+        std::move(material),
+        std::move(texture),
+        resourceRefForNode(nodeName),
+        *transform
+    };
+}
+
+std::vector<W3DRenderableMesh> W3DFile::renderableMeshes() const {
+    std::vector<W3DRenderableMesh> result;
+    for (const auto& node : nodes_) {
+        auto renderable = renderableMeshForNode(node.name);
+        if (renderable.has_value()) {
+            result.push_back(std::move(*renderable));
+        }
+    }
+    return result;
+}
+
 std::vector<w3d::W3DNode> W3DFile::childNodes(std::string_view parentName) const {
     std::vector<w3d::W3DNode> result;
     for (const auto& node : nodes_) {

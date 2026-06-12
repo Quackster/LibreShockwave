@@ -17,6 +17,15 @@
 
 namespace libreshockwave {
 
+struct W3DRenderableMesh {
+    w3d::W3DNode node;
+    w3d::W3DMeshResource mesh;
+    std::optional<w3d::W3DMaterial> material;
+    std::optional<w3d::W3DTexture> texture;
+    std::optional<w3d::W3DResourceRef> resourceRef;
+    std::array<float, 16> worldTransform{};
+};
+
 class W3DFile {
 public:
     [[nodiscard]] static W3DFile load(const std::vector<std::uint8_t>& data);
@@ -41,6 +50,8 @@ public:
     [[nodiscard]] std::optional<w3d::W3DTexture> textureForMaterial(std::string_view materialName) const;
     [[nodiscard]] std::optional<w3d::W3DTexture> textureForNode(std::string_view nodeName) const;
     [[nodiscard]] std::optional<w3d::W3DResourceRef> resourceRefForNode(std::string_view nodeName) const;
+    [[nodiscard]] std::optional<W3DRenderableMesh> renderableMeshForNode(std::string_view nodeName) const;
+    [[nodiscard]] std::vector<W3DRenderableMesh> renderableMeshes() const;
     [[nodiscard]] std::vector<w3d::W3DNode> childNodes(std::string_view parentName) const;
     [[nodiscard]] std::vector<w3d::W3DShape> childShapes(std::string_view parentName) const;
     [[nodiscard]] std::optional<std::array<float, 16>> worldTransformForNode(std::string_view name) const;

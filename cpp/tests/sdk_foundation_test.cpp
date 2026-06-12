@@ -25616,6 +25616,28 @@ void testW3DFileParser() {
     assert(file.resourceRefForNode("RootNode")->refData.size() == 1);
     assert(file.resourceRefForNode("ChildNode")->refType == 9);
     assert(!file.resourceRefForNode("Missing").has_value());
+    const auto rootRenderable = file.renderableMeshForNode("RootNode");
+    assert(rootRenderable.has_value());
+    assert(rootRenderable->node.name == "RootNode");
+    assert(rootRenderable->mesh.faceCount == 2);
+    assert(!rootRenderable->material.has_value());
+    assert(!rootRenderable->texture.has_value());
+    assert(rootRenderable->resourceRef.has_value());
+    assert(std::fabs(rootRenderable->worldTransform[12] - 10.0F) < 0.0001F);
+    const auto childRenderable = file.renderableMeshForNode("ChildNode");
+    assert(childRenderable.has_value());
+    assert(childRenderable->node.name == "ChildNode");
+    assert(childRenderable->material.has_value());
+    assert(childRenderable->material->name == "Mat01");
+    assert(childRenderable->texture.has_value());
+    assert(childRenderable->texture->format == "jpeg");
+    assert(childRenderable->resourceRef.has_value());
+    assert(std::fabs(childRenderable->worldTransform[12] - 12.0F) < 0.0001F);
+    assert(!file.renderableMeshForNode("Missing").has_value());
+    const auto renderableMeshes = file.renderableMeshes();
+    assert(renderableMeshes.size() == 2);
+    assert(renderableMeshes[0].node.name == "RootNode");
+    assert(renderableMeshes[1].node.name == "ChildNode");
 
     const auto tmpPath = std::filesystem::temp_directory_path() / "libreshockwave_w3d_file_parser_test.w3d";
     {
