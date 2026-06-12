@@ -182,6 +182,46 @@ std::optional<w3d::W3DResourceRef> W3DFile::findResourceRef(std::string_view nam
     return std::nullopt;
 }
 
+std::optional<w3d::W3DMeshResource> W3DFile::meshResourceForNode(std::string_view nodeName) const {
+    const auto* node = findNodePtr(nodes_, nodeName);
+    if (node == nullptr || node->resourceName.empty()) {
+        return std::nullopt;
+    }
+    return findMeshResource(node->resourceName);
+}
+
+std::optional<w3d::W3DMaterial> W3DFile::materialForNode(std::string_view nodeName) const {
+    const auto* node = findNodePtr(nodes_, nodeName);
+    if (node == nullptr || node->shaderName.empty()) {
+        return std::nullopt;
+    }
+    return findMaterial(node->shaderName);
+}
+
+std::optional<w3d::W3DTexture> W3DFile::textureForMaterial(std::string_view materialName) const {
+    auto material = findMaterial(materialName);
+    if (!material.has_value() || material->textureName.empty()) {
+        return std::nullopt;
+    }
+    return findTexture(material->textureName);
+}
+
+std::optional<w3d::W3DTexture> W3DFile::textureForNode(std::string_view nodeName) const {
+    auto material = materialForNode(nodeName);
+    if (!material.has_value() || material->textureName.empty()) {
+        return std::nullopt;
+    }
+    return findTexture(material->textureName);
+}
+
+std::optional<w3d::W3DResourceRef> W3DFile::resourceRefForNode(std::string_view nodeName) const {
+    const auto* node = findNodePtr(nodes_, nodeName);
+    if (node == nullptr || node->refName.empty()) {
+        return std::nullopt;
+    }
+    return findResourceRef(node->refName);
+}
+
 std::vector<w3d::W3DNode> W3DFile::childNodes(std::string_view parentName) const {
     std::vector<w3d::W3DNode> result;
     for (const auto& node : nodes_) {
