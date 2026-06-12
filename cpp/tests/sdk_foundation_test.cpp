@@ -25540,6 +25540,14 @@ void testW3DFileParser() {
     appendF32LE(mesh, 0.0F);
     appendF32LE(mesh, 0.0F);
     appendF32LE(mesh, 0.0F);
+    appendF32LE(mesh, 0.0F);
+    appendF32LE(mesh, 0.0F);
+    appendF32LE(mesh, 1.0F);
+    appendF32LE(mesh, 0.0F);
+    appendF32LE(mesh, 1.0F);
+    appendF32LE(mesh, 1.0F);
+    appendF32LE(mesh, 0.0F);
+    appendF32LE(mesh, 1.0F);
     appendU16LE(mesh, 0);
     appendU16LE(mesh, 1);
     appendU16LE(mesh, 2);
@@ -25614,6 +25622,10 @@ void testW3DFileParser() {
     assert(file.meshResources()[0].hasDecodedGeometry());
     assert(file.meshResources()[0].vertices.size() == 4);
     assert(std::fabs(file.meshResources()[0].vertices[1].x - 3.0F) < 0.0001F);
+    assert(file.meshResources()[0].hasTextureCoordinates());
+    assert(file.meshResources()[0].texCoords.size() == 4);
+    assert(std::fabs(file.meshResources()[0].texCoords[2].u - 1.0F) < 0.0001F);
+    assert(std::fabs(file.meshResources()[0].texCoords[3].v - 1.0F) < 0.0001F);
     assert(file.meshResources()[0].faces.size() == 2);
     assert(file.meshResources()[0].faces[1].b == 3);
     const auto meshBounds = file.meshResources()[0].bounds();
@@ -26974,7 +26986,8 @@ void testDirectorFileRifxLoader() {
                                         float red,
                                         float green,
                                         float blue,
-                                        float alpha) {
+                                        float alpha,
+                                        const std::string& textureName = "") {
         appendPString16LE(data, name);
         appendF32LE(data, red);
         appendF32LE(data, green);
@@ -26984,7 +26997,7 @@ void testDirectorFileRifxLoader() {
             appendF32LE(data, index == 3 || index == 7 ? alpha : 0.0F);
         }
         appendF32LE(data, 16.0F);
-        appendPString16LE(data, "");
+        appendPString16LE(data, textureName);
     };
     auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
         data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
@@ -27089,15 +27102,26 @@ void testDirectorFileRifxLoader() {
     appendF32LE(w3dMesh, 0.0F);
     appendF32LE(w3dMesh, 1.0F);
     appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 1.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 0.0F);
+    appendF32LE(w3dMesh, 1.0F);
     appendU16LE(w3dMesh, 0);
     appendU16LE(w3dMesh, 1);
     appendU16LE(w3dMesh, 2);
     appendW3DEntry(w3dData, 0x73, 2, w3dMesh);
+    std::vector<std::uint8_t> blueTexture;
+    appendPString16LE(blueTexture, "BlueTexture");
+    blueTexture.push_back(0x00);
+    blueTexture.insert(blueTexture.end(), {'r', 'a', 'w'});
+    appendW3DEntry(w3dData, 0x21, 2, blueTexture);
     std::vector<std::uint8_t> redMaterial;
     appendW3DMaterialPayload(redMaterial, "RedOpaque", 1.0F, 0.0F, 0.0F, 1.0F);
     appendW3DEntry(w3dData, 0x49, 2, redMaterial);
     std::vector<std::uint8_t> blueMaterial;
-    appendW3DMaterialPayload(blueMaterial, "BlueAlpha", 0.0F, 0.0F, 1.0F, 0.5F);
+    appendW3DMaterialPayload(blueMaterial, "BlueAlpha", 1.0F, 1.0F, 1.0F, 0.5F, "BlueTexture");
     appendW3DEntry(w3dData, 0x49, 2, blueMaterial);
 
     constexpr int mmapOffset = 32;
@@ -27297,9 +27321,22 @@ void testDirectorFileRifxLoader() {
     assert(linkedW3D->hasSceneData());
     assert(linkedW3D->nodes().size() == 2);
     assert(linkedW3D->meshResources().size() == 1);
+    assert(linkedW3D->meshResources()[0].hasTextureCoordinates());
+    assert(linkedW3D->textures().size() == 1);
+    assert(linkedW3D->textures()[0].name == "BlueTexture");
     assert(linkedW3D->materials().size() == 2);
     assert(linkedW3D->renderableMeshes().size() == 2);
+    assert(linkedW3D->renderableMeshes()[0].texture.has_value());
     SpriteBaker w3dBaker;
+    int w3dTextureDecodeCalls = 0;
+    w3dBaker.setW3DTextureDecodeProvider([&](const libreshockwave::w3d::W3DTexture& texture) {
+        ++w3dTextureDecodeCalls;
+        assert(texture.name == "BlueTexture");
+        auto decoded = std::make_shared<Bitmap>(2, 2, 32);
+        decoded->setNativeAlpha(true);
+        decoded->fill(0xFF0000FFU);
+        return decoded;
+    });
     RenderSprite w3dSprite(14,
                            0,
                            0,
@@ -27321,6 +27358,7 @@ void testDirectorFileRifxLoader() {
                            nullptr,
                            false);
     auto bakedW3D = w3dBaker.bake(w3dSprite);
+    assert(w3dTextureDecodeCalls == 1);
     assert(bakedW3D.bakedBitmap() != nullptr);
     assert(bakedW3D.bakedBitmap()->width() == 32);
     assert(bakedW3D.bakedBitmap()->height() == 24);

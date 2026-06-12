@@ -343,6 +343,9 @@ std::shared_ptr<bitmap::Bitmap> shiftBitmapDown(std::shared_ptr<bitmap::Bitmap> 
 struct ProjectedW3DVertex {
     float x = 0.0F;
     float y = 0.0F;
+    float u = 0.0F;
+    float v = 0.0F;
+    bool hasTexCoord = false;
 };
 
 struct W3DProjection {
@@ -438,6 +441,31 @@ std::uint32_t w3dPaintColor(const W3DRenderableMesh& mesh, const RenderSprite& s
     return opaqueArgb(rgb);
 }
 
+std::uint32_t multiplyArgbChannels(std::uint32_t left, std::uint32_t right) {
+    const auto channel = [](std::uint32_t a, std::uint32_t b, std::uint32_t shift) {
+        return (((a >> shift) & 0xFFU) * ((b >> shift) & 0xFFU)) / 0xFFU;
+    };
+    return (channel(left, right, 24U) << 24U) |
+           (channel(left, right, 16U) << 16U) |
+           (channel(left, right, 8U) << 8U) |
+           channel(left, right, 0U);
+}
+
+std::uint32_t sampleW3DTexture(const bitmap::Bitmap& texture, float u, float v) {
+    if (texture.width() <= 0 || texture.height() <= 0) {
+        return 0xFFFFFFFFU;
+    }
+    const float clampedU = std::clamp(u, 0.0F, 1.0F);
+    const float clampedV = std::clamp(v, 0.0F, 1.0F);
+    const int x = std::clamp(static_cast<int>(std::round(clampedU * static_cast<float>(texture.width() - 1))),
+                             0,
+                             texture.width() - 1);
+    const int y = std::clamp(static_cast<int>(std::round(clampedV * static_cast<float>(texture.height() - 1))),
+                             0,
+                             texture.height() - 1);
+    return texture.getPixel(x, y);
+}
+
 float averageW3DWorldZ(const W3DRenderableMesh& mesh) {
     if (mesh.mesh.vertices.empty()) {
         return 0.0F;
@@ -497,7 +525,8 @@ bool fillProjectedTriangle(bitmap::Bitmap& bitmap,
                            ProjectedW3DVertex a,
                            ProjectedW3DVertex b,
                            ProjectedW3DVertex c,
-                           std::uint32_t color) {
+                           std::uint32_t color,
+                           const bitmap::Bitmap* texture = nullptr) {
     const float area = triangleEdge(a, b, c.x, c.y);
     if (std::fabs(area) < 0.0001F) {
         bool painted = drawProjectedLine(bitmap, a, b, color);
@@ -524,7 +553,16 @@ bool fillProjectedTriangle(bitmap::Bitmap& bitmap,
             const float w2 = triangleEdge(a, b, px, py);
             if ((w0 >= 0.0F && w1 >= 0.0F && w2 >= 0.0F) ||
                 (w0 <= 0.0F && w1 <= 0.0F && w2 <= 0.0F)) {
-                bitmap.setPixel(x, y, alphaComposite(bitmap.getPixel(x, y), color));
+                std::uint32_t paint = color;
+                if (texture != nullptr && a.hasTexCoord && b.hasTexCoord && c.hasTexCoord) {
+                    const float alpha = w0 / area;
+                    const float beta = w1 / area;
+                    const float gamma = w2 / area;
+                    const float u = alpha * a.u + beta * b.u + gamma * c.u;
+                    const float v = alpha * a.v + beta * b.v + gamma * c.v;
+                    paint = multiplyArgbChannels(color, sampleW3DTexture(*texture, u, v));
+                }
+                bitmap.setPixel(x, y, alphaComposite(bitmap.getPixel(x, y), paint));
                 painted = true;
             }
         }
@@ -611,6 +649,10 @@ void SpriteBaker::setTextRenderer(output::TextRenderer* renderer) {
 
 void SpriteBaker::setFilmLoopBakeProvider(FilmLoopBakeProvider provider) {
     filmLoopBakeProvider_ = std::move(provider);
+}
+
+void SpriteBaker::setW3DTextureDecodeProvider(W3DTextureDecodeProvider provider) {
+    w3dTextureDecodeProvider_ = std::move(provider);
 }
 
 BitmapCache& SpriteBaker::bitmapCache() {
@@ -770,11 +812,28 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShockwave3D(const RenderS
         }
         std::vector<ProjectedW3DVertex> projected;
         projected.reserve(mesh.mesh.vertices.size());
-        for (const auto& vertex : mesh.mesh.vertices) {
-            projected.push_back(projectW3DVertex(transformW3DVertex(vertex, mesh.worldTransform), projection));
+        const bool hasTexCoords = mesh.mesh.hasTextureCoordinates();
+        for (std::size_t index = 0; index < mesh.mesh.vertices.size(); ++index) {
+            auto projectedVertex = projectW3DVertex(
+                transformW3DVertex(mesh.mesh.vertices[index], mesh.worldTransform),
+                projection);
+            if (hasTexCoords) {
+                projectedVertex.u = mesh.mesh.texCoords[index].u;
+                projectedVertex.v = mesh.mesh.texCoords[index].v;
+                projectedVertex.hasTexCoord = true;
+            }
+            projected.push_back(projectedVertex);
         }
 
         const auto color = w3dPaintColor(mesh, sprite);
+        std::shared_ptr<const bitmap::Bitmap> textureBitmap;
+        if (hasTexCoords && mesh.texture.has_value() && w3dTextureDecodeProvider_) {
+            textureBitmap = w3dTextureDecodeProvider_(*mesh.texture);
+            if (textureBitmap != nullptr &&
+                (textureBitmap->width() <= 0 || textureBitmap->height() <= 0)) {
+                textureBitmap.reset();
+            }
+        }
         for (const auto& face : mesh.mesh.faces) {
             if (face.a < 0 || face.b < 0 || face.c < 0 ||
                 face.a >= static_cast<int>(projected.size()) ||
@@ -786,7 +845,8 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShockwave3D(const RenderS
                                             projected[static_cast<std::size_t>(face.a)],
                                             projected[static_cast<std::size_t>(face.b)],
                                             projected[static_cast<std::size_t>(face.c)],
-                                            color) || painted;
+                                            color,
+                                            textureBitmap.get()) || painted;
         }
     }
 

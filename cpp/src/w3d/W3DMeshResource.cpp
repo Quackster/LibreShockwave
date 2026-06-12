@@ -10,6 +10,10 @@ bool W3DMeshResource::hasDecodedGeometry() const {
     return !vertices.empty();
 }
 
+bool W3DMeshResource::hasTextureCoordinates() const {
+    return !texCoords.empty() && texCoords.size() == vertices.size();
+}
+
 std::array<W3DVertex, 2> W3DMeshResource::bounds() const {
     if (vertices.empty()) {
         return {W3DVertex{}, W3DVertex{}};
@@ -58,8 +62,24 @@ W3DMeshResource W3DMeshResource::parse(const std::vector<std::uint8_t>& data) {
         }
     }
 
+    std::vector<W3DTexCoord> texCoords;
     if (faceCount > 0) {
         const auto faceCountSize = static_cast<std::size_t>(faceCount);
+        const auto remaining = geometryReader.bytesLeft();
+        const auto uvBytes = vertices.size() * 8;
+        if (!vertices.empty() && remaining >= uvBytes) {
+            const auto bytesAfterUv = remaining - uvBytes;
+            if (bytesAfterUv == faceCountSize * 6 || bytesAfterUv == faceCountSize * 12) {
+                texCoords.reserve(vertices.size());
+                for (std::size_t index = 0; index < vertices.size(); ++index) {
+                    texCoords.push_back(W3DTexCoord{
+                        geometryReader.readF32(),
+                        geometryReader.readF32()
+                    });
+                }
+            }
+        }
+
         if (geometryReader.bytesLeft() == faceCountSize * 6) {
             faces.reserve(faceCountSize);
             for (int index = 0; index < faceCount; ++index) {
@@ -86,6 +106,7 @@ W3DMeshResource W3DMeshResource::parse(const std::vector<std::uint8_t>& data) {
         vertexCount,
         faceCount,
         std::move(vertices),
+        std::move(texCoords),
         std::move(faces),
         std::move(geometryData)
     };

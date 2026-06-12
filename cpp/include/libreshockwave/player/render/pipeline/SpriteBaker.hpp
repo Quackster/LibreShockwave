@@ -21,6 +21,10 @@ namespace libreshockwave::player::render::output {
 class TextRenderer;
 }
 
+namespace libreshockwave::w3d {
+struct W3DTexture;
+}
+
 namespace libreshockwave::player::render::pipeline {
 
 class SpriteBaker {
@@ -34,6 +38,8 @@ public:
     using FilmLoopBakeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(
         const RenderSprite& sprite,
         int tickCounter)>;
+    using W3DTextureDecodeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(
+        const w3d::W3DTexture& texture)>;
     using SupportsFn = std::function<bool(const RenderSprite& sprite)>;
     using BakeFn = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
 
@@ -59,6 +65,7 @@ public:
     void setTextBakeProvider(TextBakeProvider provider);
     void setTextRenderer(output::TextRenderer* renderer);
     void setFilmLoopBakeProvider(FilmLoopBakeProvider provider);
+    void setW3DTextureDecodeProvider(W3DTextureDecodeProvider provider);
 
     [[nodiscard]] BitmapCache& bitmapCache();
     [[nodiscard]] const BitmapCache& bitmapCache() const;
@@ -101,6 +108,7 @@ private:
     TextBakeProvider textBakeProvider_;
     output::TextRenderer* textRenderer_{nullptr};
     FilmLoopBakeProvider filmLoopBakeProvider_;
+    W3DTextureDecodeProvider w3dTextureDecodeProvider_;
     std::vector<SpriteBakeStep> bakeSteps_;
     int tickCounter_{0};
 };
