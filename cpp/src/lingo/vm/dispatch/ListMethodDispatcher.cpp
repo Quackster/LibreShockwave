@@ -337,6 +337,9 @@ Datum ListMethodDispatcher::dispatch(Datum::List& list,
     if (equalsIgnoreCase(methodName, "getLast")) {
         return items.empty() ? Datum::voidValue() : items.back();
     }
+    if (equalsIgnoreCase(methodName, "getFirst")) {
+        return items.empty() ? Datum::voidValue() : items.front();
+    }
     if (equalsIgnoreCase(methodName, "deleteOne")) {
         if (args.empty()) {
             return Datum::FALSE;

@@ -6633,6 +6633,7 @@ void testLingoDatumTypes() {
     auto& dispatcherList = dispatcherListDatum.listValue();
     assert(ListMethodDispatcher::dispatch(dispatcherList, "count", {}).intValue() == 2);
     assert(ListMethodDispatcher::dispatch(dispatcherList, "getAt", {Datum::of(1)}).intValue() == 3);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "getFirst", {}).intValue() == 3);
     assert(ListMethodDispatcher::dispatch(dispatcherList, "setAt", {Datum::of(4), Datum::of(40)}).isVoid());
     assert(dispatcherList.count() == 4);
     assert(dispatcherList.getAt(3).isVoid());
@@ -13046,6 +13047,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 156) {
             return std::string("me");
         }
+        if (nameId == 157) {
+            return std::string("getFirst");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -16209,6 +16213,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
 
     Datum methodList = Datum::list({Datum::of(10), Datum::of(20)});
     assert(runObjCall(64, {methodList, Datum::of(2)}).intValue() == 20);
+    assert(runObjCall(157, {methodList}).intValue() == 10);
     assert(runObjCall(65, {methodList, Datum::of(4), Datum::of(40)}).isVoid());
     assert(methodList.listValue().count() == 4);
     assert(methodList.listValue().getAt(3).isVoid());
