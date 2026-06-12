@@ -1086,18 +1086,34 @@ async function _runCxxSmusBridgeSelfTest(message) {
     var sender = message.sender || 'alice';
     var subject = message.subject || 'CHAT';
     var content = message.content == null ? 'hello-smus' : String(message.content);
+    var rawMessages = Array.isArray(message.messages) && message.messages.length > 0
+        ? message.messages
+        : [{ sender: sender, subject: subject, content: content }];
+    var expectedMessages = rawMessages.map(function(raw, index) {
+        var entry = raw && typeof raw === 'object' ? raw : {};
+        return {
+            sender: entry.sender == null ? sender : String(entry.sender),
+            subject: entry.subject == null ? subject : String(entry.subject),
+            content: entry.content == null ? (index === 0 ? content : '') : String(entry.content)
+        };
+    });
     var result = {
         ok: false,
         host: host,
         port: port,
         instanceId: instanceId,
+        expectedMessages: expectedMessages,
         connected: false,
         cppConnected: false,
         logonQueued: false,
         logonSent: false,
         smusSendQueued: false,
         smusSendSent: false,
+        smusSendCount: 0,
+        smusSequenceComplete: false,
+        connectedBetweenMessages: true,
         cppReceived: false,
+        cppReceivedCount: 0,
         disconnectRequested: false,
         errorDelivered: false
     };
@@ -1149,42 +1165,85 @@ async function _runCxxSmusBridgeSelfTest(message) {
         _pumpMusRequests();
         result.logonSent = result.logonQueued;
 
-        _debugMusRequestSendText(instanceId, sender, subject, content);
-        var sendPending = _findPendingMusRequest(instanceId, 1);
-        result.smusSendPending = sendPending;
-        result.smusSendQueued = sendPending.index >= 0 && sendPending.dataLength > 6 &&
-            sendPending.dataHexPrefix.indexOf('72 00') === 0;
-        _pumpMusRequests();
-        result.smusSendSent = result.smusSendQueued;
+        result.smusSendPendings = [];
+        result.smusSendQueuedByMessage = [];
+        result.smusSendSentByMessage = [];
+        result.receiveStates = [];
+        result.receivedMessages = [];
+        result.receivedMatches = [];
+        for (var messageIndex = 0; messageIndex < expectedMessages.length; messageIndex++) {
+            var expected = expectedMessages[messageIndex];
+            _debugMusRequestSendText(instanceId, expected.sender, expected.subject, expected.content);
+            var sendPending = _findPendingMusRequest(instanceId, 1);
+            var queued = sendPending.index >= 0 && sendPending.dataLength > 6 &&
+                sendPending.dataHexPrefix.indexOf('72 00') === 0;
+            result.smusSendPendings.push(sendPending);
+            result.smusSendQueuedByMessage.push(queued);
+            if (messageIndex === 0) {
+                result.smusSendPending = sendPending;
+                result.smusSendQueued = queued;
+            }
+            _pumpMusRequests();
+            result.smusSendSentByMessage.push(queued);
+            if (messageIndex === 0) {
+                result.smusSendSent = queued;
+            }
+            if (queued) {
+                result.smusSendCount++;
+            }
 
-        var receiveState = await _waitForMusState(instanceId, function() {
-            var inbound = _musInbound[instanceId];
-            if (inbound && inbound.length > 0) {
-                return { type: 'message' };
-            }
-            if (_hasQueuedMusEvent(_musErrors, instanceId)) {
-                return { type: 'error', code: _musErrors[instanceId] };
-            }
-            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
-                return { type: 'disconnected' };
-            }
-            return null;
-        }, timeoutMs);
-        result.receiveState = receiveState ? receiveState.type : 'timeout';
-        if (receiveState && receiveState.type === 'message') {
-            _deliverMusEvents();
-            result.receivedMessages = _debugMusPollMessages(instanceId);
-            for (var i = 0; i < result.receivedMessages.length; i++) {
-                var received = result.receivedMessages[i];
-                if (received.errorCode === 0 && received.sender === sender &&
-                        received.subject === subject && received.content === content) {
-                    result.cppReceived = true;
+            var matched = false;
+            while (!matched) {
+                var receiveState = await _waitForMusState(instanceId, function() {
+                    var inbound = _musInbound[instanceId];
+                    if (inbound && inbound.length > 0) {
+                        return { type: 'message' };
+                    }
+                    if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                        return { type: 'error', code: _musErrors[instanceId] };
+                    }
+                    if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                        return { type: 'disconnected' };
+                    }
+                    return null;
+                }, timeoutMs);
+                result.receiveStates.push(receiveState ? receiveState.type : 'timeout');
+                if (messageIndex === 0 && !result.receiveState) {
+                    result.receiveState = receiveState ? receiveState.type : 'timeout';
+                }
+                if (!receiveState || receiveState.type !== 'message') {
+                    if (receiveState && receiveState.type === 'error') {
+                        result.receiveErrorCode = receiveState.code;
+                    }
                     break;
                 }
+                _deliverMusEvents();
+                var receivedMessages = _debugMusPollMessages(instanceId);
+                for (var receivedIndex = 0; receivedIndex < receivedMessages.length; receivedIndex++) {
+                    var received = receivedMessages[receivedIndex];
+                    result.receivedMessages.push(received);
+                    if (received.errorCode === 0 && received.sender === expected.sender &&
+                            received.subject === expected.subject &&
+                            received.content === expected.content) {
+                        matched = true;
+                    }
+                }
             }
-        } else if (receiveState && receiveState.type === 'error') {
-            result.receiveErrorCode = receiveState.code;
+            result.receivedMatches.push(matched);
+            if (matched) {
+                result.cppReceivedCount++;
+            }
+            if (messageIndex < expectedMessages.length - 1) {
+                var activeSocket = _musSockets[instanceId];
+                var stillConnected = _exports.debugMusIsConnected(instanceId) === 1 &&
+                    !!activeSocket && activeSocket.readyState === WebSocket.OPEN;
+                result.connectedBetweenMessages = result.connectedBetweenMessages && stillConnected;
+            }
         }
+        result.cppReceived = result.receivedMatches.length > 0 && result.receivedMatches[0] === true;
+        result.smusSequenceComplete = result.smusSendCount === expectedMessages.length &&
+            result.cppReceivedCount === expectedMessages.length &&
+            result.receivedMatches.every(function(matched) { return matched; });
 
         _exports.debugMusRequestDisconnect(instanceId);
         result.disconnectRequested = true;
@@ -1223,7 +1282,8 @@ async function _runCxxSmusBridgeSelfTest(message) {
 
         result.ok = result.connected && result.cppConnected && result.logonQueued &&
             result.logonSent && result.smusSendQueued && result.smusSendSent &&
-            result.cppReceived && result.disconnectRequested &&
+            result.cppReceived && result.smusSequenceComplete &&
+            result.connectedBetweenMessages && result.disconnectRequested &&
             result.socketClosedAfterDisconnect && !result.cppConnectedAfterDisconnect &&
             result.errorDelivered;
         return result;

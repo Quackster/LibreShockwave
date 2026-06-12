@@ -331,6 +331,10 @@ async function main() {
             sender: 'browser-fixture-check',
             subject: 'CHAT',
             content: 'hello-smus',
+            messages: [
+                { sender: 'browser-fixture-check', subject: 'CHAT', content: 'hello-smus-1' },
+                { sender: 'browser-fixture-check', subject: 'CHAT', content: 'hello-smus-2' },
+            ],
             timeoutMs: Math.min(timeoutMs, 10000),
         });
         if (!smus || !smus.ok) {
@@ -364,7 +368,11 @@ async function main() {
                 logonSent: smus.logonSent,
                 smusSendQueued: smus.smusSendQueued,
                 smusSendSent: smus.smusSendSent,
+                smusSendCount: smus.smusSendCount,
+                smusSequenceComplete: smus.smusSequenceComplete,
+                connectedBetweenMessages: smus.connectedBetweenMessages,
                 cppReceived: smus.cppReceived,
+                cppReceivedCount: smus.cppReceivedCount,
                 disconnectRequested: smus.disconnectRequested,
                 socketClosedAfterDisconnect: smus.socketClosedAfterDisconnect,
                 errorDelivered: smus.errorDelivered,

@@ -24283,6 +24283,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("debug_mus_request_connect") != std::string::npos);
     assert(worker.find("debugMusPollMessageCount") != std::string::npos);
     assert(worker.find("debugMusRequestSendText") != std::string::npos);
+    assert(worker.find("smusSequenceComplete") != std::string::npos);
+    assert(worker.find("connectedBetweenMessages") != std::string::npos);
+    assert(worker.find("expectedMessages") != std::string::npos);
     assert(worker.find("_runFixtureMultiuserScriptSelfTest") != std::string::npos);
     assert(worker.find("runFixtureMultiuserScriptSelfTest") != std::string::npos);
     assert(worker.find("fixtureMultiuserScriptSelfTest") != std::string::npos);
