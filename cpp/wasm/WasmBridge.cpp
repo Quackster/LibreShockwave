@@ -42,7 +42,10 @@ using libreshockwave::player::input::DirectorKeyCodes;
 using libreshockwave::player::net::QueuedNetProvider;
 using libreshockwave::player::xtra::QueuedMultiuserBridge;
 
-constexpr int DEFAULT_WASM_SCRIPT_DEADLINE_MS = 1000;
+// Fetch completion can synchronously finish Director cast-load callbacks.
+// Some legacy movies do real work there, including Habbo's sec.cct crypto setup,
+// so the default must be a guardrail rather than a one-frame budget.
+constexpr int DEFAULT_WASM_SCRIPT_DEADLINE_MS = 60000;
 
 struct WasmPlayerContext {
     std::shared_ptr<DirectorFile> file;
