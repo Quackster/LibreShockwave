@@ -166,16 +166,7 @@ function resolveUrl(candidate, baseUrl = movieUrl) {
 
 function fetchCandidates(candidate) {
   const resolved = resolveUrl(candidate);
-  const urls = [resolved];
-  try {
-    const url = new URL(resolved);
-    if (url.origin !== self.location.origin) {
-      urls.push(new URL(`${url.pathname}${url.search}`, self.location.href).href);
-    }
-  } catch {
-    // Keep only the resolved candidate if URL parsing fails.
-  }
-  return urls;
+  return resolved ? [resolved] : [];
 }
 
 function isHttpStatusError(error) {
