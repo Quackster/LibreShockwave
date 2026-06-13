@@ -450,65 +450,23 @@ bool truthyLikeJava(const Datum& datum) {
 }
 
 int findPropIndexTyped(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyName(key);
-    const bool targetIsSymbol = key.asSymbol() != nullptr;
-    int fallback = -1;
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        const std::string entryName = keyName(properties[index].first);
-        if (equalsIgnoreCase(entryName, target)) {
-            const bool entryIsSymbol = properties[index].first.asSymbol() != nullptr;
-            if (entryIsSymbol == targetIsSymbol) {
-                return static_cast<int>(index);
-            }
-            if (fallback < 0 && entryName == target) {
-                fallback = static_cast<int>(index);
-            }
-        }
-    }
-    return fallback;
+    return propList.findTypedKey(key);
 }
 
 int findPropIndexSameType(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyName(key);
-    const bool targetIsSymbol = key.asSymbol() != nullptr;
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        if ((properties[index].first.asSymbol() != nullptr) == targetIsSymbol &&
-            equalsIgnoreCase(keyName(properties[index].first), target)) {
-            return static_cast<int>(index);
-        }
-    }
-    return -1;
+    return propList.findSameTypeKey(key);
 }
 
 int findPropIndexUntyped(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyName(key);
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        if (equalsIgnoreCase(keyName(properties[index].first), target)) {
-            return static_cast<int>(index);
-        }
-    }
-    return -1;
+    return propList.findUntypedKey(key);
 }
 
 void putPropTyped(Datum::PropList& propList, const Datum& key, Datum value) {
-    const int index = findPropIndexTyped(propList, key);
-    if (index >= 0) {
-        propList.properties()[static_cast<std::size_t>(index)].second = std::move(value);
-        return;
-    }
-    propList.properties().emplace_back(key, std::move(value));
+    propList.putTyped(key, std::move(value));
 }
 
 void putPropSameType(Datum::PropList& propList, const Datum& key, Datum value) {
-    const int index = findPropIndexSameType(propList, key);
-    if (index >= 0) {
-        propList.properties()[static_cast<std::size_t>(index)].second = std::move(value);
-        return;
-    }
-    propList.properties().emplace_back(key, std::move(value));
+    propList.putSameType(key, std::move(value));
 }
 
 void putStringProp(Datum& propList, const std::string& key, Datum value) {

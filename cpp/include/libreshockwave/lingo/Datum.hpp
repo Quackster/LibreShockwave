@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -510,8 +511,13 @@ public:
     explicit PropList(bool sorted = false);
 
     void put(Datum key, Datum value);
+    void putSameType(Datum key, Datum value);
+    void putTyped(Datum key, Datum value);
     [[nodiscard]] Datum get(const Datum& key) const;
     [[nodiscard]] bool contains(const Datum& key) const;
+    [[nodiscard]] int findSameTypeKey(const Datum& key) const;
+    [[nodiscard]] int findTypedKey(const Datum& key) const;
+    [[nodiscard]] int findUntypedKey(const Datum& key) const;
     [[nodiscard]] int count() const;
     [[nodiscard]] bool sorted() const;
     [[nodiscard]] const std::vector<std::pair<Datum, Datum>>& properties() const;
@@ -520,8 +526,16 @@ public:
     friend bool operator==(const PropList& lhs, const PropList& rhs);
 
 private:
+    void invalidateIndex() const;
+    void indexEntry(std::size_t index) const;
+    void rebuildIndex() const;
+
     std::vector<std::pair<Datum, Datum>> properties_;
     bool sorted_;
+    mutable bool indexDirty_{true};
+    mutable std::unordered_map<std::string, int> firstSameTypeKeyIndex_;
+    mutable std::unordered_map<std::string, int> firstUntypedKeyIndex_;
+    mutable std::unordered_map<std::string, int> firstCaseSensitiveKeyIndex_;
 };
 
 class Datum::ScriptInstanceRef {

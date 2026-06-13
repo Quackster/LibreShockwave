@@ -5725,6 +5725,27 @@ void testBuiltinRegistryFoundation() {
     assert(builtinProps.propListValue().count() == 3);
     assert(registry.invoke("getFirst", context, {builtinProps}).stringValue() == "Ada");
     assert(registry.invoke("getLast", context, {builtinProps}).stringValue() == "duplicate");
+    auto cachedProps = Datum::propList();
+    auto& cachedPropList = cachedProps.propListValue();
+    for (int index = 0; index < 64; ++index) {
+        cachedPropList.putTyped(Datum::of(index), Datum::of(index * 10));
+    }
+    assert(cachedPropList.count() == 64);
+    assert(cachedPropList.findTypedKey(Datum::of(63)) == 63);
+    cachedPropList.putTyped(Datum::of(63), Datum::of(777));
+    const auto& cachedPropListConst = cachedPropList;
+    assert(cachedPropListConst.properties()[63].second.intValue() == 777);
+    cachedPropList.properties().emplace_back(Datum::symbol("external"), Datum::of(5));
+    assert(cachedPropList.findTypedKey(Datum::symbol("EXTERNAL")) == 64);
+    auto fallbackProps = Datum::propList();
+    auto& fallbackPropList = fallbackProps.propListValue();
+    fallbackPropList.properties().emplace_back(Datum::symbol("bridge"), Datum::of(1));
+    fallbackPropList.putTyped(Datum::of(std::string("bridge")), Datum::of(2));
+    assert(fallbackPropList.count() == 1);
+    const auto& fallbackPropListConst = fallbackPropList;
+    assert(fallbackPropListConst.properties()[0].first.asSymbol() != nullptr);
+    fallbackPropList.putTyped(Datum::of(std::string("BRIDGE")), Datum::of(3));
+    assert(fallbackPropList.count() == 2);
     auto nestedBuiltinProps = Datum::propList();
     nestedBuiltinProps.propListValue().put(Datum::symbol("items"), Datum::list({Datum::of(1)}));
     const auto nestedBuiltinPropsCopy = registry.invoke("duplicate", context, {nestedBuiltinProps});

@@ -81,6 +81,37 @@ bool equalsIgnoreCase(const std::string& lhs, const std::string& rhs) {
     return true;
 }
 
+std::string lowerAscii(std::string_view value) {
+    std::string lowered(value);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered;
+}
+
+std::string propListKeyName(const Datum& datum) {
+    if (const auto* symbol = datum.asSymbol()) {
+        return symbol->name;
+    }
+    if (datum.isVoid()) {
+        return "";
+    }
+    if (datum.isString() || datum.isNumber()) {
+        return datum.stringValue();
+    }
+    try {
+        return datum.stringValue();
+    } catch (const LingoException&) {
+        return datum.typeString();
+    }
+}
+
+std::string propListSameTypeKey(const Datum& datum) {
+    std::string key = datum.asSymbol() != nullptr ? "s:" : "v:";
+    key += lowerAscii(propListKeyName(datum));
+    return key;
+}
+
 std::uint64_t nextScriptInstanceIdentityId() {
     static std::atomic<std::uint64_t> nextId{1};
     return nextId.fetch_add(1, std::memory_order_relaxed);
@@ -780,10 +811,38 @@ void Datum::PropList::put(Datum key, Datum value) {
             return;
         }
     }
+    const bool indexWasClean = !indexDirty_;
     properties_.emplace_back(std::move(key), std::move(value));
+    if (indexWasClean) {
+        indexEntry(properties_.size() - 1);
+    }
+}
+
+void Datum::PropList::putSameType(Datum key, Datum value) {
+    const int index = findSameTypeKey(key);
+    if (index >= 0) {
+        properties_[static_cast<std::size_t>(index)].second = std::move(value);
+        return;
+    }
+    properties_.emplace_back(std::move(key), std::move(value));
+    indexEntry(properties_.size() - 1);
+}
+
+void Datum::PropList::putTyped(Datum key, Datum value) {
+    const int index = findTypedKey(key);
+    if (index >= 0) {
+        properties_[static_cast<std::size_t>(index)].second = std::move(value);
+        return;
+    }
+    properties_.emplace_back(std::move(key), std::move(value));
+    indexEntry(properties_.size() - 1);
 }
 
 Datum Datum::PropList::get(const Datum& key) const {
+    const int sameTypeIndex = findSameTypeKey(key);
+    if (sameTypeIndex >= 0 && properties_[static_cast<std::size_t>(sameTypeIndex)].first == key) {
+        return properties_[static_cast<std::size_t>(sameTypeIndex)].second;
+    }
     for (const auto& entry : properties_) {
         if (entry.first == key) {
             return entry.second;
@@ -793,9 +852,35 @@ Datum Datum::PropList::get(const Datum& key) const {
 }
 
 bool Datum::PropList::contains(const Datum& key) const {
+    const int sameTypeIndex = findSameTypeKey(key);
+    if (sameTypeIndex >= 0 && properties_[static_cast<std::size_t>(sameTypeIndex)].first == key) {
+        return true;
+    }
     return std::any_of(properties_.begin(), properties_.end(), [&](const auto& entry) {
         return entry.first == key;
     });
+}
+
+int Datum::PropList::findSameTypeKey(const Datum& key) const {
+    rebuildIndex();
+    const auto found = firstSameTypeKeyIndex_.find(propListSameTypeKey(key));
+    return found != firstSameTypeKeyIndex_.end() ? found->second : -1;
+}
+
+int Datum::PropList::findTypedKey(const Datum& key) const {
+    rebuildIndex();
+    const auto sameType = firstSameTypeKeyIndex_.find(propListSameTypeKey(key));
+    if (sameType != firstSameTypeKeyIndex_.end()) {
+        return sameType->second;
+    }
+    const auto fallback = firstCaseSensitiveKeyIndex_.find(propListKeyName(key));
+    return fallback != firstCaseSensitiveKeyIndex_.end() ? fallback->second : -1;
+}
+
+int Datum::PropList::findUntypedKey(const Datum& key) const {
+    rebuildIndex();
+    const auto found = firstUntypedKeyIndex_.find(lowerAscii(propListKeyName(key)));
+    return found != firstUntypedKeyIndex_.end() ? found->second : -1;
 }
 
 int Datum::PropList::count() const {
@@ -811,7 +896,38 @@ const std::vector<std::pair<Datum, Datum>>& Datum::PropList::properties() const 
 }
 
 std::vector<std::pair<Datum, Datum>>& Datum::PropList::properties() {
+    invalidateIndex();
     return properties_;
+}
+
+void Datum::PropList::invalidateIndex() const {
+    indexDirty_ = true;
+}
+
+void Datum::PropList::indexEntry(std::size_t index) const {
+    const int signedIndex = static_cast<int>(index);
+    const auto& key = properties_[index].first;
+    const std::string keyName = propListKeyName(key);
+    firstSameTypeKeyIndex_.try_emplace(propListSameTypeKey(key), signedIndex);
+    firstUntypedKeyIndex_.try_emplace(lowerAscii(keyName), signedIndex);
+    firstCaseSensitiveKeyIndex_.try_emplace(keyName, signedIndex);
+}
+
+void Datum::PropList::rebuildIndex() const {
+    if (!indexDirty_) {
+        return;
+    }
+
+    firstSameTypeKeyIndex_.clear();
+    firstUntypedKeyIndex_.clear();
+    firstCaseSensitiveKeyIndex_.clear();
+    firstSameTypeKeyIndex_.reserve(properties_.size());
+    firstUntypedKeyIndex_.reserve(properties_.size());
+    firstCaseSensitiveKeyIndex_.reserve(properties_.size());
+    for (std::size_t index = 0; index < properties_.size(); ++index) {
+        indexEntry(index);
+    }
+    indexDirty_ = false;
 }
 
 bool operator==(const Datum::PropList& lhs, const Datum::PropList& rhs) {

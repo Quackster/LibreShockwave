@@ -242,45 +242,16 @@ bool lingoEquals(const Datum& a, const Datum& b) {
 }
 
 Datum getPropListKey(const Datum::PropList& propList, std::string_view keyName) {
-    for (const auto& entry : propList.properties()) {
-        if (equalsIgnoreCase(keyNameLikeJava(entry.first), keyName)) {
-            return entry.second;
-        }
-    }
-    return Datum::voidValue();
+    const int index = propList.findUntypedKey(Datum::of(std::string(keyName)));
+    return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second : Datum::voidValue();
 }
 
 int findPropIndexByKey(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyNameLikeJava(key);
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        if (equalsIgnoreCase(keyNameLikeJava(properties[index].first), target)) {
-            return static_cast<int>(index);
-        }
-    }
-    return -1;
+    return propList.findUntypedKey(key);
 }
 
 int findPropIndexTypedKey(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyNameLikeJava(key);
-    const bool targetIsSymbol = key.asSymbol() != nullptr;
-    int fallback = -1;
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        const std::string entryName = keyNameLikeJava(properties[index].first);
-        if (!equalsIgnoreCase(entryName, target)) {
-            continue;
-        }
-
-        const bool entryIsSymbol = properties[index].first.asSymbol() != nullptr;
-        if (entryIsSymbol == targetIsSymbol) {
-            return static_cast<int>(index);
-        }
-        if (fallback < 0 && entryName == target) {
-            fallback = static_cast<int>(index);
-        }
-    }
-    return fallback;
+    return propList.findTypedKey(key);
 }
 
 Datum getPropListTypedKey(const Datum::PropList& propList, const Datum& key) {
@@ -289,12 +260,7 @@ Datum getPropListTypedKey(const Datum::PropList& propList, const Datum& key) {
 }
 
 void putPropListTypedKey(Datum::PropList& propList, const Datum& key, Datum value) {
-    const int index = findPropIndexTypedKey(propList, key);
-    if (index >= 0) {
-        propList.properties()[static_cast<std::size_t>(index)].second = std::move(value);
-        return;
-    }
-    propList.properties().emplace_back(key, std::move(value));
+    propList.putTyped(key, std::move(value));
 }
 
 Datum stringKeyFromInt(const Datum& key) {
@@ -306,7 +272,6 @@ Datum stringKeyFromInt(const Datum& key) {
 Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
                                          std::string_view methodName,
                                          const std::vector<Datum>& args) {
-    auto& properties = propList.properties();
     if (equalsIgnoreCase(methodName, "count")) {
         if (!args.empty()) {
             const Datum value = getPropListKey(propList, keyNameLikeJava(args[0]));
@@ -339,6 +304,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
     }
     if (equalsIgnoreCase(methodName, "addProp")) {
         if (args.size() >= 2) {
+            auto& properties = propList.properties();
             properties.emplace_back(args[0], args[1]);
         }
         return Datum::voidValue();
@@ -351,6 +317,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
             return getPropListTypedKey(propList, args[0]);
         }
         const int index = toIntLikeJava(args[0]) - 1;
+        const auto& properties = std::as_const(propList).properties();
         if (index >= 0 && index < static_cast<int>(properties.size())) {
             return properties[static_cast<std::size_t>(index)].second;
         }
@@ -362,7 +329,9 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
     if (equalsIgnoreCase(methodName, "setAt")) {
         if (args.size() >= 2) {
             const int index = toIntLikeJava(args[0]) - 1;
-            if (args[0].isInt() && index >= 0 && index < static_cast<int>(properties.size())) {
+            if (args[0].isInt() && index >= 0 &&
+                index < static_cast<int>(std::as_const(propList).properties().size())) {
+                auto& properties = propList.properties();
                 properties[static_cast<std::size_t>(index)].second = args[1];
             } else if (args[0].isInt()) {
                 putPropListTypedKey(propList, stringKeyFromInt(args[0]), args[1]);
@@ -376,6 +345,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
         if (args.empty()) {
             return Datum::of(0);
         }
+        const auto& properties = std::as_const(propList).properties();
         for (const auto& entry : properties) {
             if (lingoEquals(entry.second, args[0])) {
                 return entry.first;
@@ -387,6 +357,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
         if (!args.empty()) {
             const int index = findPropIndexTypedKey(propList, args[0]);
             if (index >= 0) {
+                auto& properties = propList.properties();
                 properties.erase(properties.begin() + index);
             }
         }
@@ -402,6 +373,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
     if (equalsIgnoreCase(methodName, "getPropAt")) {
         if (!args.empty()) {
             const int index = toIntLikeJava(args[0]) - 1;
+            const auto& properties = std::as_const(propList).properties();
             if (index >= 0 && index < static_cast<int>(properties.size())) {
                 return properties[static_cast<std::size_t>(index)].first;
             }
@@ -411,6 +383,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
     if (equalsIgnoreCase(methodName, "deleteAt")) {
         if (!args.empty()) {
             const int index = toIntLikeJava(args[0]) - 1;
+            auto& properties = propList.properties();
             if (index >= 0 && index < static_cast<int>(properties.size())) {
                 properties.erase(properties.begin() + index);
             }
@@ -418,13 +391,16 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
         return Datum::voidValue();
     }
     if (equalsIgnoreCase(methodName, "getLast")) {
+        const auto& properties = std::as_const(propList).properties();
         return properties.empty() ? Datum::voidValue() : properties.back().second;
     }
     if (equalsIgnoreCase(methodName, "getFirst")) {
+        const auto& properties = std::as_const(propList).properties();
         return properties.empty() ? Datum::voidValue() : properties.front().second;
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         Datum copy = Datum::propList(propList.sorted());
+        const auto& properties = std::as_const(propList).properties();
         copy.propListValue().properties() = properties;
         return copy.deepCopy();
     }
