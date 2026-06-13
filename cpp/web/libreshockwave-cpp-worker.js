@@ -258,6 +258,15 @@ function decodeBase64(value) {
   return bytes;
 }
 
+function bytesFromWebSocketText(value) {
+  const text = String(value || "");
+  const bytes = new Uint8Array(text.length);
+  for (let index = 0; index < text.length; index += 1) {
+    bytes[index] = text.charCodeAt(index) & 0xff;
+  }
+  return bytes;
+}
+
 function socketUrlFor(host, port) {
   for (const entry of socketProxy || []) {
     if (entry &&
@@ -317,7 +326,7 @@ function connectSocket(request) {
         .then((buffer) => deliver(new Uint8Array(buffer)))
         .catch((error) => post("warning", { message: `WebSocket blob read failed: ${errorMessage(error)}` }));
     } else {
-      deliver(new TextEncoder().encode(String(event.data)));
+      deliver(bytesFromWebSocketText(event.data));
     }
   });
   ws.addEventListener("error", () => {
