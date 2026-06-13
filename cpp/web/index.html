@@ -192,6 +192,7 @@
       <div class="row">
         <button id="preset-habbo">14.1_b8</button>
         <button id="preset-loader">loader.dcr</button>
+        <button id="preset-beta-client">beta client</button>
         <button id="preset-proxy">proxy</button>
       </div>
       <label class="tempo">
@@ -222,6 +223,18 @@
   <script>
     const habboUrl = "https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr";
     const loaderUrl = "http://localhost/dcr0910/loader.dcr";
+    const betaClientMovieUrl = "https://images.classichabbo.com/dcr/r31_20090312_0433_13751_b40895fb6101dbe96dc7b9d6477eeeb4/habbo.dcr?";
+    const betaClientParams = {
+      "venus.websocket.mode": "ws",
+      "sw1": "client.allow.cross.domain=1;client.notify.cross.domain=0",
+      "sw2": "connection.info.host=verysecret.classichabbo.com;connection.info.port=30100",
+      "sw3": "connection.mus.host=verysecret.classichabbo.com;connection.mus.port=38201",
+      "sw4": "site.url=;url.prefix=",
+      "sw5": "client.reload.url=/client/beta?x=reauthenticate;client.fatal.error.url=/clientutils?key=error",
+      "sw6": "client.connection.failed.url=/clientutils?key=connection_failed;external.variables.txt=https://images.classichabbo.com/gamedata/external_variables.txt?",
+      "sw7": "external.texts.txt=https://images.classichabbo.com/gamedata/external_texts.txt?",
+      "sw8": "use.sso.ticket=1;sso.ticket=SSO_TICKET"
+    };
     const paramsBox = document.getElementById("params");
     const socketProxyBox = document.getElementById("socket-proxy");
     const movieUrl = document.getElementById("movie-url");
@@ -229,6 +242,17 @@
     const frameInfo = document.getElementById("frame-info");
     const sizeInfo = document.getElementById("size-info");
     const tempo = document.getElementById("tempo");
+    const loadButton = document.getElementById("load");
+    const playButton = document.getElementById("play");
+    const pauseButton = document.getElementById("pause");
+    const stopButton = document.getElementById("stop");
+    const playbackButtons = [playButton, pauseButton, stopButton];
+
+    function setPlaybackButtonsEnabled(enabled) {
+      for (const button of playbackButtons) {
+        button.disabled = !enabled;
+      }
+    }
 
     function paramsToText(params) {
       return Object.entries(params).map(([key, value]) => `${key}=${value}`).join("\n");
@@ -287,6 +311,7 @@
     movieUrl.value = searchParams.get("movie") || habboUrl;
     paramsBox.value = paramsToText(LibreShockwaveCppPlayer.defaultHabboParams);
     socketProxyBox.value = initialSocketProxyText(searchParams);
+    setPlaybackButtonsEnabled(false);
     window.__libreShockwaveSocketEvents = [];
     window.__lastLibreShockwaveInfo = null;
 
@@ -300,6 +325,8 @@
       onLoad(info) {
         window.__lastLibreShockwaveInfo = info;
         status.textContent = "Loaded";
+        loadButton.disabled = false;
+        setPlaybackButtonsEnabled(true);
         tempo.value = String(info.tempoOverride || info.baseTempo || info.tempo || 0);
         frameInfo.textContent = `Frame ${info.currentFrame || 0} / ${info.frameCount || 0} · ${info.tempo || 0} fps`;
         sizeInfo.textContent = `${info.width || 0}×${info.height || 0}`;
@@ -319,22 +346,31 @@
       onError(message) {
         status.textContent = message;
         status.classList.add("error");
+        loadButton.disabled = false;
+        setPlaybackButtonsEnabled(false);
       },
       onWarning(message) {
         status.textContent = message;
       }
     });
 
-    document.getElementById("load").addEventListener("click", () => {
+    loadButton.addEventListener("click", () => {
       status.classList.remove("error");
       status.textContent = "Loading";
+      loadButton.disabled = true;
+      setPlaybackButtonsEnabled(false);
       const socketProxy = textToSocketProxy(socketProxyBox.value);
       player.setSocketProxy(socketProxy);
-      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: true });
+      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: false })
+        .then(() => player.play())
+        .catch(() => {
+          loadButton.disabled = false;
+          setPlaybackButtonsEnabled(false);
+        });
     });
-    document.getElementById("play").addEventListener("click", () => player.play());
-    document.getElementById("pause").addEventListener("click", () => player.pause());
-    document.getElementById("stop").addEventListener("click", () => player.stop());
+    playButton.addEventListener("click", () => player.play());
+    pauseButton.addEventListener("click", () => player.pause());
+    stopButton.addEventListener("click", () => player.stop());
     tempo.addEventListener("change", () => player.setTempoOverride(Number(tempo.value || 0)));
     paramsBox.addEventListener("change", () => player.setParams(textToParams(paramsBox.value)));
     socketProxyBox.addEventListener("change", () => player.setSocketProxy(textToSocketProxy(socketProxyBox.value)));
@@ -345,6 +381,10 @@
     document.getElementById("preset-loader").addEventListener("click", () => {
       movieUrl.value = loaderUrl;
       paramsBox.value = "";
+    });
+    document.getElementById("preset-beta-client").addEventListener("click", () => {
+      movieUrl.value = betaClientMovieUrl;
+      paramsBox.value = paramsToText(betaClientParams);
     });
     document.getElementById("preset-proxy").addEventListener("click", () => {
       socketProxyBox.value = socketProxyToText(LibreShockwaveCppPlayer.defaultHabboSocketProxy);
