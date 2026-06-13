@@ -680,7 +680,8 @@ Datum BuiltinRegistry::invoke(std::string_view name,
 std::optional<Datum> BuiltinRegistry::invokeIfPresent(std::string_view name,
                                                       BuiltinContext& context,
                                                       const std::vector<Datum>& args) const {
-    const auto found = builtins_.find(normalizeName(name));
+    const auto normalizedName = normalizeName(name);
+    const auto found = builtins_.find(normalizedName);
     if (found == builtins_.end()) {
         return std::nullopt;
     }
@@ -934,6 +935,12 @@ Datum StringBuiltins::length(BuiltinContext&, const std::vector<Datum>& args) {
     if (args[0].isPropList()) {
         return Datum::of(args[0].propListValue().count());
     }
+    if (const auto* value = args[0].asString()) {
+        return Datum::of(static_cast<int>(value->value.size()));
+    }
+    if (const auto* value = args[0].asFieldText()) {
+        return Datum::of(static_cast<int>(value->value.size()));
+    }
     return Datum::of(static_cast<int>(toStringLikeJava(args[0]).size()));
 }
 
@@ -960,6 +967,21 @@ Datum StringBuiltins::charToNum(BuiltinContext&, const std::vector<Datum>& args)
     if (args.empty()) {
         return Datum::of(0);
     }
+    if (const auto* value = args[0].asString()) {
+        return value->value.empty()
+            ? Datum::of(0)
+            : Datum::of(static_cast<int>(static_cast<unsigned char>(value->value.front())));
+    }
+    if (const auto* value = args[0].asFieldText()) {
+        return value->value.empty()
+            ? Datum::of(0)
+            : Datum::of(static_cast<int>(static_cast<unsigned char>(value->value.front())));
+    }
+    if (const auto* value = args[0].asSymbol()) {
+        return value->name.empty()
+            ? Datum::of(0)
+            : Datum::of(static_cast<int>(static_cast<unsigned char>(value->name.front())));
+    }
     const std::string value = toStringLikeJava(args[0]);
     if (value.empty()) {
         return Datum::of(0);
@@ -971,7 +993,10 @@ Datum StringBuiltins::numToChar(BuiltinContext&, const std::vector<Datum>& args)
     if (args.empty()) {
         return Datum::of(std::string());
     }
-    const char value = static_cast<char>(toIntLikeJava(args[0]));
+    const int numericValue = args[0].asInt() != nullptr
+        ? args[0].asInt()->value
+        : toIntLikeJava(args[0]);
+    const char value = static_cast<char>(numericValue);
     return Datum::of(std::string(1, value));
 }
 

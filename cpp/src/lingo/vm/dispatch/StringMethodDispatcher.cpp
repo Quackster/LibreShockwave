@@ -2,7 +2,6 @@
 
 #include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 
-#include <algorithm>
 #include <charconv>
 #include <cctype>
 #include <optional>
@@ -84,16 +83,6 @@ std::optional<StringChunkType> symbolChunkType(const Datum& datum) {
     }
 }
 
-int resolveEnd(int end, int start, int count) {
-    if (end == 0) {
-        return start;
-    }
-    if (end == -1) {
-        return count;
-    }
-    return end;
-}
-
 std::string getStringChunk(std::string_view value,
                            StringChunkType chunkType,
                            int start,
@@ -102,20 +91,7 @@ std::string getStringChunk(std::string_view value,
     if (value.empty() || start < 1) {
         return "";
     }
-
-    const int count = util::countChunks(value, chunkType, itemDelimiter);
-    const int actualEnd = resolveEnd(end, start, count);
-    if (chunkType == StringChunkType::Char) {
-        const int begin = std::max(0, start - 1);
-        const int finish = std::min(static_cast<int>(value.size()), actualEnd);
-        if (begin >= static_cast<int>(value.size()) || begin >= finish) {
-            return "";
-        }
-        return std::string(value.substr(static_cast<std::size_t>(begin),
-                                        static_cast<std::size_t>(finish - begin)));
-    }
-
-    return util::getChunkRange(value, chunkType, start, actualEnd, itemDelimiter);
+    return util::getChunkRange(value, chunkType, start, end, itemDelimiter);
 }
 
 } // namespace

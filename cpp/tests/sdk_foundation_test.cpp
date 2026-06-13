@@ -1285,6 +1285,12 @@ void testLingoDatumTypes() {
     assert(StringMethodDispatcher::dispatch("alpha beta gamma", "count", {Datum::of(std::string("word"))}).intValue() == 16);
     assert(StringMethodDispatcher::dispatch("one\ntwo", "count", {Datum::symbol("line")}).intValue() == 2);
     assert(StringMethodDispatcher::dispatch("red|green|blue", "count", {Datum::symbol("item")}, '|').intValue() == 3);
+    const std::string largeSingleLine(8192, 'x');
+    assert(StringMethodDispatcher::dispatch(largeSingleLine, "getProp", {Datum::symbol("line"), Datum::of(1)})
+               .stringValue() == largeSingleLine);
+    assert(StringMethodDispatcher::dispatch(largeSingleLine, "getProp", {Datum::symbol("line"), Datum::of(2)})
+               .stringValue()
+               .empty());
     assert(StringMethodDispatcher::dispatch("alpha beta gamma",
                                             "getProp",
                                             {Datum::symbol("word"), Datum::of(2), Datum::of(0)})

@@ -4735,8 +4735,8 @@ bool logicalNot(ExecutionContext& context) {
 }
 
 bool joinStr(ExecutionContext& context) {
-    const Datum b = context.pop();
-    const Datum a = context.pop();
+    Datum b = context.pop();
+    Datum a = context.pop();
     const std::string aString = toStringLikeJava(a);
     const std::string bString = toStringLikeJava(b);
     if (aString.empty()) {
@@ -4747,13 +4747,17 @@ bool joinStr(ExecutionContext& context) {
         context.push(a.asString() != nullptr ? a : Datum::of(aString));
         return true;
     }
-    context.push(Datum::of(aString + bString));
+    std::string result;
+    result.reserve(aString.size() + bString.size());
+    result.append(aString);
+    result.append(bString);
+    context.push(Datum::of(std::move(result)));
     return true;
 }
 
 bool joinPadStr(ExecutionContext& context) {
-    const Datum b = context.pop();
-    const Datum a = context.pop();
+    Datum b = context.pop();
+    Datum a = context.pop();
     const std::string aString = toStringLikeJava(a);
     const std::string bString = toStringLikeJava(b);
     if (aString.empty()) {
@@ -4764,7 +4768,12 @@ bool joinPadStr(ExecutionContext& context) {
         context.push(a.asString() != nullptr ? a : Datum::of(aString));
         return true;
     }
-    context.push(Datum::of(aString + " " + bString));
+    std::string result;
+    result.reserve(aString.size() + 1 + bString.size());
+    result.append(aString);
+    result.push_back(' ');
+    result.append(bString);
+    context.push(Datum::of(std::move(result)));
     return true;
 }
 

@@ -255,29 +255,32 @@ std::string getChunkRange(std::string_view value,
     if (value.empty() || start < 1) {
         return "";
     }
-    const int count = countChunks(value, chunkType, itemDelimiter);
-    if (start > count) {
+    if (end < 0) {
+        end = countChunks(value, chunkType, itemDelimiter);
+    } else if (end == 0) {
+        end = start;
+    }
+    if (end < start) {
         return "";
     }
-    const int actualEnd = std::min(end, count);
-    if (start == actualEnd) {
+    if (start == end) {
         return getChunk(value, chunkType, start, itemDelimiter);
     }
     switch (chunkType) {
         case StringChunkType::Char: {
             const int begin = std::max(0, start - 1);
-            const int finish = std::min(static_cast<int>(value.size()), actualEnd);
+            const int finish = std::min(static_cast<int>(value.size()), end);
             return begin < finish
                 ? std::string(value.substr(static_cast<std::size_t>(begin),
                                            static_cast<std::size_t>(finish - begin)))
                 : "";
         }
         case StringChunkType::Item:
-            return getItemRangeDirect(value, start, actualEnd, itemDelimiter);
+            return getItemRangeDirect(value, start, end, itemDelimiter);
         case StringChunkType::Word:
-            return getWordRangeDirect(value, start, actualEnd);
+            return getWordRangeDirect(value, start, end);
         case StringChunkType::Line:
-            return getLineRangeDirect(value, start, actualEnd);
+            return getLineRangeDirect(value, start, end);
     }
     return "";
 }
