@@ -481,6 +481,14 @@ void processQueuedInput(WasmPlayerContext& ctx) {
     (void)ctx.player->inputHandler().processInputEvents();
 }
 
+void processHostXtraCallbacks(WasmPlayerContext& ctx) {
+    if (ctx.player == nullptr || ctx.player->isVmRunning()) {
+        return;
+    }
+    ctx.player->xtraManager().tickAll();
+    ctx.player->vm().flushDeferredTasks();
+}
+
 const char* scratch(WasmPlayerContext& ctx, std::string value) {
     ctx.scratch = std::move(value);
     return ctx.scratch.c_str();
@@ -942,6 +950,7 @@ EMSCRIPTEN_KEEPALIVE void lsw_multiuser_connected(int handle, int instanceId) {
     if (auto* ctx = getContext(handle); ctx != nullptr && ctx->multiuserBridge != nullptr) {
         guardedVoid(*ctx, "multiuser connected", [&]() {
             ctx->multiuserBridge->notifyConnected(instanceId);
+            processHostXtraCallbacks(*ctx);
         });
     }
 }
@@ -950,6 +959,7 @@ EMSCRIPTEN_KEEPALIVE void lsw_multiuser_disconnected(int handle, int instanceId)
     if (auto* ctx = getContext(handle); ctx != nullptr && ctx->multiuserBridge != nullptr) {
         guardedVoid(*ctx, "multiuser disconnected", [&]() {
             ctx->multiuserBridge->notifyDisconnected(instanceId);
+            processHostXtraCallbacks(*ctx);
         });
     }
 }
@@ -958,6 +968,7 @@ EMSCRIPTEN_KEEPALIVE void lsw_multiuser_error(int handle, int instanceId, int er
     if (auto* ctx = getContext(handle); ctx != nullptr && ctx->multiuserBridge != nullptr) {
         guardedVoid(*ctx, "multiuser error", [&]() {
             ctx->multiuserBridge->notifyError(instanceId, errorCode);
+            processHostXtraCallbacks(*ctx);
         });
     }
 }
@@ -974,6 +985,7 @@ EMSCRIPTEN_KEEPALIVE void lsw_multiuser_message_bytes(int handle,
         ctx->multiuserBridge->deliverMessageBytes(
             instanceId,
             std::vector<std::uint8_t>(bytes, bytes + byteCount));
+        processHostXtraCallbacks(*ctx);
     });
 }
 
