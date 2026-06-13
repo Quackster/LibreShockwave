@@ -33,12 +33,27 @@ bool isLocalHttpUrl(std::string_view value) {
     return startsWith(value, "http://localhost") || startsWith(value, "http://127.0.0.1");
 }
 
-std::string rootRelativeHttpUrl(std::string_view url, std::string_view basePath) {
-    if (!startsWith(url, "/") || !isHttpUrl(basePath)) {
+std::string httpUrlAgainstBase(std::string_view url, std::string_view basePath) {
+    if (isHttpUrl(url) || !isHttpUrl(basePath)) {
         return std::string(url);
     }
-    const auto origin = NetManager::extractOrigin(basePath);
-    return origin.empty() ? std::string(url) : origin + std::string(url);
+    if (startsWith(url, "/")) {
+        const auto origin = NetManager::extractOrigin(basePath);
+        return origin.empty() ? std::string(url) : origin + std::string(url);
+    }
+
+    std::string base(basePath);
+    if (const auto query = base.find('?'); query != std::string::npos) {
+        base = base.substr(0, query);
+    }
+    const auto slash = base.find_last_of('/');
+    if (slash == std::string::npos) {
+        return std::string(url);
+    }
+    if (!base.ends_with('/')) {
+        base = base.substr(0, slash + 1);
+    }
+    return base + std::string(url);
 }
 
 void putProp(lingo::Datum& propList, std::string key, lingo::Datum value) {
@@ -427,7 +442,7 @@ void NetManager::executeTask(NetTask& task, bool useCache) {
             std::string cacheUrl = task.originalUrl();
 
             if (!localHttpRoot_.empty()) {
-                std::string httpUrl = rootRelativeHttpUrl(task.originalUrl(), basePath_);
+                std::string httpUrl = httpUrlAgainstBase(task.originalUrl(), basePath_);
                 if (isLocalHttpUrl(httpUrl)) {
                     cacheUrl = httpUrl;
                     auto urlPath = extractUrlPath(httpUrl);
@@ -456,7 +471,7 @@ void NetManager::executeTask(NetTask& task, bool useCache) {
     const NetTask* requestTask = &task;
     std::optional<NetTask> normalizedRequestTask;
     if (task.method() == NetTaskMethod::Get) {
-        const auto requestUrl = rootRelativeHttpUrl(task.originalUrl(), basePath_);
+        const auto requestUrl = httpUrlAgainstBase(task.originalUrl(), basePath_);
         if (requestUrl != task.originalUrl()) {
             normalizedRequestTask.emplace(task.taskId(),
                                           requestUrl,

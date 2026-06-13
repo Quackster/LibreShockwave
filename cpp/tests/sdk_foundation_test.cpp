@@ -17660,7 +17660,8 @@ void testNetManagerFoundation() {
             assert(task.postData().value() == "a=b");
             return NetManager::LoadResult::success(std::vector<std::uint8_t>{'P', 'O', 'S', 'T'});
         }
-        if (task.originalUrl() == "missing") {
+        if (task.originalUrl() == "http://example.invalid/movie/missing") {
+            assert(task.url() == "missing");
             return NetManager::LoadResult::failure(-7, "bad url");
         }
         if (task.originalUrl() == "http://example.invalid/gamedata/root.txt?cache=1") {
@@ -17668,6 +17669,7 @@ void testNetManagerFoundation() {
             assert(task.url() == "root.txt");
             return NetManager::LoadResult::success(std::vector<std::uint8_t>{'R', 'T'});
         }
+        assert(task.originalUrl() == "http://example.invalid/path/movie.dir?random=1");
         assert(task.method() == NetTaskMethod::Get);
         assert(task.url() == "movie.dir");
         return NetManager::LoadResult::success(std::vector<std::uint8_t>{'O', 'K'});
@@ -17743,6 +17745,8 @@ void testNetManagerFoundation() {
     writeLocalFile(localNetRoot / "priority.cct", {'C', 'C', 'T'});
     writeLocalFile(localNetRoot / "priority.cst", {'C', 'S', 'T'});
     writeLocalFile(localNetRoot / "gamedata" / "vars.txt", {'R', 'O', 'O', 'T'});
+    std::filesystem::create_directories(localNetRoot / "dcr" / "14.1_b8");
+    writeLocalFile(localNetRoot / "dcr" / "14.1_b8" / "hh_human_50_acc_head.cct", {'C', 'A', 'S', 'T'});
     std::filesystem::create_directories(localNetRoot / "External");
     writeLocalFile(localNetRoot / "External" / "External.cst", {'S', 'I', 'D', 'E'});
 
@@ -17784,6 +17788,16 @@ void testNetManagerFoundation() {
     assert(localHttpManager.netDone(localHttpTask));
     assert(localHttpManager.netTextResult(localHttpTask) == "ROOT");
     assert(localHttpManager.getCachedData("vars.txt").value() == std::vector<std::uint8_t>({'R', 'O', 'O', 'T'}));
+
+    NetManager localMovieHttpManager;
+    localMovieHttpManager.setBasePath("http://127.0.0.1/dcr/14.1_b8/habbo.dcr");
+    localMovieHttpManager.setLocalHttpRoot(localNetRoot.string());
+    const int localMovieHttpTask = localMovieHttpManager.preloadNetThing("hh_human_50_acc_head.cst");
+    assert(localMovieHttpManager.netDone(localMovieHttpTask));
+    assert(localMovieHttpManager.netError(localMovieHttpTask) == 0);
+    assert(localMovieHttpManager.netTextResult(localMovieHttpTask) == "CAST");
+    assert(localMovieHttpManager.getCachedData("hh_human_50_acc_head.cst").value() ==
+           std::vector<std::uint8_t>({'C', 'A', 'S', 'T'}));
     std::filesystem::remove_all(localNetRoot);
 
     NetManager noFetcher;
