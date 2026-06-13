@@ -88,6 +88,10 @@
     textarea.compact {
       min-height: 74px;
     }
+    textarea.debug-log {
+      min-height: 132px;
+      white-space: pre-wrap;
+    }
     input:focus, textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(97, 192, 137, .18);
@@ -118,6 +122,31 @@
       padding: 0;
       font-size: 15px;
       font-weight: 700;
+    }
+    button.small {
+      min-height: 28px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    input[type="checkbox"] {
+      width: auto;
+      accent-color: var(--accent);
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .debug-log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
     }
     .stage-wrap {
       min-width: 0;
@@ -207,6 +236,15 @@
         Socket proxies
         <textarea id="socket-proxy" class="compact" spellcheck="false"></textarea>
       </label>
+      <label class="toggle-row">
+        <span>Debug playback</span>
+        <input id="debug-playback" type="checkbox">
+      </label>
+      <div class="debug-log-header">
+        <span>Debug log</span>
+        <button id="clear-debug-log" class="small">Clear</button>
+      </div>
+      <textarea id="debug-log" class="compact debug-log" readonly spellcheck="false"></textarea>
     </section>
     <section class="stage-wrap">
       <div class="stage-bar">
@@ -246,12 +284,39 @@
     const playButton = document.getElementById("play");
     const pauseButton = document.getElementById("pause");
     const stopButton = document.getElementById("stop");
+    const debugPlayback = document.getElementById("debug-playback");
+    const debugLog = document.getElementById("debug-log");
+    const clearDebugLog = document.getElementById("clear-debug-log");
     const playbackButtons = [playButton, pauseButton, stopButton];
 
     function setPlaybackButtonsEnabled(enabled) {
       for (const button of playbackButtons) {
         button.disabled = !enabled;
       }
+    }
+
+    function debugValueToText(value) {
+      if (value instanceof Error) return value.stack || value.message;
+      if (typeof value === "string") return value;
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+
+    function appendDebugLog(level, message) {
+      const text = debugValueToText(message);
+      if (!text) return;
+      const entry = {
+        time: new Date().toISOString(),
+        level: level || "debug",
+        message: text
+      };
+      window.__libreShockwaveDebugLog.push(entry);
+      const line = `[${entry.time}] ${entry.level.toUpperCase()} ${entry.message}`;
+      debugLog.value = debugLog.value ? `${debugLog.value}\n${line}` : line;
+      debugLog.scrollTop = debugLog.scrollHeight;
     }
 
     function paramsToText(params) {
@@ -308,23 +373,38 @@
     }
 
     const searchParams = new URLSearchParams(location.search);
+    let debugPlaybackEnabled = searchParams.get("debugPlayback") === "1";
     movieUrl.value = searchParams.get("movie") || habboUrl;
     paramsBox.value = paramsToText(LibreShockwaveCppPlayer.defaultHabboParams);
     socketProxyBox.value = initialSocketProxyText(searchParams);
+    debugPlayback.checked = debugPlaybackEnabled;
     setPlaybackButtonsEnabled(false);
     window.__libreShockwaveSocketEvents = [];
     window.__lastLibreShockwaveInfo = null;
+    window.__libreShockwaveDebugLog = [];
+    window.debugPlaybackEnabled = debugPlaybackEnabled;
+    window.addEventListener("error", (event) => {
+      appendDebugLog("error", event.error || event.message);
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      appendDebugLog("error", event.reason || "Unhandled promise rejection");
+    });
 
     const player = LibreShockwaveCppPlayer.create("stage", {
       url: movieUrl.value,
       params: textToParams(paramsBox.value),
       autoload: searchParams.get("autoload") === "1",
       autoplay: true,
+      debugPlaybackEnabled,
       socketProxy: textToSocketProxy(socketProxyBox.value),
-      onReady() { status.textContent = "Ready"; },
+      onReady() {
+        status.textContent = "Ready";
+        appendDebugLog("debug", "Player ready");
+      },
       onLoad(info) {
         window.__lastLibreShockwaveInfo = info;
         status.textContent = "Loaded";
+        appendDebugLog("debug", `Loaded ${movieUrl.value}`);
         loadButton.disabled = false;
         setPlaybackButtonsEnabled(true);
         tempo.value = String(info.tempoOverride || info.baseTempo || info.tempo || 0);
@@ -339,6 +419,7 @@
       },
       onSocket(event) {
         window.__libreShockwaveSocketEvents.push(event);
+        appendDebugLog("socket", `${event.phase || "event"} ${event.url || event.host || ""}`);
       },
       onTempo(event) {
         tempo.value = String(event.tempo || 0);
@@ -351,6 +432,9 @@
       },
       onWarning(message) {
         status.textContent = message;
+      },
+      onDebug(event) {
+        appendDebugLog(event.level, event.message);
       }
     });
 
@@ -361,7 +445,7 @@
       setPlaybackButtonsEnabled(false);
       const socketProxy = textToSocketProxy(socketProxyBox.value);
       player.setSocketProxy(socketProxy);
-      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: false })
+      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: false, debugPlaybackEnabled })
         .then(() => player.play())
         .catch(() => {
           loadButton.disabled = false;
@@ -372,6 +456,15 @@
     pauseButton.addEventListener("click", () => player.pause());
     stopButton.addEventListener("click", () => player.stop());
     tempo.addEventListener("change", () => player.setTempoOverride(Number(tempo.value || 0)));
+    debugPlayback.addEventListener("change", () => {
+      debugPlaybackEnabled = debugPlayback.checked;
+      window.debugPlaybackEnabled = debugPlaybackEnabled;
+      player.setDebugPlaybackEnabled(debugPlaybackEnabled);
+      appendDebugLog("debug", `debugPlaybackEnabled=${debugPlaybackEnabled}`);
+    });
+    clearDebugLog.addEventListener("click", () => {
+      debugLog.value = "";
+    });
     paramsBox.addEventListener("change", () => player.setParams(textToParams(paramsBox.value)));
     socketProxyBox.addEventListener("change", () => player.setSocketProxy(textToSocketProxy(socketProxyBox.value)));
     document.getElementById("preset-habbo").addEventListener("click", () => {

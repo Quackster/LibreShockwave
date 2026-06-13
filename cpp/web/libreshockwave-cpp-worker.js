@@ -11,6 +11,7 @@ let nextTickAt = 0;
 let movieUrl = "";
 let paramsText = "";
 let tempoOverride = 0;
+let debugPlaybackEnabled = false;
 let socketProxy = [];
 let websocketPath = "";
 let websocketSsl = null;
@@ -27,22 +28,34 @@ function errorMessage(error) {
   return String(error);
 }
 
+function errorDetails(error) {
+  if (!error) return "unknown error";
+  if (error.stack) return error.stack;
+  return errorMessage(error);
+}
+
+function postDebug(level, message) {
+  if (message) post("debug", { level, message });
+}
+
 function bridgeCall(name, callback, fallback) {
   try {
     return callback();
   } catch (error) {
-    post("warning", { message: `${name}: ${errorMessage(error)}` });
+    const message = `${name}: ${errorMessage(error)}`;
+    post("warning", { message });
+    postDebug("warning", `${name}: ${errorDetails(error)}`);
     return fallback;
   }
 }
 
 self.addEventListener("error", (event) => {
-  post("error", { message: errorMessage(event.error || event.message) });
+  post("error", { message: errorMessage(event.error || event.message), detail: errorDetails(event.error || event.message) });
   event.preventDefault();
 });
 
 self.addEventListener("unhandledrejection", (event) => {
-  post("error", { message: errorMessage(event.reason) });
+  post("error", { message: errorMessage(event.reason), detail: errorDetails(event.reason) });
   event.preventDefault();
 });
 
@@ -61,6 +74,7 @@ function ensureModule() {
       loadMovie: Module.cwrap("lsw_load_movie", "number", ["number", "string", "number", "number", "string"]),
       setParams: Module.cwrap("lsw_set_external_params", null, ["number", "string"]),
       setPreloadCasts: Module.cwrap("lsw_set_preload_casts", null, ["number", "number"]),
+      setDebugPlayback: Module.cwrap("lsw_set_debug_playback_enabled", null, ["number", "number"]),
       setTempoOverride: Module.cwrap("lsw_set_tempo_override", null, ["number", "number"]),
       tempo: Module.cwrap("lsw_tempo", "number", ["number"]),
       baseTempo: Module.cwrap("lsw_base_tempo", "number", ["number"]),
@@ -73,6 +87,8 @@ function ensureModule() {
       frameByteLength: Module.cwrap("lsw_frame_byte_length", "number", ["number"]),
       frameInfoJson: Module.cwrap("lsw_frame_info_json", "string", ["number"]),
       lastError: Module.cwrap("lsw_last_error", "string", ["number"]),
+      pollDebugMessages: Module.cwrap("lsw_poll_debug_messages", "string", ["number"]),
+      drainDebugMessages: Module.cwrap("lsw_drain_debug_messages", null, ["number"]),
       pollFetches: Module.cwrap("lsw_poll_fetch_requests", "string", ["number"]),
       drainFetches: Module.cwrap("lsw_drain_fetch_requests", null, ["number"]),
       pollMovieNavigations: Module.cwrap("lsw_poll_movie_navigation_requests", "string", ["number"]),
@@ -121,6 +137,21 @@ function parseJsonArray(text) {
   } catch (error) {
     post("warning", { message: `Bad bridge JSON: ${error.message}` });
     return [];
+  }
+}
+
+function emitDebugMessages() {
+  if (!handle || !api || !api.pollDebugMessages) return;
+  const messages = parseJsonArray(bridgeCall("poll debug messages", () => api.pollDebugMessages(handle), "[]"));
+  if (messages.length > 0) {
+    bridgeCall("drain debug messages", () => api.drainDebugMessages(handle));
+    for (const entry of messages) {
+      if (entry && typeof entry === "object") {
+        postDebug(entry.level || "debug", entry.message || "");
+      } else if (entry) {
+        postDebug("debug", String(entry));
+      }
+    }
   }
 }
 
@@ -384,12 +415,22 @@ function scheduleTick() {
         nextTickAt = performance.now();
       }
       bridgeCall("play", () => api.play(handle));
-      bridgeCall("tick", () => api.tick(handle), 0);
+      const tickResult = bridgeCall("tick", () => api.tick(handle), 0);
+      emitDebugMessages();
+      if (!tickResult) {
+        const message = bridgeCall("last error", () => api.lastError(handle), "");
+        playing = false;
+        if (message) {
+          post("error", { message, detail: message });
+        }
+        return;
+      }
       await pumpHostQueues();
+      emitDebugMessages();
       sendFrame();
     } catch (error) {
       playing = false;
-      post("error", { message: errorMessage(error) });
+      post("error", { message: errorMessage(error), detail: errorDetails(error) });
     }
     scheduleTick();
   }, Math.max(0, Math.round(nextTickAt - now)));
@@ -434,13 +475,17 @@ async function loadMovie(url, keepPlaying = false, requestId = 0) {
     const bytes = await fetchBytes(movieUrl);
     tempoOverride = 0;
     bridgeCall("clear tempo override before load", () => api.setTempoOverride(handle, 0));
+    bridgeCall("set debug playback before load", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
     const ok = withBytes(bytes, (ptr, length) => bridgeCall("load movie", () => api.loadMovie(handle, movieUrl, ptr, length, paramsText), 0));
+    emitDebugMessages();
     if (!ok) {
       throw new Error(bridgeCall("last error", () => api.lastError(handle), "") || "load failed");
     }
     await pumpHostQueues();
+    emitDebugMessages();
     applyDetectedTempoOverride();
     bridgeCall("render", () => api.render(handle), 0);
+    emitDebugMessages();
     sendFrame();
     playing = wasPlaying;
     if (playing) bridgeCall("play", () => api.play(handle));
@@ -451,7 +496,9 @@ async function loadMovie(url, keepPlaying = false, requestId = 0) {
     });
     scheduleTick();
   } catch (error) {
-    post("error", { message: error.message || String(error), requestId });
+    post("error", { message: error.message || String(error), detail: errorDetails(error), requestId });
+  } finally {
+    emitDebugMessages();
   }
 }
 
@@ -462,9 +509,12 @@ async function init(message) {
   websocketSsl = typeof message.websocketSsl === "boolean" ? message.websocketSsl : null;
   paramsText = paramsObjectToText(message.params);
   tempoOverride = Number(message.tempoOverride || 0);
+  debugPlaybackEnabled = Boolean(message.debugPlaybackEnabled);
   bridgeCall("set params", () => api.setParams(handle, paramsText));
   bridgeCall("set tempo override", () => api.setTempoOverride(handle, tempoOverride));
   bridgeCall("set preload casts", () => api.setPreloadCasts(handle, message.preloadCasts === false ? 0 : 1));
+  bridgeCall("set debug playback", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
+  emitDebugMessages();
   if (message.autoload && message.url) {
     playing = message.autoplay !== false;
     await loadMovie(message.url, playing);
@@ -483,8 +533,13 @@ self.addEventListener("message", (event) => {
         if (Array.isArray(message.socketProxy)) {
           socketProxy = message.socketProxy;
         }
+        if (typeof message.debugPlaybackEnabled === "boolean") {
+          debugPlaybackEnabled = message.debugPlaybackEnabled;
+        }
         paramsText = paramsObjectToText(message.params ?? paramsText);
         bridgeCall("set params", () => api.setParams(handle, paramsText));
+        bridgeCall("set debug playback", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
+        emitDebugMessages();
         playing = message.autoplay !== false;
         await loadMovie(message.url, playing, message.requestId || 0);
         break;
@@ -512,6 +567,11 @@ self.addEventListener("message", (event) => {
         nextTickAt = performance.now() + currentDelayMs();
         scheduleTick();
         sendFrame();
+        break;
+      case "debugPlayback":
+        debugPlaybackEnabled = Boolean(message.enabled);
+        bridgeCall("set debug playback", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
+        emitDebugMessages();
         break;
       case "params":
         paramsText = paramsObjectToText(message.params);
@@ -576,5 +636,5 @@ self.addEventListener("message", (event) => {
       default:
         break;
     }
-  })().catch((error) => post("error", { message: errorMessage(error) }));
+  })().catch((error) => post("error", { message: errorMessage(error), detail: errorDetails(error) }));
 });

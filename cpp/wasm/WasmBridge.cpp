@@ -61,6 +61,8 @@ struct WasmPlayerContext {
     std::string lastError;
     std::string lastStatus;
     std::string scratch;
+    bool debugPlaybackEnabled{false};
+    std::vector<std::pair<std::string, std::string>> debugMessages;
 };
 
 std::unordered_map<int, std::unique_ptr<WasmPlayerContext>> contexts;
@@ -156,6 +158,36 @@ std::string jsonEscape(std::string_view value) {
 
 void appendJsonString(std::ostringstream& out, std::string_view value) {
     out << '"' << jsonEscape(value) << '"';
+}
+
+void queueDebugMessage(WasmPlayerContext& ctx, std::string level, std::string message) {
+    if (message.empty()) {
+        return;
+    }
+    constexpr std::size_t kMaxDebugMessages = 500;
+    if (ctx.debugMessages.size() >= kMaxDebugMessages) {
+        ctx.debugMessages.erase(ctx.debugMessages.begin());
+    }
+    ctx.debugMessages.emplace_back(std::move(level), std::move(message));
+}
+
+std::string debugMessagesJson(const WasmPlayerContext& ctx) {
+    std::ostringstream out;
+    out << '[';
+    bool first = true;
+    for (const auto& [level, message] : ctx.debugMessages) {
+        if (!first) {
+            out << ',';
+        }
+        first = false;
+        out << "{\"level\":";
+        appendJsonString(out, level);
+        out << ",\"message\":";
+        appendJsonString(out, message);
+        out << '}';
+    }
+    out << ']';
+    return out.str();
 }
 
 std::string base64Encode(const std::uint8_t* bytes, std::size_t length) {
@@ -307,6 +339,7 @@ void applyTempo(WasmPlayerContext& ctx) {
 void setError(WasmPlayerContext& ctx, std::string message) {
     ctx.lastError = std::move(message);
     ctx.lastStatus = ctx.lastError;
+    queueDebugMessage(ctx, "error", ctx.lastError);
 }
 
 void clearError(WasmPlayerContext& ctx) {
@@ -570,6 +603,11 @@ EMSCRIPTEN_KEEPALIVE int lsw_load_movie(int handle,
         auto player = std::make_unique<Player>(file, netProvider.get());
         player->registerMultiuserXtra(*multiuserBridge);
         player->setExternalParams(ctx->externalParams);
+        player->builtinContext().outputHandler = [ctx](std::string_view kind, const std::string& text) {
+            if (ctx != nullptr) {
+                queueDebugMessage(*ctx, std::string(kind), text);
+            }
+        };
         player->setErrorListener([ctx](std::string_view message, std::string_view detail) {
             std::string error(message);
             if (!detail.empty()) {
@@ -598,6 +636,7 @@ EMSCRIPTEN_KEEPALIVE int lsw_load_movie(int handle,
         ctx->netProvider = std::move(netProvider);
         ctx->multiuserBridge = std::move(multiuserBridge);
         ctx->player = std::move(player);
+        ctx->player->setDebugEnabled(ctx->debugPlaybackEnabled);
         applyTempo(*ctx);
 
         if (ctx->preloadCasts) {
@@ -632,6 +671,17 @@ EMSCRIPTEN_KEEPALIVE void lsw_set_external_params(int handle, const char* params
 EMSCRIPTEN_KEEPALIVE void lsw_set_preload_casts(int handle, int preloadCasts) {
     if (auto* ctx = getContext(handle)) {
         ctx->preloadCasts = preloadCasts != 0;
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE void lsw_set_debug_playback_enabled(int handle, int enabled) {
+    if (auto* ctx = getContext(handle)) {
+        ctx->debugPlaybackEnabled = enabled != 0;
+        if (ctx->player != nullptr) {
+            guardedVoid(*ctx, "set debug playback", [&]() {
+                ctx->player->setDebugEnabled(ctx->debugPlaybackEnabled);
+            });
+        }
     }
 }
 
@@ -696,6 +746,7 @@ EMSCRIPTEN_KEEPALIVE int lsw_tick(int handle) {
         return 0;
     }
     try {
+        clearError(*ctx);
         const bool keepGoing = ctx->player->tick();
         (void)renderCurrentFrame(*ctx);
         return keepGoing ? 1 : 0;
@@ -780,6 +831,17 @@ EMSCRIPTEN_KEEPALIVE const char* lsw_frame_info_json(int handle) {
 EMSCRIPTEN_KEEPALIVE const char* lsw_last_error(int handle) {
     auto* ctx = getContext(handle);
     return ctx == nullptr ? "" : ctx->lastError.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE const char* lsw_poll_debug_messages(int handle) {
+    auto* ctx = getContext(handle);
+    return ctx == nullptr ? "[]" : scratch(*ctx, debugMessagesJson(*ctx));
+}
+
+EMSCRIPTEN_KEEPALIVE void lsw_drain_debug_messages(int handle) {
+    if (auto* ctx = getContext(handle)) {
+        ctx->debugMessages.clear();
+    }
 }
 
 EMSCRIPTEN_KEEPALIVE const char* lsw_poll_fetch_requests(int handle) {

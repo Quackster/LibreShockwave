@@ -156,6 +156,7 @@
         }
       } else if (message.type === "error") {
         if (typeof options.onError === "function") options.onError(message.message);
+        if (typeof options.onDebug === "function") options.onDebug({ level: "error", message: message.detail || message.message || "unknown error" });
         const resolve = callbacks.get(message.requestId);
         if (resolve) {
           callbacks.delete(message.requestId);
@@ -171,8 +172,11 @@
         options.onSocket(message);
       } else if (message.type === "tempo" && typeof options.onTempo === "function") {
         options.onTempo(message);
-      } else if (message.type === "warning" && typeof options.onWarning === "function") {
-        options.onWarning(message.message);
+      } else if (message.type === "debug" && typeof options.onDebug === "function") {
+        options.onDebug({ level: message.level || "debug", message: message.message || "" });
+      } else if (message.type === "warning") {
+        if (typeof options.onWarning === "function") options.onWarning(message.message);
+        if (typeof options.onDebug === "function") options.onDebug({ level: "warning", message: message.message || "" });
       } else if (message.type === "ready" && typeof options.onReady === "function") {
         options.onReady();
       }
@@ -249,6 +253,7 @@
       params: options.params || {},
       tempoOverride: options.tempoOverride || 0,
       preloadCasts: options.preloadCasts !== false,
+      debugPlaybackEnabled: Boolean(options.debugPlaybackEnabled),
       socketProxy: options.socketProxy || [],
       websocketPath: options.websocketPath || "",
       websocketSsl: typeof options.websocketSsl === "boolean" ? options.websocketSsl : null
@@ -260,6 +265,9 @@
           url,
           params: loadOptions.params || options.params || {},
           autoplay: loadOptions.autoplay !== false,
+          debugPlaybackEnabled: typeof loadOptions.debugPlaybackEnabled === "boolean"
+            ? loadOptions.debugPlaybackEnabled
+            : Boolean(options.debugPlaybackEnabled),
           socketProxy: loadOptions.socketProxy || options.socketProxy || []
         });
       },
@@ -267,6 +275,7 @@
       pause() { send("pause"); },
       stop() { send("stop"); },
       setTempoOverride(tempo) { send("tempo", { tempo: Number(tempo || 0) }); },
+      setDebugPlaybackEnabled(enabled) { send("debugPlayback", { enabled: Boolean(enabled) }); },
       setParams(params) { send("params", { params }); },
       setSocketProxy(socketProxy, socketOptions = {}) {
         send("socketProxy", {
