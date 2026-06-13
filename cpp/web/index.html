@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LibreShockwave C++ Player</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141514;
+      --panel: #20231f;
+      --panel-2: #2a2f2a;
+      --line: #3b433c;
+      --text: #f2f4ef;
+      --muted: #aeb8aa;
+      --accent: #61c089;
+      --danger: #e07171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    h1 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin: 0;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    .status {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 0;
+    }
+    input, textarea, button {
+      font: inherit;
+    }
+    input, textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #111310;
+      color: var(--text);
+      padding: 8px 9px;
+      outline: none;
+    }
+    textarea {
+      min-height: 192px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre;
+      overflow: auto;
+    }
+    textarea.compact {
+      min-height: 74px;
+    }
+    input:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(97, 192, 137, .18);
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .row > * { min-width: 0; }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      min-height: 34px;
+    }
+    button:hover { border-color: #657065; }
+    button.primary {
+      background: #25633d;
+      border-color: #3d8156;
+    }
+    button.icon {
+      width: 36px;
+      padding: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .stage-wrap {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: #0b0c0b;
+    }
+    .stage-bar {
+      height: 38px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: #181a17;
+      min-width: 0;
+    }
+    .stage-info {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .stage-box {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: 16px;
+    }
+    canvas {
+      image-rendering: pixelated;
+      background: #000;
+      max-width: 100%;
+      max-height: calc(100vh - 72px);
+      outline: none;
+      box-shadow: 0 0 0 1px #000, 0 8px 30px rgba(0,0,0,.38);
+    }
+    .tempo {
+      display: grid;
+      grid-template-columns: auto minmax(80px, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+    .error { color: var(--danger); }
+    @media (max-width: 820px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(60vh, 1fr); }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+      textarea { min-height: 120px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="sidebar">
+      <div class="brand">
+        <h1>LibreShockwave</h1>
+        <span class="status" id="status">Idle</span>
+      </div>
+      <label>
+        Movie URL
+        <input id="movie-url" spellcheck="false">
+      </label>
+      <div class="row">
+        <button id="load" class="primary">Load</button>
+        <button id="play" class="icon" title="Play">▶</button>
+        <button id="pause" class="icon" title="Pause">Ⅱ</button>
+        <button id="stop" class="icon" title="Stop">■</button>
+      </div>
+      <div class="row">
+        <button id="preset-habbo">14.1_b8</button>
+        <button id="preset-loader">loader.dcr</button>
+        <button id="preset-proxy">proxy</button>
+      </div>
+      <label class="tempo">
+        <span>Tempo override</span>
+        <input id="tempo" type="number" min="0" max="240" step="1" value="0">
+      </label>
+      <label>
+        External parameters
+        <textarea id="params" spellcheck="false"></textarea>
+      </label>
+      <label>
+        Socket proxies
+        <textarea id="socket-proxy" class="compact" spellcheck="false"></textarea>
+      </label>
+    </section>
+    <section class="stage-wrap">
+      <div class="stage-bar">
+        <div class="stage-info" id="frame-info">No movie</div>
+        <div id="size-info"></div>
+      </div>
+      <div class="stage-box">
+        <canvas id="stage" width="640" height="480"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script src="libreshockwave-cpp-player.js"></script>
+  <script>
+    const habboUrl = "https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr";
+    const loaderUrl = "http://localhost/dcr0910/loader.dcr";
+    const paramsBox = document.getElementById("params");
+    const socketProxyBox = document.getElementById("socket-proxy");
+    const movieUrl = document.getElementById("movie-url");
+    const status = document.getElementById("status");
+    const frameInfo = document.getElementById("frame-info");
+    const sizeInfo = document.getElementById("size-info");
+    const tempo = document.getElementById("tempo");
+
+    function paramsToText(params) {
+      return Object.entries(params).map(([key, value]) => `${key}=${value}`).join("\n");
+    }
+
+    function textToParams(text) {
+      const params = {};
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const index = trimmed.indexOf("=");
+        if (index <= 0) continue;
+        params[trimmed.slice(0, index).trim()] = trimmed.slice(index + 1).trim();
+      }
+      return params;
+    }
+
+    function socketProxyToText(proxies) {
+      return (proxies || []).map((entry) => `${entry.host}:${entry.port}=${entry.proxyUrl}`).join("\n");
+    }
+
+    function textToSocketProxy(text) {
+      const proxies = [];
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const equals = trimmed.indexOf("=");
+        const target = equals >= 0 ? trimmed.slice(0, equals).trim() : "";
+        const proxyUrl = equals >= 0 ? trimmed.slice(equals + 1).trim() : "";
+        const colon = target.lastIndexOf(":");
+        if (colon <= 0 || !proxyUrl) continue;
+        const port = Number(target.slice(colon + 1));
+        if (!Number.isFinite(port) || port <= 0) continue;
+        proxies.push({ host: target.slice(0, colon), port, proxyUrl });
+      }
+      return proxies;
+    }
+
+    function initialSocketProxyText(searchParams) {
+      const queryValue = searchParams.get("socketProxy");
+      if (queryValue) {
+        try {
+          const parsed = JSON.parse(queryValue);
+          if (Array.isArray(parsed)) return socketProxyToText(parsed);
+        } catch {
+          return queryValue;
+        }
+      }
+      if (searchParams.get("proxy") === "habbo") {
+        return socketProxyToText(LibreShockwaveCppPlayer.defaultHabboSocketProxy);
+      }
+      return "";
+    }
+
+    const searchParams = new URLSearchParams(location.search);
+    movieUrl.value = searchParams.get("movie") || habboUrl;
+    paramsBox.value = paramsToText(LibreShockwaveCppPlayer.defaultHabboParams);
+    socketProxyBox.value = initialSocketProxyText(searchParams);
+    window.__libreShockwaveSocketEvents = [];
+    window.__lastLibreShockwaveInfo = null;
+
+    const player = LibreShockwaveCppPlayer.create("stage", {
+      url: movieUrl.value,
+      params: textToParams(paramsBox.value),
+      autoload: searchParams.get("autoload") === "1",
+      autoplay: true,
+      socketProxy: textToSocketProxy(socketProxyBox.value),
+      onReady() { status.textContent = "Ready"; },
+      onLoad(info) {
+        window.__lastLibreShockwaveInfo = info;
+        status.textContent = "Loaded";
+        tempo.value = String(info.tempoOverride || info.baseTempo || info.tempo || 0);
+        frameInfo.textContent = `Frame ${info.currentFrame || 0} / ${info.frameCount || 0} · ${info.tempo || 0} fps`;
+        sizeInfo.textContent = `${info.width || 0}×${info.height || 0}`;
+      },
+      onFrame(info) {
+        window.__lastLibreShockwaveInfo = info;
+        frameInfo.textContent = `Frame ${info.currentFrame || 0} / ${info.frameCount || 0} · ${info.tempo || 0} fps`;
+        sizeInfo.textContent = `${info.width || 0}×${info.height || 0}`;
+        if (info.error) status.textContent = info.error;
+      },
+      onSocket(event) {
+        window.__libreShockwaveSocketEvents.push(event);
+      },
+      onTempo(event) {
+        tempo.value = String(event.tempo || 0);
+      },
+      onError(message) {
+        status.textContent = message;
+        status.classList.add("error");
+      },
+      onWarning(message) {
+        status.textContent = message;
+      }
+    });
+
+    document.getElementById("load").addEventListener("click", () => {
+      status.classList.remove("error");
+      status.textContent = "Loading";
+      const socketProxy = textToSocketProxy(socketProxyBox.value);
+      player.setSocketProxy(socketProxy);
+      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: true });
+    });
+    document.getElementById("play").addEventListener("click", () => player.play());
+    document.getElementById("pause").addEventListener("click", () => player.pause());
+    document.getElementById("stop").addEventListener("click", () => player.stop());
+    tempo.addEventListener("change", () => player.setTempoOverride(Number(tempo.value || 0)));
+    paramsBox.addEventListener("change", () => player.setParams(textToParams(paramsBox.value)));
+    socketProxyBox.addEventListener("change", () => player.setSocketProxy(textToSocketProxy(socketProxyBox.value)));
+    document.getElementById("preset-habbo").addEventListener("click", () => {
+      movieUrl.value = habboUrl;
+      paramsBox.value = paramsToText(LibreShockwaveCppPlayer.defaultHabboParams);
+    });
+    document.getElementById("preset-loader").addEventListener("click", () => {
+      movieUrl.value = loaderUrl;
+      paramsBox.value = "";
+    });
+    document.getElementById("preset-proxy").addEventListener("click", () => {
+      socketProxyBox.value = socketProxyToText(LibreShockwaveCppPlayer.defaultHabboSocketProxy);
+      player.setSocketProxy(textToSocketProxy(socketProxyBox.value));
+    });
+  </script>
+</body>
+</html>

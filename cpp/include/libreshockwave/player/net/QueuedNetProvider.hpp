@@ -49,12 +49,14 @@ public:
     [[nodiscard]] int lastTaskId() const;
     [[nodiscard]] int pendingRequestCount() const;
     [[nodiscard]] int pendingMovieNavigationTaskCount() const;
+    [[nodiscard]] std::vector<PendingRequest> pendingMovieNavigationRequests() const;
     [[nodiscard]] bool latestTaskDone() const;
     [[nodiscard]] const std::vector<PendingRequest>& pendingRequests() const;
     [[nodiscard]] const PendingRequest* getRequest(int index) const;
     void drainPendingRequests();
 
     void onFetchComplete(int taskId, std::vector<std::uint8_t> data);
+    void onMovieNavigationComplete(int taskId);
     void onFetchStatusComplete(int taskId, int byteCount);
     void onFetchError(int taskId, int status);
 

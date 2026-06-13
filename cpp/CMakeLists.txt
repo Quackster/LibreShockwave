@@ -207,6 +207,13 @@ add_executable(libreshockwave_render_probe
 target_link_libraries(libreshockwave_render_probe PRIVATE LibreShockwave::libreshockwave)
 target_compile_features(libreshockwave_render_probe PRIVATE cxx_std_20)
 
+add_executable(libreshockwave_wasm_bridge_probe
+    wasm/WasmBridge.cpp
+    tools/WasmBridgeProbe.cpp
+)
+target_link_libraries(libreshockwave_wasm_bridge_probe PRIVATE LibreShockwave::libreshockwave)
+target_compile_features(libreshockwave_wasm_bridge_probe PRIVATE cxx_std_20)
+
 find_package(Threads REQUIRED)
 target_link_libraries(libreshockwave PUBLIC Threads::Threads)
 
@@ -243,4 +250,90 @@ if(BUILD_TESTING)
     )
     target_link_libraries(libreshockwave_tests PRIVATE LibreShockwave::libreshockwave)
     add_test(NAME libreshockwave_cpp_tests COMMAND libreshockwave_tests)
+    add_test(NAME libreshockwave_wasm_bridge_probe COMMAND libreshockwave_wasm_bridge_probe)
+endif()
+
+if(EMSCRIPTEN)
+    target_compile_options(libreshockwave PUBLIC -fexceptions)
+
+    set(LIBRESHOCKWAVE_WASM_DIST_DIR "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist")
+    set(LIBRESHOCKWAVE_WASM_EXPORTS
+        "_malloc"
+        "_free"
+        "_lsw_create"
+        "_lsw_destroy"
+        "_lsw_load_movie"
+        "_lsw_set_external_params"
+        "_lsw_set_preload_casts"
+        "_lsw_set_tempo_override"
+        "_lsw_tempo"
+        "_lsw_base_tempo"
+        "_lsw_play"
+        "_lsw_pause"
+        "_lsw_stop"
+        "_lsw_tick"
+        "_lsw_render_frame"
+        "_lsw_frame_pixels"
+        "_lsw_frame_byte_length"
+        "_lsw_frame_width"
+        "_lsw_frame_height"
+        "_lsw_frame_info_json"
+        "_lsw_last_error"
+        "_lsw_poll_fetch_requests"
+        "_lsw_drain_fetch_requests"
+        "_lsw_poll_movie_navigation_requests"
+        "_lsw_movie_navigation_complete"
+        "_lsw_fetch_complete"
+        "_lsw_fetch_error"
+        "_lsw_poll_multiuser_requests"
+        "_lsw_drain_multiuser_requests"
+        "_lsw_multiuser_connected"
+        "_lsw_multiuser_disconnected"
+        "_lsw_multiuser_error"
+        "_lsw_multiuser_message_bytes"
+        "_lsw_director_key_from_browser"
+        "_lsw_mouse_move"
+        "_lsw_mouse_down"
+        "_lsw_mouse_up"
+        "_lsw_blur"
+        "_lsw_key_down"
+        "_lsw_key_up"
+        "_lsw_paste_text"
+        "_lsw_selected_text"
+        "_lsw_select_all"
+        "_lsw_cut_selected_text"
+    )
+    string(REPLACE ";" "','" LIBRESHOCKWAVE_WASM_EXPORTS_JOINED "${LIBRESHOCKWAVE_WASM_EXPORTS}")
+    set(LIBRESHOCKWAVE_WASM_EXPORTS_FLAG "['${LIBRESHOCKWAVE_WASM_EXPORTS_JOINED}']")
+
+    add_executable(libreshockwave_cpp_wasm
+        wasm/WasmBridge.cpp
+    )
+    target_link_libraries(libreshockwave_cpp_wasm PRIVATE LibreShockwave::libreshockwave)
+    target_compile_features(libreshockwave_cpp_wasm PRIVATE cxx_std_20)
+    target_compile_options(libreshockwave_cpp_wasm PRIVATE -fexceptions)
+    target_link_options(libreshockwave_cpp_wasm PRIVATE
+        "SHELL:-fexceptions"
+        "SHELL:-s MODULARIZE=1"
+        "SHELL:-s EXPORT_NAME=createLibreShockwaveCppWasm"
+        "SHELL:-s ENVIRONMENT=worker"
+        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+        "SHELL:-s EXIT_RUNTIME=0"
+        "SHELL:-s NO_DISABLE_EXCEPTION_CATCHING=1"
+        "SHELL:-s EXPORTED_FUNCTIONS=${LIBRESHOCKWAVE_WASM_EXPORTS_FLAG}"
+        "SHELL:-s EXPORTED_RUNTIME_METHODS=['cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','HEAPU8']"
+    )
+    set_target_properties(libreshockwave_cpp_wasm PROPERTIES
+        OUTPUT_NAME "libreshockwave-cpp-wasm"
+        RUNTIME_OUTPUT_DIRECTORY "${LIBRESHOCKWAVE_WASM_DIST_DIR}"
+    )
+
+    add_custom_target(libreshockwave_cpp_wasm_dist
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${LIBRESHOCKWAVE_WASM_DIST_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/web"
+                "${LIBRESHOCKWAVE_WASM_DIST_DIR}"
+        DEPENDS libreshockwave_cpp_wasm
+        VERBATIM
+    )
 endif()

@@ -255,6 +255,17 @@ int QueuedNetProvider::pendingMovieNavigationTaskCount() const {
     return static_cast<int>(pendingMovieNavigationTasks_.size());
 }
 
+std::vector<QueuedNetProvider::PendingRequest> QueuedNetProvider::pendingMovieNavigationRequests() const {
+    std::vector<PendingRequest> requests;
+    requests.reserve(pendingMovieNavigationTasks_.size());
+    for (const int taskId : pendingMovieNavigationTasks_) {
+        if (const auto* task = getTask(taskId)) {
+            requests.push_back(PendingRequest{taskId, task->url, "GET", std::nullopt, task->fallbackUrls});
+        }
+    }
+    return requests;
+}
+
 bool QueuedNetProvider::latestTaskDone() const {
     const auto* task = getTask(std::nullopt);
     return task != nullptr && task->done;
@@ -292,6 +303,20 @@ void QueuedNetProvider::onFetchComplete(int taskId, std::vector<std::uint8_t> da
             fetchCompleteCallback_(task->url, *task->data);
         }
     }
+}
+
+void QueuedNetProvider::onMovieNavigationComplete(int taskId) {
+    auto* task = getTask(taskId);
+    if (task == nullptr) {
+        return;
+    }
+    task->done = true;
+    task->errorCode = 0;
+
+    const auto removeIt = std::remove(pendingMovieNavigationTasks_.begin(),
+                                      pendingMovieNavigationTasks_.end(),
+                                      taskId);
+    pendingMovieNavigationTasks_.erase(removeIt, pendingMovieNavigationTasks_.end());
 }
 
 void QueuedNetProvider::onFetchStatusComplete(int taskId, int byteCount) {

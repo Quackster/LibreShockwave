@@ -10,6 +10,7 @@ INSTALL_DEPS=0
 PRINT_DEPS=0
 RUN_TESTS=1
 CLEAN=0
+WASM=0
 JOBS=""
 TARGETS=()
 EXTRA_CMAKE_ARGS=()
@@ -25,6 +26,7 @@ Options:
   --install-deps         Install native build dependencies for this Linux distro.
   --release              Use Release build type.
   --debug                Use Debug build type. This is the default.
+  --wasm                 Build the browser/WASM player with Emscripten.
   --build-dir DIR        Use a custom CMake build directory.
   --generator NAME       Pass a CMake generator, for example "Ninja".
   --jobs N               Pass a parallel job count to cmake --build.
@@ -35,6 +37,7 @@ Options:
 
 Examples:
   ./build.sh
+  ./build.sh --wasm --release
   ./build.sh --release --generator Ninja
   ./build.sh --deps
   ./build.sh --install-deps
@@ -182,6 +185,11 @@ while [[ $# -gt 0 ]]; do
             BUILD_TYPE="Debug"
             shift
             ;;
+        --wasm)
+            WASM=1
+            RUN_TESTS=0
+            shift
+            ;;
         --build-dir)
             BUILD_DIR="${2:?--build-dir requires a value}"
             shift 2
@@ -250,21 +258,38 @@ if [[ "${INSTALL_DEPS}" -eq 1 ]]; then
 fi
 
 require_command cmake "Install CMake 3.20 or newer."
+if [[ "${WASM}" -eq 1 ]]; then
+    require_command emcmake "Install and activate Emscripten, then retry."
+    require_command emcc "Install and activate Emscripten, then retry."
+fi
 
-BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/cmake-build-$(lower_build_type)}"
+if [[ "${WASM}" -eq 1 ]]; then
+    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/cmake-build-wasm}"
+else
+    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/cmake-build-$(lower_build_type)}"
+fi
 if [[ "${#TARGETS[@]}" -eq 0 ]]; then
-    TARGETS=(
-        libreshockwave_tests
-        libreshockwave_probe
-        libreshockwave_render_probe
-    )
+    if [[ "${WASM}" -eq 1 ]]; then
+        TARGETS=(libreshockwave_cpp_wasm_dist)
+    else
+        TARGETS=(
+            libreshockwave_tests
+            libreshockwave_probe
+            libreshockwave_render_probe
+            libreshockwave_wasm_bridge_probe
+        )
+    fi
 fi
 
 if [[ "${CLEAN}" -eq 1 ]]; then
     rm -rf "${BUILD_DIR}"
 fi
 
-configure_cmd=(cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}")
+if [[ "${WASM}" -eq 1 ]]; then
+    configure_cmd=(emcmake cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}")
+else
+    configure_cmd=(cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}")
+fi
 if [[ -n "${GENERATOR}" ]]; then
     configure_cmd+=(-G "${GENERATOR}")
 fi
