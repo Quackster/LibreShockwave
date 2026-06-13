@@ -203,7 +203,7 @@ Datum MultiuserXtra::connectToNetServer(int instanceId, InstanceState& state, co
         state.host = args[2].stringValue();
         state.port = args[3].intValue();
         state.connectOptions.movieId = args.size() >= 5 ? datumText(args[4]) : std::string();
-        mode = args.size() >= 6 ? modeValue(args[5], 1) : 1;
+        mode = args.size() >= 6 ? modeValue(args[5], 0) : 0;
         state.connectOptions.encryptionKey = args.size() >= 7 ? datumText(args[6]) : std::string();
         if (bridge_ != nullptr) {
             bridge_->requestConnect(instanceId, state.host, state.port, mode, state.connectOptions);

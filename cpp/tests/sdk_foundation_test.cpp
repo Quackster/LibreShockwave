@@ -6889,6 +6889,22 @@ void testMultiuserXtraFoundation() {
     assert(bridge.connects[0].options.movieId == "hotel-movie");
     assert(bridge.isConnected(instanceId));
 
+    assert(xtra.callHandler(instanceId,
+                            "connectToNetServer",
+                            {Datum::of(std::string("default-user")),
+                             Datum::of(std::string("default-pass")),
+                             Datum::of(std::string("default.example")),
+                             Datum::of(3000),
+                             Datum::of(std::string("default-movie"))})
+               .intValue() == 0);
+    assert(bridge.connects.size() == 2);
+    assert(bridge.connects[1].host == "default.example");
+    assert(bridge.connects[1].port == 3000);
+    assert(bridge.connects[1].mode == 0);
+    assert(bridge.connects[1].options.userName == "default-user");
+    assert(bridge.connects[1].options.password == "default-pass");
+    assert(bridge.connects[1].options.movieId == "default-movie");
+
     auto connectProps = Datum::propList();
     connectProps.propListValue().put(Datum::symbol("userID"), Datum::of(std::string("prop-user")));
     connectProps.propListValue().put(Datum::symbol("password"), Datum::of(std::string("prop-pass")));
@@ -6901,14 +6917,14 @@ void testMultiuserXtraFoundation() {
                              Datum::symbol("binary"),
                              Datum::of(std::string("prop-key"))})
                .intValue() == 0);
-    assert(bridge.connects.size() == 2);
-    assert(bridge.connects[1].host == "prop.example");
-    assert(bridge.connects[1].port == 4321);
-    assert(bridge.connects[1].mode == 0);
-    assert(bridge.connects[1].options.userName == "prop-user");
-    assert(bridge.connects[1].options.password == "prop-pass");
-    assert(bridge.connects[1].options.movieId == "prop-movie");
-    assert(bridge.connects[1].options.encryptionKey == "prop-key");
+    assert(bridge.connects.size() == 3);
+    assert(bridge.connects[2].host == "prop.example");
+    assert(bridge.connects[2].port == 4321);
+    assert(bridge.connects[2].mode == 0);
+    assert(bridge.connects[2].options.userName == "prop-user");
+    assert(bridge.connects[2].options.password == "prop-pass");
+    assert(bridge.connects[2].options.movieId == "prop-movie");
+    assert(bridge.connects[2].options.encryptionKey == "prop-key");
 
     const auto recipients = Datum::list({Datum::of(std::string("room")), Datum::of(std::string("System"))});
     assert(xtra.callHandler(instanceId,
