@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace libreshockwave::lingo::xtra {
@@ -24,6 +25,52 @@ Datum messagePropList(const MultiuserNetBridge::NetMessage& message) {
     props.put(Datum::symbol("subject"), Datum::of(message.subject));
     props.put(Datum::symbol("content"), message.content);
     return result;
+}
+
+std::string datumText(const Datum& value) {
+    if (value.isVoid()) {
+        return {};
+    }
+    if (const auto* symbol = value.asSymbol()) {
+        return symbol->name;
+    }
+    try {
+        return value.stringValue();
+    } catch (...) {
+        return {};
+    }
+}
+
+Datum propValue(const Datum::PropList& props, std::string_view name) {
+    return props.get(Datum::symbol(std::string(name)));
+}
+
+std::string propText(const Datum::PropList& props, std::string_view first, std::string_view second) {
+    auto value = propValue(props, first);
+    if (value.isVoid()) {
+        value = propValue(props, second);
+    }
+    return datumText(value);
+}
+
+int modeValue(const Datum& value, int fallback) {
+    if (value.isVoid()) {
+        return fallback;
+    }
+    if (const auto* symbol = value.asSymbol()) {
+        const std::string mode = lowerAscii(symbol->name);
+        if (mode == "binary" || mode == "smus") {
+            return 0;
+        }
+        if (mode == "text") {
+            return 1;
+        }
+    }
+    try {
+        return value.intValue();
+    } catch (...) {
+        return fallback;
+    }
 }
 
 } // namespace
@@ -136,12 +183,30 @@ Datum MultiuserXtra::setNetMessageHandler(InstanceState& state, const std::vecto
 }
 
 Datum MultiuserXtra::connectToNetServer(int instanceId, InstanceState& state, const std::vector<Datum>& args) {
-    if (args.size() >= 4) {
+    int mode = 1;
+    state.connectOptions = {};
+    if (args.size() >= 3 && args[2].isPropList()) {
+        state.host = datumText(args[0]);
+        state.port = args[1].intValue();
+        const auto& props = args[2].propListValue();
+        state.connectOptions.userName = propText(props, "userID", "userid");
+        state.connectOptions.password = propText(props, "password", "passWord");
+        state.connectOptions.movieId = propText(props, "movieID", "movieid");
+        mode = args.size() >= 4 ? modeValue(args[3], 0) : 0;
+        state.connectOptions.encryptionKey = args.size() >= 5 ? datumText(args[4]) : std::string();
+        if (bridge_ != nullptr) {
+            bridge_->requestConnect(instanceId, state.host, state.port, mode, state.connectOptions);
+        }
+    } else if (args.size() >= 4) {
+        state.connectOptions.userName = datumText(args[0]);
+        state.connectOptions.password = datumText(args[1]);
         state.host = args[2].stringValue();
         state.port = args[3].intValue();
-        const int mode = args.size() >= 6 ? args[5].intValue() : 1;
+        state.connectOptions.movieId = args.size() >= 5 ? datumText(args[4]) : std::string();
+        mode = args.size() >= 6 ? modeValue(args[5], 1) : 1;
+        state.connectOptions.encryptionKey = args.size() >= 7 ? datumText(args[6]) : std::string();
         if (bridge_ != nullptr) {
-            bridge_->requestConnect(instanceId, state.host, state.port, mode);
+            bridge_->requestConnect(instanceId, state.host, state.port, mode, state.connectOptions);
         }
     }
     return Datum::of(0);
@@ -149,7 +214,7 @@ Datum MultiuserXtra::connectToNetServer(int instanceId, InstanceState& state, co
 
 Datum MultiuserXtra::sendNetMessage(int instanceId, InstanceState&, const std::vector<Datum>& args) {
     if (args.size() >= 3 && bridge_ != nullptr) {
-        bridge_->requestSend(instanceId, args[0].stringValue(), args[1].stringValue(), args[2]);
+        bridge_->requestSend(instanceId, args[0], datumText(args[1]), args[2]);
     }
     return Datum::of(0);
 }

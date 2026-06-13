@@ -37,6 +37,23 @@ std::string safeDatumString(const lingo::Datum& value) {
     }
 }
 
+std::vector<std::string> recipientsFromDatum(const lingo::Datum& value) {
+    std::vector<std::string> result;
+    if (value.isVoid()) {
+        return result;
+    }
+    if (value.isList()) {
+        const auto& items = value.listValue().items();
+        result.reserve(items.size());
+        for (const auto& item : items) {
+            result.push_back(safeDatumString(item));
+        }
+        return result;
+    }
+    result.push_back(safeDatumString(value));
+    return result;
+}
+
 class ByteWriter {
 public:
     void writeByte(int value) {
@@ -321,8 +338,13 @@ std::vector<std::uint8_t> QueuedMultiuserBridge::PendingRequest::wireBytes() con
     return bytesFromString(wireContent());
 }
 
-void QueuedMultiuserBridge::requestConnect(int instanceId, const std::string& host, int port, int mode) {
+void QueuedMultiuserBridge::requestConnect(int instanceId,
+                                           const std::string& host,
+                                           int port,
+                                           int mode,
+                                           const ConnectOptions& options) {
     modes_[instanceId] = mode;
+    senderIDs_[instanceId] = options.userName;
     PendingRequest request;
     request.type = REQ_CONNECT;
     request.instanceId = instanceId;
@@ -332,19 +354,22 @@ void QueuedMultiuserBridge::requestConnect(int instanceId, const std::string& ho
 }
 
 void QueuedMultiuserBridge::requestSend(int instanceId,
-                                        const std::string& senderID,
+                                        const lingo::Datum& recipients,
                                         const std::string& subject,
                                         const lingo::Datum& content) {
     const auto contentString = safeDatumString(content);
+    const auto recipientList = recipientsFromDatum(recipients);
+    const std::string senderID = senderForInstance(instanceId);
 
     PendingRequest request;
     request.type = REQ_SEND;
     request.instanceId = instanceId;
     request.senderID = senderID;
+    request.recipients = recipientList;
     request.subject = subject;
     request.content = contentString;
     if (isSmusInstance(instanceId)) {
-        request.wireBytesOverride = packSmusMessage(senderID, subject, content);
+        request.wireBytesOverride = packSmusMessage(senderID, recipientList, subject, content);
     }
     pendingRequests_.push_back(std::move(request));
 }
@@ -356,6 +381,7 @@ void QueuedMultiuserBridge::requestDisconnect(int instanceId) {
     pendingRequests_.push_back(std::move(request));
     connected_.erase(instanceId);
     modes_.erase(instanceId);
+    senderIDs_.erase(instanceId);
 }
 
 bool QueuedMultiuserBridge::isConnected(int instanceId) const {
@@ -377,6 +403,7 @@ void QueuedMultiuserBridge::destroyInstance(int instanceId) {
     connected_.erase(instanceId);
     messageQueues_.erase(instanceId);
     modes_.erase(instanceId);
+    senderIDs_.erase(instanceId);
 }
 
 const std::vector<QueuedMultiuserBridge::PendingRequest>& QueuedMultiuserBridge::pendingRequests() const {
@@ -401,6 +428,8 @@ void QueuedMultiuserBridge::notifyConnected(int instanceId) {
         PendingRequest request;
         request.type = REQ_SEND;
         request.instanceId = instanceId;
+        request.senderID = senderForInstance(instanceId);
+        request.recipients = {"System"};
         request.subject = "Logon";
         request.wireBytesOverride = packSmusLogon();
         pendingRequests_.push_back(std::move(request));
@@ -454,15 +483,25 @@ bool QueuedMultiuserBridge::isSmusInstance(int instanceId) const {
     return found != modes_.end() && found->second == smusMode;
 }
 
+std::string QueuedMultiuserBridge::senderForInstance(int instanceId) const {
+    const auto found = senderIDs_.find(instanceId);
+    if (found == senderIDs_.end()) {
+        return {};
+    }
+    return found->second;
+}
+
 std::vector<std::uint8_t> QueuedMultiuserBridge::packSmusLogon() const {
     return {std::begin(smusLogonFrame), std::end(smusLogonFrame)};
 }
 
 std::vector<std::uint8_t> QueuedMultiuserBridge::packSmusMessage(const std::string& senderID,
+                                                                 const std::vector<std::string>& recipients,
                                                                  const std::string& subject,
                                                                  const lingo::Datum& content) const {
     const std::string sender = senderID.empty() ? "*" : senderID;
-    return packSmusFrame(0, 0, subject, sender, {"System"}, encodeLingoValue(content));
+    const std::vector<std::string> effectiveRecipients = recipients.empty() ? std::vector<std::string>{"System"} : recipients;
+    return packSmusFrame(0, 0, subject, sender, effectiveRecipients, encodeLingoValue(content));
 }
 
 void QueuedMultiuserBridge::deliverSmusMessage(int instanceId, const std::vector<std::uint8_t>& data) {

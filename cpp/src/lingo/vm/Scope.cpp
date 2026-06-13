@@ -128,7 +128,7 @@ Datum Scope::pop() {
     if (stack_.empty()) {
         return Datum::voidValue();
     }
-    Datum value = stack_.back();
+    Datum value = std::move(stack_.back());
     stack_.pop_back();
     return value;
 }

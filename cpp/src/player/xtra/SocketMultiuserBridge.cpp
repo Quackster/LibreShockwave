@@ -143,14 +143,18 @@ SocketMultiuserBridge::~SocketMultiuserBridge() {
     closeAll();
 }
 
-void SocketMultiuserBridge::requestConnect(int instanceId, const std::string& host, int port, int mode) {
+void SocketMultiuserBridge::requestConnect(int instanceId,
+                                           const std::string& host,
+                                           int port,
+                                           int mode,
+                                           const ConnectOptions& options) {
     auto connection = std::make_shared<Connection>();
     {
         std::lock_guard lock(connection->mutex);
         connection->instanceId = instanceId;
         connection->connecting = true;
         connection->mode = mode;
-        connection->protocol.requestConnect(instanceId, host, port, mode);
+        connection->protocol.requestConnect(instanceId, host, port, mode, options);
         connection->protocol.drainPendingRequests();
     }
 
@@ -192,7 +196,7 @@ void SocketMultiuserBridge::requestConnect(int instanceId, const std::string& ho
 }
 
 void SocketMultiuserBridge::requestSend(int instanceId,
-                                        const std::string& senderID,
+                                        const lingo::Datum& recipients,
                                         const std::string& subject,
                                         const lingo::Datum& content) {
     auto connection = connectionFor(instanceId);
@@ -205,7 +209,7 @@ void SocketMultiuserBridge::requestSend(int instanceId,
         return;
     }
 
-    connection->protocol.requestSend(instanceId, senderID, subject, content);
+    connection->protocol.requestSend(instanceId, recipients, subject, content);
     for (const auto& request : connection->protocol.pendingRequests()) {
         if (request.type != QueuedMultiuserBridge::REQ_SEND) {
             continue;

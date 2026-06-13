@@ -186,7 +186,7 @@ private:
         const chunks::ScriptChunk::Handler& handler,
         const std::shared_ptr<const DirectorFile>& fileOwner = nullptr,
         const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner = nullptr) const;
-    void executeInstruction(Scope& scope, ExecutionContext& context);
+    void executeInstruction(Scope& scope, ExecutionContext& context, bool traceInstruction);
     [[nodiscard]] std::int64_t currentTimeMillis() const;
     void traceRandomCall(int max, int result);
     void emitTracedHandlerCall(std::string_view handlerName,

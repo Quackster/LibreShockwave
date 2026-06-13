@@ -31,6 +31,7 @@ private:
     struct InstanceState {
         std::string host;
         int port = 0;
+        MultiuserNetBridge::ConnectOptions connectOptions;
         int bufferMin = 0;
         int bufferMax = 0;
         int bufferUrgency = 0;

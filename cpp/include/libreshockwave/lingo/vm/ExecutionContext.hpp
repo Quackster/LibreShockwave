@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -70,7 +71,7 @@ public:
     using NameResolver = std::function<std::string(int nameId)>;
     using HandlerFinder = std::function<std::optional<HandlerRef>(std::string_view name)>;
     using GlobalGetter = std::function<Datum(std::string_view name)>;
-    using GlobalSetter = std::function<void(std::string_view name, const Datum& value)>;
+    using GlobalSetter = std::function<void(std::string_view name, Datum value)>;
     using BuiltinInvoker = std::function<Datum(std::string_view name, const std::vector<Datum>& args)>;
     using ErrorStateSetter = std::function<void(bool errorState)>;
     using CallStackFormatter = std::function<std::string()>;
@@ -126,6 +127,7 @@ public:
     void setReturnValue(Datum value);
     void setReturned(bool returned);
     void setErrorState(bool errorState);
+    [[nodiscard]] bool hasVariableSetListener() const;
     void tracePropertySet(std::string_view propName, const Datum& value) const;
 
     void jumpTo(int targetOffset);
@@ -163,6 +165,7 @@ private:
     builtin::BuiltinRegistry* builtins_;
     builtin::BuiltinContext* builtinContext_;
     Callbacks callbacks_;
+    mutable std::unordered_map<int, std::string> resolvedNames_;
 };
 
 } // namespace libreshockwave::lingo::vm

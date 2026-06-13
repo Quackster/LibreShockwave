@@ -167,6 +167,10 @@ public:
         return player_.debugController_ != nullptr && player_.debugController_->needsInstructionTrace();
     }
 
+    [[nodiscard]] bool needsVariableTrace() const override {
+        return player_.debugController_ != nullptr;
+    }
+
     void onInstruction(const InstructionInfo& info) override {
         if (player_.debugController_) {
             player_.debugController_->onInstruction(info);

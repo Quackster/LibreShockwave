@@ -470,6 +470,24 @@ std::vector<Datum> argListItems(const Datum& datum) {
     return {};
 }
 
+const std::vector<Datum>* argListItemsPtr(const Datum& datum) {
+    if (datum.type() == DatumType::ArgList) {
+        return &datum.argListValue().args();
+    }
+    if (datum.type() == DatumType::ArgListNoRet) {
+        return &datum.argListNoRetValue().args();
+    }
+    return nullptr;
+}
+
+const std::vector<Datum>& argListItemsRef(const Datum& datum, std::vector<Datum>& storage) {
+    if (const auto* args = argListItemsPtr(datum)) {
+        return *args;
+    }
+    storage = argListItems(datum);
+    return storage;
+}
+
 std::string keyNameLikeJava(const Datum& datum) {
     if (const auto* symbol = datum.asSymbol()) {
         return symbol->name;
@@ -1036,6 +1054,10 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
         return;
     }
     if (object.type() == DatumType::ScriptInstanceRef) {
+        if (!context.hasVariableSetListener()) {
+            util::setProperty(object.scriptInstanceValue(), propName, std::move(value));
+            return;
+        }
         const Datum tracedValue = value;
         util::setProperty(object.scriptInstanceValue(), propName, std::move(value));
         context.tracePropertySet(propName, tracedValue);
@@ -4882,6 +4904,10 @@ void setContextVar(ExecutionContext& context,
             Datum receiver = context.scope().receiver();
             if (receiver.type() == DatumType::ScriptInstanceRef) {
                 const std::string propName = context.resolveName(toIntLikeJava(idDatum));
+                if (!context.hasVariableSetListener()) {
+                    util::setProperty(receiver.scriptInstanceValue(), propName, std::move(value));
+                    return;
+                }
                 const Datum tracedValue = value;
                 util::setProperty(receiver.scriptInstanceValue(), propName, std::move(value));
                 context.tracePropertySet(propName, tracedValue);
@@ -5170,6 +5196,10 @@ bool setProp(ExecutionContext& context) {
     Datum receiver = context.scope().receiver();
     Datum value = context.pop();
     if (receiver.type() == DatumType::ScriptInstanceRef) {
+        if (!context.hasVariableSetListener()) {
+            util::setProperty(receiver.scriptInstanceValue(), propName, std::move(value));
+            return true;
+        }
         const Datum tracedValue = value;
         util::setProperty(receiver.scriptInstanceValue(), propName, std::move(value));
         context.tracePropertySet(propName, tracedValue);
@@ -5448,11 +5478,171 @@ bool localCall(ExecutionContext& context) {
     return true;
 }
 
+std::optional<Datum> fastListBuiltinCall(std::string_view handlerName, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return std::nullopt;
+    }
+    if (equalsIgnoreCase(handlerName, "count")) {
+        if (args[0].isList()) {
+            return Datum::of(args[0].listValue().count());
+        }
+        if (args[0].isPropList()) {
+            return Datum::of(args[0].propListValue().count());
+        }
+        return std::nullopt;
+    }
+    if (!equalsIgnoreCase(handlerName, "getAt") || args.size() < 2) {
+        return std::nullopt;
+    }
+    if (args[0].isList()) {
+        const int index = toIntLikeJava(args[1]);
+        const auto& items = args[0].listValue().items();
+        if (index >= 1 && index <= static_cast<int>(items.size())) {
+            return items[static_cast<std::size_t>(index - 1)];
+        }
+        return Datum::voidValue();
+    }
+    if (args[0].isPropList()) {
+        const auto& propList = args[0].propListValue();
+        int index = -1;
+        if (args[1].asSymbol() != nullptr || args[1].isString()) {
+            index = propList.findTypedKey(args[1]);
+        } else {
+            const int position = toIntLikeJava(args[1]);
+            if (position >= 1 && position <= propList.count()) {
+                index = position - 1;
+            }
+        }
+        if (index >= 0) {
+            return propList.properties()[static_cast<std::size_t>(index)].second;
+        }
+        return Datum::voidValue();
+    }
+    return std::nullopt;
+}
+
+std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return std::nullopt;
+    }
+    const Datum& target = args[0];
+    if (target.isList()) {
+        if (equalsIgnoreCase(methodName, "count")) {
+            return Datum::of(target.listValue().count());
+        }
+        if (equalsIgnoreCase(methodName, "getAt")) {
+            if (args.size() < 2) {
+                return Datum::voidValue();
+            }
+            const int index = toIntLikeJava(args[1]);
+            const auto& items = target.listValue().items();
+            if (index < 1 || index > static_cast<int>(items.size())) {
+                throw LingoException("getAt: index " + std::to_string(index) +
+                                     " out of range (list size: " + std::to_string(items.size()) + ")");
+            }
+            return items[static_cast<std::size_t>(index - 1)];
+        }
+        if (equalsIgnoreCase(methodName, "setAt")) {
+            if (args.size() >= 3) {
+                Datum mutableTarget = target;
+                const int index = toIntLikeJava(args[1]);
+                auto& items = mutableTarget.listValue().items();
+                if (index >= 1) {
+                    const auto zeroIndex = static_cast<std::size_t>(index - 1);
+                    if (zeroIndex < items.size()) {
+                        items[zeroIndex] = args[2];
+                    } else {
+                        while (items.size() < zeroIndex) {
+                            items.push_back(Datum::voidValue());
+                        }
+                        items.push_back(args[2]);
+                    }
+                }
+            }
+            return Datum::voidValue();
+        }
+        return std::nullopt;
+    }
+    if (!target.isPropList()) {
+        return std::nullopt;
+    }
+
+    const auto& propList = target.propListValue();
+    if (equalsIgnoreCase(methodName, "count")) {
+        return Datum::of(propList.count());
+    }
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.size() < 2) {
+            return Datum::voidValue();
+        }
+        int index = -1;
+        if (args[1].asSymbol() != nullptr || args[1].isString()) {
+            index = propList.findTypedKey(args[1]);
+        } else {
+            const int position = toIntLikeJava(args[1]);
+            if (position >= 1 && position <= propList.count()) {
+                index = position - 1;
+            }
+        }
+        if (index >= 0) {
+            return propList.properties()[static_cast<std::size_t>(index)].second;
+        }
+        if (args[1].isInt()) {
+            const Datum stringKey = Datum::of(std::to_string(toIntLikeJava(args[1])));
+            index = propList.findTypedKey(stringKey);
+            if (index >= 0) {
+                return propList.properties()[static_cast<std::size_t>(index)].second;
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getAProp") || equalsIgnoreCase(methodName, "getProp") ||
+        equalsIgnoreCase(methodName, "getProperty") || equalsIgnoreCase(methodName, "getPropRef")) {
+        if (args.size() < 2) {
+            return Datum::voidValue();
+        }
+        const int index = propList.findUntypedKey(Datum::of(keyNameLikeJava(args[1])));
+        return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second
+                          : Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "setAt")) {
+        if (args.size() >= 3) {
+            Datum mutableTarget = target;
+            auto& mutablePropList = mutableTarget.propListValue();
+            const int position = toIntLikeJava(args[1]) - 1;
+            if (args[1].isInt() && position >= 0 && position < mutablePropList.count()) {
+                mutablePropList.properties()[static_cast<std::size_t>(position)].second = args[2];
+            } else if (args[1].isInt()) {
+                mutablePropList.putTyped(Datum::of(std::to_string(toIntLikeJava(args[1]))), args[2]);
+            } else {
+                mutablePropList.putTyped(args[1], args[2]);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "setProp") || equalsIgnoreCase(methodName, "setAProp")) {
+        if (args.size() >= 3) {
+            Datum mutableTarget = target;
+            mutableTarget.propListValue().putTyped(args[1], args[2]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "findPos")) {
+        if (args.size() < 2) {
+            return Datum::voidValue();
+        }
+        const int index = propList.findUntypedKey(args[1]);
+        return index >= 0 ? Datum::of(index + 1) : Datum::voidValue();
+    }
+    return std::nullopt;
+}
+
 bool extCall(ExecutionContext& context) {
     const std::string handlerName = context.resolveName(context.argument());
     const Datum argListDatum = context.pop();
     const bool noReturn = isNoReturnArgList(argListDatum);
-    std::vector<Datum> args = argListItems(argListDatum);
+    std::vector<Datum> argStorage;
+    const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
 
     Datum result = Datum::voidValue();
     if (equalsIgnoreCase(handlerName, "new")) {
@@ -5471,12 +5661,14 @@ bool extCall(ExecutionContext& context) {
         } else {
             result = safeExecuteHandler(context, *handler, args, Datum::voidValue());
         }
+    } else if (const auto fastBuiltinResult = fastListBuiltinCall(handlerName, args)) {
+        result = *fastBuiltinResult;
     } else if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
         result = *builtinResult;
     } else if (!args.empty()) {
         Datum target = args.front();
-        args.erase(args.begin());
-        result = dispatchObjectMethod(context, std::move(target), handlerName, args);
+        std::vector<Datum> methodArgs(args.begin() + 1, args.end());
+        result = dispatchObjectMethod(context, std::move(target), handlerName, methodArgs);
     } else if (args.empty()) {
         result = builtinConstant(handlerName).value_or(Datum::voidValue());
     }
@@ -5491,14 +5683,22 @@ bool objCall(ExecutionContext& context) {
     const std::string methodName = context.resolveName(context.argument());
     const Datum argListDatum = context.pop();
     const bool noReturn = isNoReturnArgList(argListDatum);
-    std::vector<Datum> args = argListItems(argListDatum);
+    std::vector<Datum> argStorage;
+    const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
+    if (const auto fastResult = fastListObjectCall(methodName, args)) {
+        if (!noReturn) {
+            context.push(*fastResult);
+        }
+        return true;
+    }
     Datum target = Datum::voidValue();
+    std::vector<Datum> methodArgs;
     if (!args.empty()) {
         target = args.front();
-        args.erase(args.begin());
+        methodArgs.assign(args.begin() + 1, args.end());
     }
 
-    const Datum result = dispatchObjectMethod(context, std::move(target), methodName, args);
+    const Datum result = dispatchObjectMethod(context, std::move(target), methodName, methodArgs);
     if (!noReturn) {
         context.push(result);
     }

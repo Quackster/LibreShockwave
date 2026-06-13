@@ -1,6 +1,5 @@
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 
-#include <algorithm>
 #include <limits>
 #include <string>
 #include <utility>
@@ -102,11 +101,10 @@ std::vector<Datum> ExecutionContext::popArgs(int count) {
     if (count <= 0) {
         return args;
     }
-    args.reserve(static_cast<std::size_t>(count));
-    for (int index = 0; index < count; ++index) {
-        args.push_back(pop());
+    args.resize(static_cast<std::size_t>(count));
+    for (int index = count - 1; index >= 0; --index) {
+        args[static_cast<std::size_t>(index)] = pop();
     }
-    std::reverse(args.begin(), args.end());
     return args;
 }
 
@@ -115,11 +113,13 @@ Datum ExecutionContext::getLocal(int index) const {
 }
 
 void ExecutionContext::setLocal(int index, Datum value) {
+    if (!callbacks_.variableSetListener) {
+        scope_->setLocal(index, std::move(value));
+        return;
+    }
     const Datum tracedValue = value;
     scope_->setLocal(index, std::move(value));
-    if (callbacks_.variableSetListener) {
-        callbacks_.variableSetListener("local", "local" + std::to_string(index), tracedValue);
-    }
+    callbacks_.variableSetListener("local", "local" + std::to_string(index), tracedValue);
 }
 
 Datum ExecutionContext::getParam(int index) const {
@@ -127,11 +127,13 @@ Datum ExecutionContext::getParam(int index) const {
 }
 
 void ExecutionContext::setParam(int index, Datum value) {
+    if (!callbacks_.variableSetListener) {
+        scope_->setParam(index, std::move(value));
+        return;
+    }
     const Datum tracedValue = value;
     scope_->setParam(index, std::move(value));
-    if (callbacks_.variableSetListener) {
-        callbacks_.variableSetListener("param", "param" + std::to_string(index), tracedValue);
-    }
+    callbacks_.variableSetListener("param", "param" + std::to_string(index), tracedValue);
 }
 
 Datum ExecutionContext::getGlobal(std::string_view name) const {
@@ -142,13 +144,17 @@ Datum ExecutionContext::getGlobal(std::string_view name) const {
 }
 
 void ExecutionContext::setGlobal(std::string_view name, Datum value) {
+    if (!callbacks_.variableSetListener) {
+        if (callbacks_.globalSetter) {
+            callbacks_.globalSetter(name, std::move(value));
+        }
+        return;
+    }
     const Datum tracedValue = value;
     if (callbacks_.globalSetter) {
-        callbacks_.globalSetter(name, value);
+        callbacks_.globalSetter(name, std::move(value));
     }
-    if (callbacks_.variableSetListener) {
-        callbacks_.variableSetListener("global", name, tracedValue);
-    }
+    callbacks_.variableSetListener("global", name, tracedValue);
 }
 
 void ExecutionContext::setReturnValue(Datum value) {
@@ -163,6 +169,10 @@ void ExecutionContext::setErrorState(bool errorState) {
     if (callbacks_.errorStateSetter) {
         callbacks_.errorStateSetter(errorState);
     }
+}
+
+bool ExecutionContext::hasVariableSetListener() const {
+    return static_cast<bool>(callbacks_.variableSetListener);
 }
 
 void ExecutionContext::tracePropertySet(std::string_view propName, const Datum& value) const {
@@ -200,11 +210,18 @@ const std::vector<chunks::ScriptChunk::LiteralEntry>& ExecutionContext::literals
 }
 
 std::string ExecutionContext::resolveName(int nameId) const {
-    if (callbacks_.nameResolver) {
-        return callbacks_.nameResolver(nameId);
+    if (const auto found = resolvedNames_.find(nameId); found != resolvedNames_.end()) {
+        return found->second;
     }
-    const auto* script = scope_->script();
-    return script != nullptr ? script->resolveName(nameId, nullptr) : "#" + std::to_string(nameId);
+    std::string resolved;
+    if (callbacks_.nameResolver) {
+        resolved = callbacks_.nameResolver(nameId);
+    } else {
+        const auto* script = scope_->script();
+        resolved = script != nullptr ? script->resolveName(nameId, nullptr) : "#" + std::to_string(nameId);
+    }
+    auto [inserted, _] = resolvedNames_.emplace(nameId, std::move(resolved));
+    return inserted->second;
 }
 
 std::optional<HandlerRef> ExecutionContext::findHandler(std::string_view name) const {

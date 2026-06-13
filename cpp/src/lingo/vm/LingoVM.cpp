@@ -28,7 +28,7 @@ namespace {
 constexpr int MAX_CALL_STACK_DEPTH = 50;
 constexpr int SAFEPOINT_CHECK_INTERVAL = 0x10000;
 constexpr std::int64_t GC_SAFEPOINT_INTERVAL_MS = 1000;
-constexpr std::int64_t HANDLER_TIMEOUT_MS = 60000;
+constexpr std::int64_t HANDLER_TIMEOUT_MS = 180000;
 constexpr std::int64_t RANDOM_MULTIPLIER = 0x5DEECE66DLL;
 constexpr std::int64_t RANDOM_ADDEND = 0xBLL;
 constexpr std::int64_t RANDOM_MASK = (1LL << 48) - 1;
@@ -797,6 +797,8 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
                                      &builtinContext_,
                                      std::move(callbacks),
                                      variableMultiplierForScript(script));
+            const bool traceInstruction =
+                traceEnabled_ || (traceListener_ != nullptr && traceListener_->needsInstructionTrace());
             int steps = 0;
             const std::int64_t startTime = currentTimeMillis();
             std::int64_t lastGcTime = startTime;
@@ -824,7 +826,7 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
                                              "' (" + std::to_string(steps) + " instructions)");
                     }
                 }
-                executeInstruction(scope, context);
+                executeInstruction(scope, context, traceInstruction);
             }
         }
         result = scope.returnValue();
@@ -912,8 +914,8 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(
     callbacks.globalGetter = [this](std::string_view name) {
         return getGlobal(name);
     };
-    callbacks.globalSetter = [this](std::string_view name, const Datum& value) {
-        setGlobal(std::string(name), value);
+    callbacks.globalSetter = [this](std::string_view name, Datum value) {
+        setGlobal(std::string(name), std::move(value));
     };
     callbacks.builtinInvoker = [this](std::string_view name, const std::vector<Datum>& args) {
         return callBuiltin(name, args);
@@ -924,8 +926,13 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(
     callbacks.callStackFormatter = [this] {
         return formatCallStack();
     };
+    const bool needsVariableTrace =
+        (traceListener_ != nullptr && traceListener_->needsVariableTrace()) || !tracedHandlers_.empty();
+    if (!needsVariableTrace) {
+        return callbacks;
+    }
     callbacks.variableSetListener = [this](std::string_view type, std::string_view name, const Datum& value) {
-        if (traceListener_) {
+        if (traceListener_ && traceListener_->needsVariableTrace()) {
             traceListener_->onVariableSet(type, name, value);
         }
         const Scope* scope = currentScope();
@@ -1086,14 +1093,14 @@ bool LingoVM::handlerDeclaresMeAsFirstParam(
     return equalsIgnoreCase(resolveName(script, handler.argNameIds.front(), fileOwner, scriptNamesOwner), "me");
 }
 
-void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context) {
+void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context, bool traceInstruction) {
     const auto* instruction = scope.currentInstruction();
     if (instruction == nullptr) {
         scope.setReturned(true);
         return;
     }
 
-    if (traceEnabled_ || (traceListener_ && traceListener_->needsInstructionTrace())) {
+    if (traceInstruction) {
         auto info = buildInstructionInfo(scope, *instruction);
         if (traceEnabled_) {
             emitConsoleInstruction(info);

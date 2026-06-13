@@ -43,6 +43,7 @@ public:
     virtual void onHandlerExit(const HandlerInfo&, const Datum&) {}
     virtual void onInstruction(const InstructionInfo&) {}
     [[nodiscard]] virtual bool needsInstructionTrace() const { return true; }
+    [[nodiscard]] virtual bool needsVariableTrace() const { return true; }
     virtual void onVariableSet(std::string_view, std::string_view, const Datum&) {}
     virtual void onError(std::string_view, std::string_view) {}
     virtual void onDebugMessage(std::string_view) {}

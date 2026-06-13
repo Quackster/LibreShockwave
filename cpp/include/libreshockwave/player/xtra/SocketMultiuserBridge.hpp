@@ -20,9 +20,13 @@ public:
     SocketMultiuserBridge(SocketMultiuserBridge&&) = delete;
     SocketMultiuserBridge& operator=(SocketMultiuserBridge&&) = delete;
 
-    void requestConnect(int instanceId, const std::string& host, int port, int mode) override;
+    void requestConnect(int instanceId,
+                        const std::string& host,
+                        int port,
+                        int mode,
+                        const ConnectOptions& options) override;
     void requestSend(int instanceId,
-                     const std::string& senderID,
+                     const lingo::Datum& recipients,
                      const std::string& subject,
                      const lingo::Datum& content) override;
     void requestDisconnect(int instanceId) override;

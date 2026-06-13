@@ -6791,23 +6791,28 @@ void testMultiuserXtraFoundation() {
             std::string host;
             int port = 0;
             int mode = 0;
+            MultiuserNetBridge::ConnectOptions options;
         };
         struct SendCall {
             int instanceId = 0;
-            std::string senderID;
+            Datum recipients = Datum::voidValue();
             std::string subject;
             Datum content = Datum::voidValue();
         };
 
-        void requestConnect(int instanceId, const std::string& host, int port, int mode) override {
-            connects.push_back({instanceId, host, port, mode});
+        void requestConnect(int instanceId,
+                            const std::string& host,
+                            int port,
+                            int mode,
+                            const ConnectOptions& options) override {
+            connects.push_back({instanceId, host, port, mode, options});
             connectedIds.insert(instanceId);
         }
         void requestSend(int instanceId,
-                         const std::string& senderID,
+                         const Datum& recipients,
                          const std::string& subject,
                          const Datum& content) override {
-            sends.push_back({instanceId, senderID, subject, content});
+            sends.push_back({instanceId, recipients, subject, content});
         }
         void requestDisconnect(int instanceId) override {
             disconnects.push_back(instanceId);
@@ -6867,11 +6872,11 @@ void testMultiuserXtraFoundation() {
 
     assert(xtra.callHandler(instanceId,
                             "connectToNetServer",
-                            {Datum::of(std::string("*")),
-                             Datum::of(std::string("*")),
+                            {Datum::of(std::string("user")),
+                             Datum::of(std::string("pass")),
                              Datum::of(std::string("hotel.example")),
                              Datum::of(1234),
-                             Datum::of(std::string("*")),
+                             Datum::of(std::string("hotel-movie")),
                              Datum::of(0)})
                .intValue() == 0);
     assert(bridge.connects.size() == 1);
@@ -6879,17 +6884,44 @@ void testMultiuserXtraFoundation() {
     assert(bridge.connects[0].host == "hotel.example");
     assert(bridge.connects[0].port == 1234);
     assert(bridge.connects[0].mode == 0);
+    assert(bridge.connects[0].options.userName == "user");
+    assert(bridge.connects[0].options.password == "pass");
+    assert(bridge.connects[0].options.movieId == "hotel-movie");
     assert(bridge.isConnected(instanceId));
 
+    auto connectProps = Datum::propList();
+    connectProps.propListValue().put(Datum::symbol("userID"), Datum::of(std::string("prop-user")));
+    connectProps.propListValue().put(Datum::symbol("password"), Datum::of(std::string("prop-pass")));
+    connectProps.propListValue().put(Datum::symbol("movieid"), Datum::of(std::string("prop-movie")));
+    assert(xtra.callHandler(instanceId,
+                            "connectToNetServer",
+                            {Datum::of(std::string("prop.example")),
+                             Datum::of(4321),
+                             connectProps,
+                             Datum::symbol("binary"),
+                             Datum::of(std::string("prop-key"))})
+               .intValue() == 0);
+    assert(bridge.connects.size() == 2);
+    assert(bridge.connects[1].host == "prop.example");
+    assert(bridge.connects[1].port == 4321);
+    assert(bridge.connects[1].mode == 0);
+    assert(bridge.connects[1].options.userName == "prop-user");
+    assert(bridge.connects[1].options.password == "prop-pass");
+    assert(bridge.connects[1].options.movieId == "prop-movie");
+    assert(bridge.connects[1].options.encryptionKey == "prop-key");
+
+    const auto recipients = Datum::list({Datum::of(std::string("room")), Datum::of(std::string("System"))});
     assert(xtra.callHandler(instanceId,
                             "sendNetMessage",
-                            {Datum::of(std::string("me")),
+                            {recipients,
                              Datum::of(std::string("HELLO")),
                              Datum::of(std::string("payload"))})
                .intValue() == 0);
     assert(bridge.sends.size() == 1);
     assert(bridge.sends[0].instanceId == instanceId);
-    assert(bridge.sends[0].senderID == "me");
+    assert(bridge.sends[0].recipients.isList());
+    assert(bridge.sends[0].recipients.listValue().items().size() == 2);
+    assert(bridge.sends[0].recipients.listValue().items()[0].stringValue() == "room");
     assert(bridge.sends[0].subject == "HELLO");
     assert(bridge.sends[0].content.stringValue() == "payload");
 
@@ -7051,7 +7083,7 @@ void testSocketMultiuserBridgeFoundation() {
     LoopbackServer server;
     SocketMultiuserBridge bridge;
     constexpr int instanceId = 42;
-    bridge.requestConnect(instanceId, "127.0.0.1", server.port(), 1);
+    bridge.requestConnect(instanceId, "127.0.0.1", server.port(), 1, MultiuserNetBridge::ConnectOptions{});
     assert(waitUntil([&] { return bridge.isConnected(instanceId); }));
 
     std::vector<MultiuserNetBridge::NetMessage> messages;
@@ -7065,7 +7097,7 @@ void testSocketMultiuserBridgeFoundation() {
     assert(messages[0].subject == "ConnectToNetServer");
 
     bridge.requestSend(instanceId,
-                       "*",
+                       Datum::of(std::string("*")),
                        "HELLO",
                        Datum::of(std::string("payload")));
     assert(waitUntil([&] {
@@ -7096,7 +7128,9 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(QueuedMultiuserBridge::decodeShockwaveCommand('C', 'D') == 196);
     assert(bridge.getRequest(0) == nullptr);
 
-    bridge.requestConnect(7, "chat.example", 1234, 1);
+    MultiuserNetBridge::ConnectOptions chatOptions;
+    chatOptions.userName = "me";
+    bridge.requestConnect(7, "chat.example", 1234, 1, chatOptions);
     assert(bridge.pendingRequests().size() == 1);
     const auto* connect = bridge.getRequest(0);
     assert(connect != nullptr);
@@ -7116,12 +7150,13 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(messages[0].content.stringValue().empty());
     assert(bridge.pollMessages(7).empty());
 
-    bridge.requestSend(7, "me", "CHAT", Datum::of(std::string("hello")));
+    bridge.requestSend(7, Datum::of(std::string("room")), "CHAT", Datum::of(std::string("hello")));
     assert(bridge.pendingRequests().size() == 2);
     const auto* send = bridge.getRequest(1);
     assert(send != nullptr);
     assert(send->type == QueuedMultiuserBridge::REQ_SEND);
     assert(send->senderID == "me");
+    assert((send->recipients == std::vector<std::string>{"room"}));
     assert(send->subject == "CHAT");
     assert(send->content == "hello");
     assert(send->wireContent() == "CHAT hello");
@@ -7135,10 +7170,10 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(messages[0].content.stringValue() == std::string("@r", 2) + char(1));
 
     const auto pendingBeforePong = bridge.pendingRequests().size();
-    bridge.requestSend(7, "me", "0", Datum::of(std::string("@@BCD")));
+    bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
     assert(bridge.pendingRequests().size() == pendingBeforePong + 1);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
-    bridge.requestSend(7, "me", "0", Datum::of(std::string("@@BCD")));
+    bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
     assert(bridge.pendingRequests().size() == pendingBeforePong + 2);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
 
@@ -7162,7 +7197,9 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(bridge.pendingRequests().empty());
 
     QueuedMultiuserBridge smus;
-    smus.requestConnect(3, "smus.example", 1235, 0);
+    MultiuserNetBridge::ConnectOptions smusOptions;
+    smusOptions.userName = "alice";
+    smus.requestConnect(3, "smus.example", 1235, 0, smusOptions);
     smus.drainPendingRequests();
     smus.notifyConnected(3);
     assert(smus.isConnected(3));
@@ -7170,6 +7207,8 @@ void testQueuedMultiuserBridgeFoundation() {
     const auto* logon = smus.getRequest(0);
     assert(logon != nullptr);
     assert(logon->type == QueuedMultiuserBridge::REQ_SEND);
+    assert(logon->senderID == "alice");
+    assert((logon->recipients == std::vector<std::string>{"System"}));
     assert(logon->subject == "Logon");
     auto logonBytes = logon->wireBytes();
     assert(logonBytes.size() == 80);
@@ -7192,7 +7231,7 @@ void testQueuedMultiuserBridgeFoundation() {
         Datum::colorRef(10, 11, 12),
         props,
     });
-    smus.requestSend(3, "alice", "CHAT", content);
+    smus.requestSend(3, Datum::of(std::string("bob")), "CHAT", content);
     assert(smus.pendingRequests().size() == 1);
     const auto* smusSend = smus.getRequest(0);
     assert(smusSend != nullptr);
@@ -12068,7 +12107,7 @@ void testLingoVmRuntimeFoundation() {
 
     LingoVM handlerTimeoutVm;
     int timeoutPushes = 0;
-    std::vector<std::int64_t> timeoutTimes{0, 60001};
+    std::vector<std::int64_t> timeoutTimes{0, 180001};
     std::size_t timeoutTimeIndex = 0;
     handlerTimeoutVm.setTimeProvider([&timeoutTimes, &timeoutTimeIndex] {
         const auto index = std::min(timeoutTimeIndex++, timeoutTimes.size() - 1);
