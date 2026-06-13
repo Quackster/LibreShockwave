@@ -17712,6 +17712,8 @@ void testNetManagerFoundation() {
     };
     writeLocalFile(localNetRoot / "movie.dir", {'D', 'I', 'R'});
     writeLocalFile(localNetRoot / "external.cst", {'L', 'O', 'C', 'A', 'L'});
+    writeLocalFile(localNetRoot / "priority.cct", {'C', 'C', 'T'});
+    writeLocalFile(localNetRoot / "priority.cst", {'C', 'S', 'T'});
     writeLocalFile(localNetRoot / "gamedata" / "vars.txt", {'R', 'O', 'O', 'T'});
     std::filesystem::create_directories(localNetRoot / "External");
     writeLocalFile(localNetRoot / "External" / "External.cst", {'S', 'I', 'D', 'E'});
@@ -17729,6 +17731,13 @@ void testNetManagerFoundation() {
     assert(localFileManager.getCachedData("external.cst").value() ==
            std::vector<std::uint8_t>({'L', 'O', 'C', 'A', 'L'}));
     assert(localCompletedUrls == std::vector<std::string>{"casts/external.cct:5"});
+
+    const int localPriorityTask = localFileManager.preloadNetThing("casts/priority.cst");
+    assert(localFileManager.netDone(localPriorityTask));
+    assert(localFileManager.netError(localPriorityTask) == 0);
+    assert(localFileManager.netTextResult(localPriorityTask) == "CCT");
+    assert(localFileManager.getCachedData("priority.cst").value() ==
+           std::vector<std::uint8_t>({'C', 'C', 'T'}));
 
     NetManager extractedCastLayoutManager;
     extractedCastLayoutManager.setBasePath((localNetRoot / "movie").string());

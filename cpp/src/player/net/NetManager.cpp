@@ -54,10 +54,6 @@ std::string extensionLower(const std::filesystem::path& path) {
 }
 
 std::optional<std::filesystem::path> resolvePathWithFallbacks(const std::filesystem::path& path) {
-    if (std::filesystem::exists(path)) {
-        return path;
-    }
-
     const auto parent = path.parent_path();
     const auto stem = path.stem().string();
     const auto fileName = path.filename().string();
@@ -68,7 +64,7 @@ std::optional<std::filesystem::path> resolvePathWithFallbacks(const std::filesys
     };
 
     if (ext == ".cst" || ext == ".cct") {
-        for (const auto& candidate : {sibling(".cst"), sibling(".cct")}) {
+        for (const auto& candidate : {sibling(".cct"), sibling(".cst")}) {
             if (std::filesystem::exists(candidate)) {
                 return candidate;
             }
@@ -89,6 +85,10 @@ std::optional<std::filesystem::path> resolvePathWithFallbacks(const std::filesys
                 return candidate;
             }
         }
+    }
+
+    if (std::filesystem::exists(path)) {
+        return path;
     }
 
     return std::nullopt;
