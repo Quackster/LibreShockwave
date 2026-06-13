@@ -419,7 +419,10 @@
       },
       onSocket(event) {
         window.__libreShockwaveSocketEvents.push(event);
-        appendDebugLog("socket", `${event.phase || "event"} ${event.url || event.host || ""}`);
+        const preview = event.preview && event.preview.hex
+          ? ` ${event.byteLength || 0}b ${event.preview.hex} ${event.preview.ascii || ""}`
+          : "";
+        appendDebugLog("socket", `${event.phase || "event"} ${event.url || event.host || ""}${preview}`);
       },
       onTempo(event) {
         tempo.value = String(event.tempo || 0);

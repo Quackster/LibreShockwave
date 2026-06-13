@@ -129,6 +129,19 @@ function withBytes(bytes, callback) {
   }
 }
 
+function bytePreview(bytes, limit = 16) {
+  const length = bytes.byteLength || bytes.length || 0;
+  const count = Math.min(length, limit);
+  const hex = [];
+  let ascii = "";
+  for (let index = 0; index < count; index += 1) {
+    const value = bytes[index] & 0xff;
+    hex.push(value.toString(16).padStart(2, "0"));
+    ascii += value >= 32 && value <= 126 ? String.fromCharCode(value) : ".";
+  }
+  return { hex: hex.join(" "), ascii };
+}
+
 function parseJsonArray(text) {
   if (!text) return [];
   try {
@@ -315,7 +328,7 @@ function connectSocket(request) {
   });
   ws.addEventListener("message", (event) => {
     const deliver = (bytes) => {
-      post("socket", { phase: "message", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0, url });
+      post("socket", { phase: "message", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0, preview: bytePreview(bytes), url });
       withBytes(bytes, (ptr, length) => bridgeCall("socket message", () => api.socketMessageBytes(handle, request.instanceId, ptr, length)));
       void pumpHostQueues().then(sendFrame).catch((error) => post("error", { message: errorMessage(error) }));
     };
@@ -352,10 +365,10 @@ function sendSocketBytes(request) {
     return;
   }
   if (entry.ws.readyState === WebSocket.OPEN) {
-    post("socket", { phase: "send", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0 });
+    post("socket", { phase: "send", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0, preview: bytePreview(bytes) });
     entry.ws.send(bytes);
   } else if (entry.ws.readyState === WebSocket.CONNECTING) {
-    post("socket", { phase: "queue-send", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0 });
+    post("socket", { phase: "queue-send", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0, preview: bytePreview(bytes) });
     entry.pending.push(bytes);
   } else {
     bridgeCall("socket closed", () => api.socketError(handle, request.instanceId, -5));
