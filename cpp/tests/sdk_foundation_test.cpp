@@ -17853,6 +17853,20 @@ void testQueuedNetProviderFoundation() {
     provider.onFetchComplete(rootCastTask, {'C', 'A', 'S', 'T'});
     assert(provider.netTextResult(rootCastTask) == "CAST");
 
+    QueuedNetProvider crossOriginMovieProvider("http://127.0.0.1/dcr/14.1_b8/habbo.dcr");
+    const int localMovieCastTask = crossOriginMovieProvider.preloadNetThing("hh_human_50_acc_head.cst");
+    assert(localMovieCastTask == 1);
+    assert(crossOriginMovieProvider.pendingRequests().size() == 1);
+    const auto& localMovieCastRequest = crossOriginMovieProvider.pendingRequests().back();
+    assert(localMovieCastRequest.url == "http://127.0.0.1/dcr/14.1_b8/hh_human_50_acc_head.cct");
+    assert((localMovieCastRequest.fallbacks == std::vector<std::string>{
+        "http://127.0.0.1/dcr/14.1_b8/hh_human_50_acc_head.cct",
+        "http://127.0.0.1/dcr/14.1_b8/hh_human_50_acc_head.cst",
+    }));
+    for (const auto& fallback : localMovieCastRequest.fallbacks) {
+        assert(fallback.find("http://localhost:3000/") == std::string::npos);
+    }
+
     const int cachedCastTask = provider.preloadNetThing("ROOM.CST");
     assert(cachedCastTask == 3);
     assert(provider.netDone(cachedCastTask));
