@@ -31,11 +31,13 @@ ExecutionContext::ExecutionContext(Scope& scope,
                                    builtin::BuiltinRegistry* builtins,
                                    builtin::BuiltinContext* builtinContext,
                                    Callbacks callbacks,
-                                   int variableMultiplier)
+                                   int variableMultiplier,
+                                   bool instructionTraceEnabled)
     : scope_(&scope),
       instruction_(instruction),
       argument_(instruction.argument),
       variableMultiplier_(variableMultiplier > 0 ? variableMultiplier : 1),
+      instructionTraceEnabled_(instructionTraceEnabled),
       builtins_(builtins),
       builtinContext_(builtinContext),
       callbacks_(std::move(callbacks)) {
@@ -74,6 +76,10 @@ int ExecutionContext::variableMultiplier() const {
 
 int ExecutionContext::instructionOffset() const {
     return instruction_.offset;
+}
+
+bool ExecutionContext::instructionTraceEnabled() const {
+    return instructionTraceEnabled_;
 }
 
 void ExecutionContext::push(Datum value) {

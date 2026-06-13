@@ -806,14 +806,15 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
         }
         if (const auto* first = scope.currentInstruction()) {
             auto callbacks = callbacksFor(script, fileOwner, scriptNamesOwner);
+            const bool traceInstruction =
+                traceEnabled_ || (traceListener_ != nullptr && traceListener_->needsInstructionTrace());
             ExecutionContext context(scope,
                                      *first,
                                      &builtinRegistry_,
                                      &builtinContext_,
                                      std::move(callbacks),
-                                     variableMultiplierForScript(script));
-            const bool traceInstruction =
-                traceEnabled_ || (traceListener_ != nullptr && traceListener_->needsInstructionTrace());
+                                     variableMultiplierForScript(script),
+                                     traceInstruction);
             int steps = 0;
             const std::int64_t startTime = currentTimeMillis();
             std::int64_t lastGcTime = startTime;

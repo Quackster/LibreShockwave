@@ -5269,12 +5269,20 @@ bool pushPropList(ExecutionContext& context) {
     return true;
 }
 
+bool tryImmediateObjCall(ExecutionContext& context, bool noReturn);
+
 bool pushArgList(ExecutionContext& context) {
+    if (tryImmediateObjCall(context, false)) {
+        return true;
+    }
     context.push(Datum::argList(context.popArgs(context.argument())));
     return true;
 }
 
 bool pushArgListNoRet(ExecutionContext& context) {
+    if (tryImmediateObjCall(context, true)) {
+        return true;
+    }
     context.push(Datum::argListNoRet(context.popArgs(context.argument())));
     return true;
 }
@@ -5995,6 +6003,66 @@ std::optional<Datum> fastScriptInstanceObjectCall(std::string_view methodName, c
     return std::nullopt;
 }
 
+bool executeObjCallWithArgs(ExecutionContext& context,
+                            std::string_view methodName,
+                            const std::vector<Datum>& args,
+                            bool noReturn) {
+    if (const auto snapshotResult = indexedCollectionSnapshotGetAt(context, methodName, args)) {
+        if (!noReturn) {
+            context.push(*snapshotResult);
+        }
+        return true;
+    }
+    if (const auto fastResult = fastListObjectCall(methodName, args)) {
+        if (!noReturn) {
+            context.push(*fastResult);
+        }
+        return true;
+    }
+    if (const auto fastResult = fastScriptInstanceObjectCall(methodName, args)) {
+        if (!noReturn) {
+            context.push(*fastResult);
+        }
+        return true;
+    }
+    Datum target = Datum::voidValue();
+    std::vector<Datum> methodArgs;
+    if (!args.empty()) {
+        target = args.front();
+        methodArgs.assign(args.begin() + 1, args.end());
+    }
+
+    const Datum result = dispatchObjectMethod(context, std::move(target), methodName, methodArgs);
+    if (!noReturn) {
+        context.push(result);
+    }
+    return true;
+}
+
+bool tryImmediateObjCall(ExecutionContext& context, bool noReturn) {
+    if (context.instructionTraceEnabled()) {
+        return false;
+    }
+
+    auto& scope = context.scope();
+    const int currentIndex = scope.bytecodeIndex();
+    const int nextIndex = currentIndex + 1;
+    const auto& instructions = scope.handler().instructions;
+    if (nextIndex < 0 || nextIndex >= static_cast<int>(instructions.size())) {
+        return false;
+    }
+
+    const auto& next = instructions[static_cast<std::size_t>(nextIndex)];
+    if (next.opcode != Opcode::OBJ_CALL) {
+        return false;
+    }
+
+    std::vector<Datum> args = context.popArgs(context.argument());
+    scope.setBytecodeIndex(nextIndex);
+    context.setInstruction(next);
+    return executeObjCallWithArgs(context, context.resolveNameRef(next.argument), args, noReturn);
+}
+
 bool extCall(ExecutionContext& context) {
     const std::string& handlerName = context.resolveNameRef(context.argument());
     const Datum argListDatum = context.pop();
@@ -6043,36 +6111,7 @@ bool objCall(ExecutionContext& context) {
     const bool noReturn = isNoReturnArgList(argListDatum);
     std::vector<Datum> argStorage;
     const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
-    if (const auto snapshotResult = indexedCollectionSnapshotGetAt(context, methodName, args)) {
-        if (!noReturn) {
-            context.push(*snapshotResult);
-        }
-        return true;
-    }
-    if (const auto fastResult = fastListObjectCall(methodName, args)) {
-        if (!noReturn) {
-            context.push(*fastResult);
-        }
-        return true;
-    }
-    if (const auto fastResult = fastScriptInstanceObjectCall(methodName, args)) {
-        if (!noReturn) {
-            context.push(*fastResult);
-        }
-        return true;
-    }
-    Datum target = Datum::voidValue();
-    std::vector<Datum> methodArgs;
-    if (!args.empty()) {
-        target = args.front();
-        methodArgs.assign(args.begin() + 1, args.end());
-    }
-
-    const Datum result = dispatchObjectMethod(context, std::move(target), methodName, methodArgs);
-    if (!noReturn) {
-        context.push(result);
-    }
-    return true;
+    return executeObjCallWithArgs(context, methodName, args, noReturn);
 }
 
 } // namespace

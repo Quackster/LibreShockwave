@@ -97,7 +97,8 @@ public:
                      builtin::BuiltinRegistry* builtins = nullptr,
                      builtin::BuiltinContext* builtinContext = nullptr,
                      Callbacks callbacks = {},
-                     int variableMultiplier = 1);
+                     int variableMultiplier = 1,
+                     bool instructionTraceEnabled = false);
 
     void setInstruction(chunks::ScriptChunk::Instruction instruction);
 
@@ -108,6 +109,7 @@ public:
     [[nodiscard]] int scaledArgument() const;
     [[nodiscard]] int variableMultiplier() const;
     [[nodiscard]] int instructionOffset() const;
+    [[nodiscard]] bool instructionTraceEnabled() const;
 
     void push(Datum value);
     [[nodiscard]] Datum pop();
@@ -161,6 +163,7 @@ private:
     int argument_;
     int scaledArgument_;
     int variableMultiplier_;
+    bool instructionTraceEnabled_;
     int cachedJumpOffset_ = -2147483648;
     int cachedJumpIndex_ = -1;
     builtin::BuiltinRegistry* builtins_;
