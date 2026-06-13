@@ -11778,6 +11778,86 @@ void testLingoVmRuntimeFoundation() {
     assert(indexedMutationSeen[2].intValue() == 30);
     assert(indexedMutationSeen[3].intValue() == 40);
 
+    auto indexedPropPairHandler = makeHandler(31, {
+        {Opcode::PUSH_INT8, 1},
+        {Opcode::SET_LOCAL, 0},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::GET_OBJ_PROP, 4},
+        {Opcode::LT_EQ, 0},
+        {Opcode::JMP_IF_Z, 24},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::PUSH_ARG_LIST, 2},
+        {Opcode::OBJ_CALL, 5},
+        {Opcode::SET_LOCAL, 1},
+        {Opcode::GET_GLOBAL, 2},
+        {Opcode::GET_LOCAL, 1},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 2},
+        {Opcode::OBJ_CALL, 6},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::PUSH_ARG_LIST, 2},
+        {Opcode::OBJ_CALL, 7},
+        {Opcode::SET_LOCAL, 2},
+        {Opcode::GET_GLOBAL, 3},
+        {Opcode::GET_LOCAL, 2},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 2},
+        {Opcode::OBJ_CALL, 6},
+        {Opcode::PUSH_INT8, 1},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::ADD, 0},
+        {Opcode::SET_LOCAL, 0},
+        {Opcode::END_REPEAT, 27},
+        {Opcode::GET_GLOBAL, 3},
+        {Opcode::RET, 0}
+    }, 3);
+    ScriptChunk indexedPropPairScript(nullptr,
+                                      ChunkId(965),
+                                      ScriptChunkType::MovieScript,
+                                      0,
+                                      {indexedPropPairHandler},
+                                      {},
+                                      {},
+                                      {ScriptChunk::GlobalEntry{1},
+                                       ScriptChunk::GlobalEntry{2},
+                                       ScriptChunk::GlobalEntry{3}},
+                                      {});
+    auto indexedPropPairNames = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(966),
+        std::vector<std::string>{
+            "snapshotPropPairLoop",
+            "params",
+            "seenKeys",
+            "seenValues",
+            "count",
+            "getPropAt",
+            "append",
+            "getAt"
+        });
+    Datum paramProps = Datum::propList();
+    paramProps.propListValue().properties().emplace_back(Datum::symbol("string"), Datum::of(std::string("alpha")));
+    paramProps.propListValue().properties().emplace_back(Datum::symbol("integer"), Datum::of(42));
+    LingoVM indexedPropPairVm;
+    indexedPropPairVm.setGlobal("params", paramProps);
+    indexedPropPairVm.setGlobal("seenKeys", Datum::list());
+    indexedPropPairVm.setGlobal("seenValues", Datum::list());
+    const Datum indexedPropPairResult = indexedPropPairVm.executeHandler(
+        HandlerRef{&indexedPropPairScript,
+                   &indexedPropPairScript.handlers().front(),
+                   nullptr,
+                   nullptr,
+                   indexedPropPairNames});
+    const auto& indexedPropPairKeys = indexedPropPairVm.getGlobal("seenKeys").listValue().items();
+    const auto& indexedPropPairValues = indexedPropPairResult.listValue().items();
+    assert(indexedPropPairKeys.size() == 2);
+    assert(indexedPropPairKeys[0].asSymbol()->name == "string");
+    assert(indexedPropPairKeys[1].asSymbol()->name == "integer");
+    assert(indexedPropPairValues.size() == 2);
+    assert(indexedPropPairValues[0].stringValue() == "alpha");
+    assert(indexedPropPairValues[1].intValue() == 42);
+
     auto childAncestorHandler = makeHandler(6, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto parentAncestorHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto grandAncestorHandler = makeHandler(8, {{Opcode::GET_PARAM, 0}, {Opcode::RET, 0}}, 0, {9});
