@@ -35,58 +35,6 @@ add_custom_command(
 )
 set_source_files_properties("${LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP}" PROPERTIES GENERATED TRUE)
 
-option(LIBRESHOCKWAVE_BUILD_EDITOR "Build experimental editor-only models and GTK shell" OFF)
-
-set(LIBRESHOCKWAVE_EDITOR_SOURCES
-    src/editor/AppModels.cpp
-    src/editor/EditorContextModels.cpp
-    src/editor/EditorFrameModels.cpp
-    src/editor/EditorShellModels.cpp
-    src/editor/audio/EditorAudioModels.cpp
-    src/editor/cast/CastBrowserModels.cpp
-    src/editor/debug/DebugBrowserModels.cpp
-    src/editor/debug/DebugCommandModels.cpp
-    src/editor/debug/DebugDisplayItems.cpp
-    src/editor/debug/DebugInspectionModels.cpp
-    src/editor/debug/DebugTableModels.cpp
-    src/editor/docking/DockingModels.cpp
-    src/editor/extraction/AssetExtractor.cpp
-    src/editor/extraction/ExportHandlerModels.cpp
-    src/editor/format/ChannelNames.cpp
-    src/editor/format/InstructionFormatter.cpp
-    src/editor/format/PaletteDescriptions.cpp
-    src/editor/gtk/EditorGtkModels.cpp
-    src/editor/model/BitmapKey.cpp
-    src/editor/model/FileNode.cpp
-    src/editor/model/MemberNodeData.cpp
-    src/editor/model/ScoreCellData.cpp
-    src/editor/panels/EditorPanelCatalog.cpp
-    src/editor/panels/EditorPanelModels.cpp
-    src/editor/preview/GenericPreview.cpp
-    src/editor/preview/PalettePreview.cpp
-    src/editor/preview/PreviewContextModels.cpp
-    src/editor/preview/PreviewFormatUtils.cpp
-    src/editor/preview/ScriptPreview.cpp
-    src/editor/preview/SoundPreview.cpp
-    src/editor/preview/TextPreview.cpp
-    src/editor/property/PropertyInspectorModels.cpp
-    src/editor/selection/SelectionEvent.cpp
-    src/editor/selection/SelectionManager.cpp
-    src/editor/score/FrameAppearanceFinder.cpp
-    src/editor/score/PlaybackHead.cpp
-    src/editor/score/ScoreDataBuilder.cpp
-    src/editor/score/ScoreColors.cpp
-    src/editor/score/ScoreModel.cpp
-    src/editor/score/ScoreViewModels.cpp
-    src/editor/scanning/FileProcessor.cpp
-    src/editor/scanning/MemberResolver.cpp
-    src/editor/script/LingoKeywords.cpp
-    src/editor/script/ScriptEditorModels.cpp
-    src/editor/script/LingoTokenizer.cpp
-    src/editor/stage/StageViewModels.cpp
-    src/editor/ui/EditorRendererModels.cpp
-)
-
 add_library(libreshockwave
     src/DirectorFile.cpp
     src/W3DFile.cpp
@@ -222,9 +170,6 @@ add_library(libreshockwave
     src/player/score/SpriteSpan.cpp
     src/player/sprite/SpriteState.cpp
     src/player/timeout/TimeoutManager.cpp
-    src/player/web/WasmExports.cpp
-    src/player/web/WasmPlayer.cpp
-    src/player/web/WasmRuntime.cpp
     src/player/xtra/QueuedMultiuserBridge.cpp
     src/player/xtra/SocketMultiuserBridge.cpp
     src/util/AudioCodecUtils.cpp
@@ -250,17 +195,6 @@ target_include_directories(libreshockwave
 
 target_compile_features(libreshockwave PUBLIC cxx_std_20)
 
-if(LIBRESHOCKWAVE_BUILD_EDITOR)
-    target_sources(libreshockwave PRIVATE ${LIBRESHOCKWAVE_EDITOR_SOURCES})
-    target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_BUILD_EDITOR=1)
-endif()
-
-if(EMSCRIPTEN)
-    target_compile_options(libreshockwave PUBLIC "-fexceptions" "-sUSE_ZLIB=1")
-    target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
-    target_link_options(libreshockwave INTERFACE "-fexceptions" "-sUSE_ZLIB=1")
-endif()
-
 add_executable(libreshockwave_probe
     tools/DirectorProbe.cpp
 )
@@ -273,12 +207,6 @@ add_executable(libreshockwave_render_probe
 target_link_libraries(libreshockwave_render_probe PRIVATE LibreShockwave::libreshockwave)
 target_compile_features(libreshockwave_render_probe PRIVATE cxx_std_20)
 
-add_executable(libreshockwave_wasm_bridge_probe
-    tools/WasmBridgeProbe.cpp
-)
-target_link_libraries(libreshockwave_wasm_bridge_probe PRIVATE LibreShockwave::libreshockwave)
-target_compile_features(libreshockwave_wasm_bridge_probe PRIVATE cxx_std_20)
-
 find_package(Threads REQUIRED)
 target_link_libraries(libreshockwave PUBLIC Threads::Threads)
 
@@ -288,108 +216,25 @@ if(ZLIB_FOUND)
     target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
 endif()
 
-if(NOT EMSCRIPTEN)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
-    endif()
-    find_package(CURL QUIET)
-
-    if(GTK4_FOUND AND CURL_FOUND)
-        add_executable(libreshockwave_player
-            apps/player/NativePlayer.cpp
-        )
-        target_link_libraries(libreshockwave_player
-            PRIVATE
-                LibreShockwave::libreshockwave
-                PkgConfig::GTK4
-                CURL::libcurl
-        )
-        target_compile_features(libreshockwave_player PRIVATE cxx_std_20)
-    else()
-        message(STATUS "GTK4 or libcurl not found; libreshockwave_player target disabled. Install gtk4-devel and libcurl-devel to build it.")
-    endif()
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
 endif()
+find_package(CURL QUIET)
 
-if(LIBRESHOCKWAVE_BUILD_EDITOR)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
-    endif()
-
-    if(GTK4_FOUND)
-        add_executable(libreshockwave_editor_gtk
-            src/editor/gtk/EditorGtkMain.cpp
-        )
-        target_link_libraries(libreshockwave_editor_gtk
-            PRIVATE
-                LibreShockwave::libreshockwave
-                PkgConfig::GTK4
-        )
-        target_compile_features(libreshockwave_editor_gtk PRIVATE cxx_std_20)
-    else()
-        message(STATUS "GTK4 not found; libreshockwave_editor_gtk target disabled. Install gtk4-devel to build it.")
-    endif()
-endif()
-
-if(EMSCRIPTEN)
-    set(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS
-        "${CMAKE_CURRENT_SOURCE_DIR}/web/index.html"
-        "${CMAKE_CURRENT_SOURCE_DIR}/web/libreshockwave-cpp-player.js"
-        "${CMAKE_CURRENT_SOURCE_DIR}/web/libreshockwave-cpp-worker.js"
+if(GTK4_FOUND AND CURL_FOUND)
+    add_executable(libreshockwave_player
+        apps/player/NativePlayer.cpp
     )
-
-    add_executable(libreshockwave_cpp_wasm
-        src/player/web/WasmModule.cpp
-    )
-    target_link_libraries(libreshockwave_cpp_wasm
+    target_link_libraries(libreshockwave_player
         PRIVATE
             LibreShockwave::libreshockwave
+            PkgConfig::GTK4
+            CURL::libcurl
     )
-    target_compile_features(libreshockwave_cpp_wasm PRIVATE cxx_std_20)
-    set_target_properties(libreshockwave_cpp_wasm PROPERTIES
-        OUTPUT_NAME "libreshockwave-cpp-wasm"
-        SUFFIX ".js"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist"
-    )
-    target_link_options(libreshockwave_cpp_wasm PRIVATE
-        "--no-entry"
-        "-sWASM=1"
-        "-sMODULARIZE=1"
-        "-sEXPORT_NAME=createLibreShockwaveCppWasm"
-        "-sENVIRONMENT=worker"
-        "-sALLOW_MEMORY_GROWTH=1"
-        "-sSTACK_SIZE=8388608"
-        "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/libreshockwave-wasm-exports.json"
-    )
-
-    set(LIBRESHOCKWAVE_CPP_WASM_WEB_OUTPUTS)
-    foreach(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET IN LISTS LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS)
-        get_filename_component(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME
-            "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
-            NAME
-        )
-        set(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT
-            "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist/${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME}"
-        )
-        add_custom_command(
-            OUTPUT "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT}"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory
-                "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist"
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
-                "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT}"
-            DEPENDS "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
-            VERBATIM
-        )
-        list(APPEND LIBRESHOCKWAVE_CPP_WASM_WEB_OUTPUTS
-            "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT}"
-        )
-    endforeach()
-    add_custom_target(libreshockwave_cpp_wasm_web_assets
-        DEPENDS ${LIBRESHOCKWAVE_CPP_WASM_WEB_OUTPUTS}
-    )
-    add_dependencies(libreshockwave_cpp_wasm libreshockwave_cpp_wasm_web_assets)
+    target_compile_features(libreshockwave_player PRIVATE cxx_std_20)
+else()
+    message(STATUS "GTK4 or libcurl not found; libreshockwave_player target disabled. Install gtk4-devel and libcurl-devel to build it.")
 endif()
 
 if(BUILD_TESTING)
@@ -397,8 +242,5 @@ if(BUILD_TESTING)
         tests/sdk_foundation_test.cpp
     )
     target_link_libraries(libreshockwave_tests PRIVATE LibreShockwave::libreshockwave)
-    if(LIBRESHOCKWAVE_BUILD_EDITOR)
-        target_compile_definitions(libreshockwave_tests PRIVATE LIBRESHOCKWAVE_BUILD_EDITOR=1)
-    endif()
     add_test(NAME libreshockwave_cpp_tests COMMAND libreshockwave_tests)
 endif()

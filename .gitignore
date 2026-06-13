@@ -19,8 +19,3 @@ Thumbs.db
 
 # Logs
 *.log
-
-# JavaScript tooling used by optional browser fixture checks
-node_modules/
-cpp/tools/node_modules/
-cpp/tools/package-lock.json

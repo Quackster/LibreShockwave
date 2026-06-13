@@ -8,7 +8,6 @@ BUILD_DIR=""
 GENERATOR=""
 INSTALL_DEPS=0
 PRINT_DEPS=0
-WASM=0
 RUN_TESTS=1
 CLEAN=0
 JOBS=""
@@ -30,7 +29,6 @@ Options:
   --generator NAME       Pass a CMake generator, for example "Ninja".
   --jobs N               Pass a parallel job count to cmake --build.
   --target NAME          Build one target. Can be used more than once.
-  --wasm                 Build the Emscripten browser/WASM target.
   --no-tests             Do not run ctest after a native build.
   --clean                Remove the build directory before configuring.
   -h, --help             Show this help.
@@ -40,7 +38,6 @@ Examples:
   ./build.sh --release --generator Ninja
   ./build.sh --deps
   ./build.sh --install-deps
-  ./build.sh --wasm --release
 EOF
 }
 
@@ -217,10 +214,6 @@ while [[ $# -gt 0 ]]; do
             TARGETS+=("${1#*=}")
             shift
             ;;
-        --wasm)
-            WASM=1
-            shift
-            ;;
         --no-tests)
             RUN_TESTS=0
             shift
@@ -258,22 +251,13 @@ fi
 
 require_command cmake "Install CMake 3.20 or newer."
 
-if [[ "${WASM}" -eq 1 ]]; then
-    require_command emcmake "Install and activate Emscripten before using --wasm."
-    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/cmake-build-wasm}"
-    if [[ "${#TARGETS[@]}" -eq 0 ]]; then
-        TARGETS=(libreshockwave_cpp_wasm)
-    fi
-else
-    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/cmake-build-$(lower_build_type)}"
-    if [[ "${#TARGETS[@]}" -eq 0 ]]; then
-        TARGETS=(
-            libreshockwave_tests
-            libreshockwave_probe
-            libreshockwave_render_probe
-            libreshockwave_wasm_bridge_probe
-        )
-    fi
+BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/cmake-build-$(lower_build_type)}"
+if [[ "${#TARGETS[@]}" -eq 0 ]]; then
+    TARGETS=(
+        libreshockwave_tests
+        libreshockwave_probe
+        libreshockwave_render_probe
+    )
 fi
 
 if [[ "${CLEAN}" -eq 1 ]]; then
@@ -285,10 +269,6 @@ if [[ -n "${GENERATOR}" ]]; then
     configure_cmd+=(-G "${GENERATOR}")
 fi
 configure_cmd+=("${EXTRA_CMAKE_ARGS[@]}")
-
-if [[ "${WASM}" -eq 1 ]]; then
-    configure_cmd=(emcmake "${configure_cmd[@]}")
-fi
 
 build_cmd=(cmake --build "${BUILD_DIR}")
 for target in "${TARGETS[@]}"; do
@@ -306,7 +286,7 @@ echo "+ ${configure_cmd[*]}"
 echo "+ ${build_cmd[*]}"
 "${build_cmd[@]}"
 
-if [[ "${WASM}" -eq 0 && "${RUN_TESTS}" -eq 1 ]]; then
+if [[ "${RUN_TESTS}" -eq 1 ]]; then
     echo "+ ctest --test-dir ${BUILD_DIR} --output-on-failure"
     ctest --test-dir "${BUILD_DIR}" --output-on-failure
 fi
