@@ -640,6 +640,7 @@ std::optional<HandlerRef> LingoVM::findHandler(const chunks::ScriptChunk& script
 void LingoVM::invalidateHandlerCache() {
     handlerCache_.clear();
     missingHandlerCache_.clear();
+    handlerMetadataCache_.clear();
 }
 
 Datum LingoVM::callHandler(std::string_view handlerNameValue, const std::vector<Datum>& args) {
@@ -696,8 +697,18 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
     const auto fileOwner = handlerRef.fileOwner;
     const auto scriptNamesOwner = handlerRef.scriptNamesOwner;
 
-    const std::string currentHandlerName = handlerName(script, handler, fileOwner, scriptNamesOwner);
-    const std::string normalizedHandlerName = normalizeLookupName(currentHandlerName);
+    const HandlerMetadataKey metadataKey{&script, &handler, fileOwner.get(), scriptNamesOwner.get()};
+    auto metadataIt = handlerMetadataCache_.find(metadataKey);
+    if (metadataIt == handlerMetadataCache_.end()) {
+        HandlerMetadata metadata;
+        metadata.name = handlerName(script, handler, fileOwner, scriptNamesOwner);
+        metadata.normalizedName = normalizeLookupName(metadata.name);
+        metadata.firstParamDeclaredMe = handlerDeclaresMeAsFirstParam(script, handler, fileOwner, scriptNamesOwner);
+        metadataIt = handlerMetadataCache_.emplace(metadataKey, std::make_shared<HandlerMetadata>(std::move(metadata))).first;
+    }
+    const auto metadata = metadataIt->second;
+    const std::string& currentHandlerName = metadata->name;
+    const std::string& normalizedHandlerName = metadata->normalizedName;
     const bool isAlertHookHandler = alertHookHandler_.isErrorHandler(currentHandlerName);
     if (alertHookHandler_.shouldSkipErrorHandler(currentHandlerName, args)) {
         return Datum::voidValue();
@@ -735,11 +746,15 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
         emitTracedHandlerCall(currentHandlerName, script, args);
     }
 
-    std::vector<Datum> effectiveArgs = args;
+    std::vector<Datum> effectiveArgs;
     bool firstParamDeclaredMe = false;
     if (!receiver.isVoid() && !receiver.isNull()) {
-        firstParamDeclaredMe = handlerDeclaresMeAsFirstParam(script, handler, fileOwner, scriptNamesOwner);
-        effectiveArgs.insert(effectiveArgs.begin(), receiver);
+        firstParamDeclaredMe = metadata->firstParamDeclaredMe;
+        effectiveArgs.reserve(args.size() + 1);
+        effectiveArgs.push_back(receiver);
+        effectiveArgs.insert(effectiveArgs.end(), args.begin(), args.end());
+    } else {
+        effectiveArgs = args;
     }
 
     callStack_.emplace_back(&script,
@@ -751,8 +766,8 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
                             fileOwner,
                             scriptNamesOwner);
     Scope& scope = callStack_.back();
-    auto previousHandlerArgs = builtinContext_.currentHandlerArgs;
-    builtinContext_.currentHandlerArgs = scope.arguments();
+    const auto* previousHandlerArgsView = builtinContext_.currentHandlerArgsView;
+    builtinContext_.currentHandlerArgsView = &scope.arguments();
     Datum result = Datum::voidValue();
     std::optional<TraceListener::HandlerInfo> handlerInfo;
     bool alertHookDepthIncremented = false;
@@ -774,7 +789,7 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
             alertHookHandler_.decrementDepth();
             alertHookDepthIncremented = false;
         }
-        builtinContext_.currentHandlerArgs = std::move(previousHandlerArgs);
+        builtinContext_.currentHandlerArgsView = previousHandlerArgsView;
         callStack_.pop_back();
         flushDeferredScriptInstanceCalls();
     };

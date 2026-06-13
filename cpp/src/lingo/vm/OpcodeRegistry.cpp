@@ -495,6 +495,20 @@ std::string keyNameLikeJava(const Datum& datum) {
     return toStringLikeJava(datum);
 }
 
+std::string_view keyNameLikeJavaView(const Datum& datum, std::string& storage) {
+    if (const auto* symbol = datum.asSymbol()) {
+        return symbol->name;
+    }
+    if (const auto* string = datum.asString()) {
+        return string->value;
+    }
+    if (const auto* field = datum.asFieldText()) {
+        return field->value;
+    }
+    storage = toStringLikeJava(datum);
+    return storage;
+}
+
 std::optional<Datum> builtinConstant(std::string_view name) {
     if (equalsIgnoreCase(name, "pi")) return Datum::of(3.14159265358979323846);
     if (equalsIgnoreCase(name, "true")) return Datum::TRUE;
@@ -4170,7 +4184,7 @@ bool pushCons(ExecutionContext& context) {
 }
 
 bool pushSymb(ExecutionContext& context) {
-    context.push(Datum::symbol(context.resolveName(context.argument())));
+    context.push(Datum::symbol(context.resolveNameRef(context.argument())));
     return true;
 }
 
@@ -4339,7 +4353,7 @@ Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum
 }
 
 bool newObj(ExecutionContext& context) {
-    const std::string objectType = context.resolveName(context.argument());
+    const std::string& objectType = context.resolveNameRef(context.argument());
     if (!equalsIgnoreCase(objectType, "script")) {
         context.push(Datum::voidValue());
         return true;
@@ -4407,6 +4421,13 @@ bool endRepeat(ExecutionContext& context) {
 bool add(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(Datum::of(static_cast<int>(static_cast<std::int64_t>(ai->value) + bi->value)));
+            return true;
+        }
+    }
 
     if (const auto* point = a.asIntPoint()) {
         int dx = toIntLikeJava(b);
@@ -4477,6 +4498,13 @@ bool sub(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
 
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(Datum::of(static_cast<int>(static_cast<std::int64_t>(ai->value) - bi->value)));
+            return true;
+        }
+    }
+
     if (const auto* point = a.asIntPoint()) {
         int dx = toIntLikeJava(b);
         int dy = dx;
@@ -4541,6 +4569,13 @@ bool mul(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
 
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(Datum::of(static_cast<int>(static_cast<std::int64_t>(ai->value) * bi->value)));
+            return true;
+        }
+    }
+
     if (const auto* point = a.asIntPoint()) {
         const double scalar = toDoubleLikeJava(b);
         context.push(Datum::intPoint(static_cast<int>(point->x * scalar), static_cast<int>(point->y * scalar)));
@@ -4583,6 +4618,15 @@ bool mul(ExecutionContext& context) {
 bool div(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            if (bi->value == 0) {
+                throw context.error("Division by zero");
+            }
+            context.push(Datum::of(ai->value / bi->value));
+            return true;
+        }
+    }
     const double divisor = toDoubleLikeJava(b);
     if (divisor == 0.0) {
         throw context.error("Division by zero");
@@ -4611,6 +4655,15 @@ bool div(ExecutionContext& context) {
 bool mod(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            if (bi->value == 0) {
+                throw context.error("Modulo by zero");
+            }
+            context.push(Datum::of(ai->value % bi->value));
+            return true;
+        }
+    }
     const int divisor = toIntLikeJava(b);
     if (divisor == 0) {
         throw context.error("Modulo by zero");
@@ -4638,6 +4691,12 @@ bool inv(ExecutionContext& context) {
 bool lt(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(ai->value < bi->value ? Datum::TRUE : Datum::FALSE);
+            return true;
+        }
+    }
     context.push(toDoubleLikeJava(a) < toDoubleLikeJava(b) ? Datum::TRUE : Datum::FALSE);
     return true;
 }
@@ -4645,6 +4704,12 @@ bool lt(ExecutionContext& context) {
 bool ltEq(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(ai->value <= bi->value ? Datum::TRUE : Datum::FALSE);
+            return true;
+        }
+    }
     context.push(toDoubleLikeJava(a) <= toDoubleLikeJava(b) ? Datum::TRUE : Datum::FALSE);
     return true;
 }
@@ -4652,6 +4717,12 @@ bool ltEq(ExecutionContext& context) {
 bool gt(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(ai->value > bi->value ? Datum::TRUE : Datum::FALSE);
+            return true;
+        }
+    }
     context.push(toDoubleLikeJava(a) > toDoubleLikeJava(b) ? Datum::TRUE : Datum::FALSE);
     return true;
 }
@@ -4659,6 +4730,12 @@ bool gt(ExecutionContext& context) {
 bool gtEq(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(ai->value >= bi->value ? Datum::TRUE : Datum::FALSE);
+            return true;
+        }
+    }
     context.push(toDoubleLikeJava(a) >= toDoubleLikeJava(b) ? Datum::TRUE : Datum::FALSE);
     return true;
 }
@@ -4666,6 +4743,12 @@ bool gtEq(ExecutionContext& context) {
 bool eq(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(ai->value == bi->value ? Datum::TRUE : Datum::FALSE);
+            return true;
+        }
+    }
     context.push(lingoEquals(a, b) ? Datum::TRUE : Datum::FALSE);
     return true;
 }
@@ -4673,6 +4756,12 @@ bool eq(ExecutionContext& context) {
 bool notEq(ExecutionContext& context) {
     const Datum b = context.pop();
     const Datum a = context.pop();
+    if (const auto* ai = a.asInt()) {
+        if (const auto* bi = b.asInt()) {
+            context.push(ai->value != bi->value ? Datum::TRUE : Datum::FALSE);
+            return true;
+        }
+    }
     context.push(!lingoEquals(a, b) ? Datum::TRUE : Datum::FALSE);
     return true;
 }
@@ -4874,11 +4963,11 @@ Datum getContextVar(ExecutionContext& context,
             return context.getParam(toIntLikeJava(idDatum) / context.variableMultiplier());
         case id::VarType::GLOBAL:
         case id::VarType::GLOBAL2:
-            return context.getGlobal(context.resolveName(toIntLikeJava(idDatum)));
+            return context.getGlobal(context.resolveNameRef(toIntLikeJava(idDatum)));
         case id::VarType::PROPERTY: {
             const Datum receiver = context.scope().receiver();
             if (receiver.type() == DatumType::ScriptInstanceRef) {
-                return util::getProperty(receiver.scriptInstanceValue(), context.resolveName(toIntLikeJava(idDatum)));
+                return util::getProperty(receiver.scriptInstanceValue(), context.resolveNameRef(toIntLikeJava(idDatum)));
             }
             return Datum::voidValue();
         }
@@ -4908,12 +4997,12 @@ void setContextVar(ExecutionContext& context,
             return;
         case id::VarType::GLOBAL:
         case id::VarType::GLOBAL2:
-            context.setGlobal(context.resolveName(toIntLikeJava(idDatum)), std::move(value));
+            context.setGlobal(context.resolveNameRef(toIntLikeJava(idDatum)), std::move(value));
             return;
         case id::VarType::PROPERTY: {
             Datum receiver = context.scope().receiver();
             if (receiver.type() == DatumType::ScriptInstanceRef) {
-                const std::string propName = context.resolveName(toIntLikeJava(idDatum));
+                const std::string& propName = context.resolveNameRef(toIntLikeJava(idDatum));
                 if (!context.hasVariableSetListener()) {
                     util::setProperty(receiver.scriptInstanceValue(), propName, std::move(value));
                     return;
@@ -5146,13 +5235,13 @@ bool setParam(ExecutionContext& context) {
 }
 
 bool getGlobal(ExecutionContext& context) {
-    const std::string name = context.resolveName(context.argument());
+    const std::string& name = context.resolveNameRef(context.argument());
     context.push(context.getGlobal(name));
     return true;
 }
 
 bool setGlobal(ExecutionContext& context) {
-    const std::string name = context.resolveName(context.argument());
+    const std::string& name = context.resolveNameRef(context.argument());
     context.setGlobal(name, context.pop());
     return true;
 }
@@ -5191,7 +5280,7 @@ bool pushArgListNoRet(ExecutionContext& context) {
 }
 
 bool getProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     const Datum receiver = context.scope().receiver();
     if (receiver.type() == DatumType::ScriptInstanceRef) {
         context.push(util::getProperty(receiver.scriptInstanceValue(), propName));
@@ -5202,7 +5291,7 @@ bool getProp(ExecutionContext& context) {
 }
 
 bool setProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     Datum receiver = context.scope().receiver();
     Datum value = context.pop();
     if (receiver.type() == DatumType::ScriptInstanceRef) {
@@ -5218,7 +5307,7 @@ bool setProp(ExecutionContext& context) {
 }
 
 bool getMovieProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     if (auto* builtinContext = context.builtinContext(); builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
         context.push(builtinContext->movieProperties->getMovieProp(propName));
     } else {
@@ -5228,7 +5317,7 @@ bool getMovieProp(ExecutionContext& context) {
 }
 
 bool setMovieProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     const Datum value = context.pop();
     if (auto* builtinContext = context.builtinContext(); builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
         (void)builtinContext->movieProperties->setMovieProp(propName, value);
@@ -5241,7 +5330,7 @@ std::optional<Datum> indexedCollectionSnapshotCount(ExecutionContext& context,
                                                     const Datum& collection);
 
 bool getObjProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     const Datum object = context.pop();
     if (const auto snapshotCount = indexedCollectionSnapshotCount(context, propName, object)) {
         context.push(*snapshotCount);
@@ -5252,14 +5341,14 @@ bool getObjProp(ExecutionContext& context) {
 }
 
 bool getChainedProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     const Datum object = context.pop();
     context.push(getChainedObjectProperty(context, object, propName));
     return true;
 }
 
 bool getTopLevelProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     if (equalsIgnoreCase(propName, "_player")) {
         context.push(Datum::playerRef());
     } else if (equalsIgnoreCase(propName, "_movie")) {
@@ -5273,7 +5362,7 @@ bool getTopLevelProp(ExecutionContext& context) {
 }
 
 bool setObjProp(ExecutionContext& context) {
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     Datum value = context.pop();
     Datum object = context.pop();
     setObjectProperty(context, object, propName, std::move(value));
@@ -5438,7 +5527,7 @@ bool setLegacyProperty(ExecutionContext& context) {
 
 bool theBuiltin(ExecutionContext& context) {
     (void)context.pop();
-    const std::string propName = context.resolveName(context.argument());
+    const std::string& propName = context.resolveNameRef(context.argument());
     if (equalsIgnoreCase(propName, "paramcount")) {
         context.push(Datum::of(static_cast<int>(context.scope().arguments().size())));
     } else if (equalsIgnoreCase(propName, "result")) {
@@ -5469,7 +5558,7 @@ bool localCall(ExecutionContext& context) {
     if (!receiver.isVoid() && !receiver.isNull() && !args.empty() && args.front() == receiver) {
         bool handlerDeclaresMe = false;
         if (!targetHandler->argNameIds.empty()) {
-            handlerDeclaresMe = equalsIgnoreCase(context.resolveName(targetHandler->argNameIds.front()), "me");
+            handlerDeclaresMe = equalsIgnoreCase(context.resolveNameRef(targetHandler->argNameIds.front()), "me");
         }
         if (handlerDeclaresMe) {
             args.erase(args.begin());
@@ -5594,7 +5683,7 @@ bool indexedCollectionLoopHeaderMatches(const ExecutionContext& context,
         return false;
     }
     const auto& countProp = instructions[static_cast<std::size_t>(condStart + 2)];
-    if (countProp.opcode != Opcode::GET_OBJ_PROP || !equalsIgnoreCase(context.resolveName(countProp.argument), "count")) {
+    if (countProp.opcode != Opcode::GET_OBJ_PROP || !equalsIgnoreCase(context.resolveNameRef(countProp.argument), "count")) {
         return false;
     }
     const auto comparison = instructions[static_cast<std::size_t>(condStart + 3)].opcode;
@@ -5649,7 +5738,7 @@ bool loopBodyHasIndexedCollectionGetAt(const ExecutionContext& context,
 
     for (int index = headerIndex + 1; index < endIndex - 1; ++index) {
         const auto& instruction = instructions[static_cast<std::size_t>(index)];
-        if (instruction.opcode != Opcode::OBJ_CALL || !equalsIgnoreCase(context.resolveName(instruction.argument), "getAt") ||
+        if (instruction.opcode != Opcode::OBJ_CALL || !equalsIgnoreCase(context.resolveNameRef(instruction.argument), "getAt") ||
             index < 3) {
             continue;
         }
@@ -5867,8 +5956,47 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
     return std::nullopt;
 }
 
+std::optional<Datum> fastScriptInstanceObjectCall(std::string_view methodName, const std::vector<Datum>& args) {
+    if (args.size() < 2 || args.front().type() != DatumType::ScriptInstanceRef) {
+        return std::nullopt;
+    }
+
+    Datum receiver = args.front();
+    auto& instance = receiver.scriptInstanceValue();
+    std::string propNameStorage;
+    const std::string_view propName = keyNameLikeJavaView(args[1], propNameStorage);
+
+    if (equalsIgnoreCase(methodName, "count")) {
+        return scriptInstanceCountValue(util::getProperty(instance, propName));
+    }
+
+    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef")) {
+        Datum localProp = util::getProperty(instance, propName);
+        if (args.size() >= 3) {
+            return scriptInstanceNestedProperty(localProp, args[2]);
+        }
+        return localProp;
+    }
+
+    if (equalsIgnoreCase(methodName, "setProp")) {
+        if (args.size() == 3) {
+            util::setProperty(instance, propName, args[2]);
+        } else if (args.size() >= 4) {
+            Datum localProp = util::getProperty(instance, propName);
+            if (localProp.isVoid()) {
+                localProp = Datum::propList();
+                util::setProperty(instance, propName, localProp);
+            }
+            scriptInstanceSetNestedProperty(localProp, args[2], args[3]);
+        }
+        return Datum::voidValue();
+    }
+
+    return std::nullopt;
+}
+
 bool extCall(ExecutionContext& context) {
-    const std::string handlerName = context.resolveName(context.argument());
+    const std::string& handlerName = context.resolveNameRef(context.argument());
     const Datum argListDatum = context.pop();
     const bool noReturn = isNoReturnArgList(argListDatum);
     std::vector<Datum> argStorage;
@@ -5910,7 +6038,7 @@ bool extCall(ExecutionContext& context) {
 }
 
 bool objCall(ExecutionContext& context) {
-    const std::string methodName = context.resolveName(context.argument());
+    const std::string& methodName = context.resolveNameRef(context.argument());
     const Datum argListDatum = context.pop();
     const bool noReturn = isNoReturnArgList(argListDatum);
     std::vector<Datum> argStorage;
@@ -5922,6 +6050,12 @@ bool objCall(ExecutionContext& context) {
         return true;
     }
     if (const auto fastResult = fastListObjectCall(methodName, args)) {
+        if (!noReturn) {
+            context.push(*fastResult);
+        }
+        return true;
+    }
+    if (const auto fastResult = fastScriptInstanceObjectCall(methodName, args)) {
         if (!noReturn) {
             context.push(*fastResult);
         }
@@ -6045,8 +6179,11 @@ OpcodeRegistry::OpcodeRegistry() {
 }
 
 const OpcodeHandler* OpcodeRegistry::get(Opcode opcode) const {
-    const auto found = handlers_.find(opcode);
-    return found == handlers_.end() ? nullptr : &found->second;
+    const auto index = static_cast<std::size_t>(code(opcode));
+    if (index >= handlers_.size() || handlers_[index] == nullptr) {
+        return nullptr;
+    }
+    return &handlers_[index];
 }
 
 bool OpcodeRegistry::hasHandler(Opcode opcode) const {
@@ -6059,7 +6196,10 @@ bool OpcodeRegistry::execute(Opcode opcode, ExecutionContext& context) const {
 }
 
 void OpcodeRegistry::registerHandler(Opcode opcode, OpcodeHandler handler) {
-    handlers_[opcode] = std::move(handler);
+    const auto index = static_cast<std::size_t>(code(opcode));
+    if (index < handlers_.size()) {
+        handlers_[index] = handler;
+    }
 }
 
 void StackOpcodes::registerHandlers(OpcodeRegistry& registry) {

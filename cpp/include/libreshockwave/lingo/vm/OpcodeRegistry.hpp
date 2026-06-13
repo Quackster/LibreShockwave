@@ -1,7 +1,8 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <functional>
-#include <unordered_map>
 
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
@@ -20,7 +21,8 @@ public:
     void registerHandler(Opcode opcode, OpcodeHandler handler);
 
 private:
-    std::unordered_map<Opcode, OpcodeHandler> handlers_;
+    static constexpr std::size_t kHandlerCount = 0x74;
+    std::array<OpcodeHandler, kHandlerCount> handlers_{};
 };
 
 class StackOpcodes {

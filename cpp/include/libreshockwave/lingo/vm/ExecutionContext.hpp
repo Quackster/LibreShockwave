@@ -133,6 +133,7 @@ public:
     void jumpTo(int targetOffset);
     [[nodiscard]] const chunks::ScriptChunk::Handler* findLocalHandler(int index) const;
     [[nodiscard]] const std::vector<chunks::ScriptChunk::LiteralEntry>& literals() const;
+    [[nodiscard]] const std::string& resolveNameRef(int nameId) const;
     [[nodiscard]] std::string resolveName(int nameId) const;
     [[nodiscard]] std::optional<HandlerRef> findHandler(std::string_view name) const;
     [[nodiscard]] Datum executeHandler(const chunks::ScriptChunk& script,

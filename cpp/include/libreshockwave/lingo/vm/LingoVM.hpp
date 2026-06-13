@@ -208,6 +208,35 @@ private:
         std::vector<Datum> args;
     };
 
+    struct HandlerMetadataKey {
+        const chunks::ScriptChunk* script{nullptr};
+        const chunks::ScriptChunk::Handler* handler{nullptr};
+        const DirectorFile* fileOwner{nullptr};
+        const chunks::ScriptNamesChunk* scriptNamesOwner{nullptr};
+
+        bool operator==(const HandlerMetadataKey& other) const {
+            return script == other.script &&
+                   handler == other.handler &&
+                   fileOwner == other.fileOwner &&
+                   scriptNamesOwner == other.scriptNamesOwner;
+        }
+    };
+
+    struct HandlerMetadataKeyHash {
+        std::size_t operator()(const HandlerMetadataKey& key) const {
+            return std::hash<const void*>{}(key.script) ^
+                   (std::hash<const void*>{}(key.handler) << 1U) ^
+                   (std::hash<const void*>{}(key.fileOwner) << 2U) ^
+                   (std::hash<const void*>{}(key.scriptNamesOwner) << 3U);
+        }
+    };
+
+    struct HandlerMetadata {
+        std::string name;
+        std::string normalizedName;
+        bool firstParamDeclaredMe{false};
+    };
+
     DirectorFile* file_{nullptr};
     std::unordered_map<std::string, Datum> globals_;
     std::map<std::string, Datum> prefs_;
@@ -223,6 +252,7 @@ private:
     std::unordered_set<std::string> tracedHandlers_;
     std::unordered_map<std::string, HandlerRef> handlerCache_;
     std::unordered_set<std::string> missingHandlerCache_;
+    std::unordered_map<HandlerMetadataKey, std::shared_ptr<const HandlerMetadata>, HandlerMetadataKeyHash> handlerMetadataCache_;
     std::function<void()> passCallback_;
     bool eventStopped_{false};
     bool inErrorState_{false};

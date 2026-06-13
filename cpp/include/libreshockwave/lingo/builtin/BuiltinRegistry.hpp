@@ -144,6 +144,7 @@ struct BuiltinContext {
     player::SpriteProperties* spriteProperties{nullptr};
     player::timeout::TimeoutManager* timeoutManager{nullptr};
     std::vector<Datum> currentHandlerArgs;
+    const std::vector<Datum>* currentHandlerArgsView{nullptr};
     Datum returnValue{Datum::voidValue()};
     std::vector<std::pair<std::string, std::string>> externalParams;
     bool tellStreamStatusEnabled{false};

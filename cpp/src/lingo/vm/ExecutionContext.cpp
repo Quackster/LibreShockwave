@@ -209,7 +209,7 @@ const std::vector<chunks::ScriptChunk::LiteralEntry>& ExecutionContext::literals
     return script != nullptr ? script->literals() : empty;
 }
 
-std::string ExecutionContext::resolveName(int nameId) const {
+const std::string& ExecutionContext::resolveNameRef(int nameId) const {
     if (const auto found = resolvedNames_.find(nameId); found != resolvedNames_.end()) {
         return found->second;
     }
@@ -222,6 +222,10 @@ std::string ExecutionContext::resolveName(int nameId) const {
     }
     auto [inserted, _] = resolvedNames_.emplace(nameId, std::move(resolved));
     return inserted->second;
+}
+
+std::string ExecutionContext::resolveName(int nameId) const {
+    return resolveNameRef(nameId);
 }
 
 std::optional<HandlerRef> ExecutionContext::findHandler(std::string_view name) const {

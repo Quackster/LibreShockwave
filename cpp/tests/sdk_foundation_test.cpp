@@ -9703,6 +9703,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     scriptInstance.scriptInstanceValue().setProperty("nestedList", nestedList);
     assert(runObjCall(113, {scriptInstance, Datum::symbol("nestedList"), Datum::of(3), Datum::of(33)}).isVoid());
     assert(runObjCall(67, {scriptInstance, Datum::symbol("nestedList"), Datum::of(3)}).intValue() == 33);
+    assert(runObjCall(67, {scriptInstance, Datum::symbol("nestedList"), Datum::of(2)}).isVoid());
+    assert(runObjCall(70, {scriptInstance, Datum::symbol("nestedList")}).intValue() == 3);
+    assert(runObjCall(113, {scriptInstance, Datum::symbol("directSetProp"), Datum::of(88)}).isVoid());
+    assert(runObjCall(67, {scriptInstance, Datum::symbol("directSetProp")}).intValue() == 88);
     auto nestedProps = Datum::propList();
     nestedProps.propListValue().put(Datum::symbol("key"), Datum::of(5));
     scriptInstance.scriptInstanceValue().setProperty("nestedProps", nestedProps);

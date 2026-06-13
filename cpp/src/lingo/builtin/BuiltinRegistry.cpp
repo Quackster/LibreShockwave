@@ -2235,10 +2235,13 @@ Datum ControlFlowBuiltins::param(BuiltinContext& context, const std::vector<Datu
         return Datum::voidValue();
     }
     const int index = toIntLikeJava(args[0]) - 1;
-    if (index < 0 || index >= static_cast<int>(context.currentHandlerArgs.size())) {
+    const auto& handlerArgs = context.currentHandlerArgsView != nullptr
+                                  ? *context.currentHandlerArgsView
+                                  : context.currentHandlerArgs;
+    if (index < 0 || index >= static_cast<int>(handlerArgs.size())) {
         return Datum::voidValue();
     }
-    return context.currentHandlerArgs[static_cast<std::size_t>(index)];
+    return handlerArgs[static_cast<std::size_t>(index)];
 }
 
 Datum ControlFlowBuiltins::go(BuiltinContext& context, const std::vector<Datum>& args) {

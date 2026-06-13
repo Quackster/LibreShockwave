@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
@@ -60,6 +61,35 @@ struct ResolvedScriptTarget {
     std::shared_ptr<const DirectorFile> scriptOwner;
     chunks::ScriptChunkType scriptType{chunks::ScriptChunkType::Unknown};
 };
+
+struct HandlerLookupKey {
+    const chunks::ScriptChunk* script{nullptr};
+    const chunks::ScriptNamesChunk* scriptNames{nullptr};
+    std::string handlerName;
+
+    bool operator==(const HandlerLookupKey& other) const {
+        return script == other.script &&
+               scriptNames == other.scriptNames &&
+               handlerName == other.handlerName;
+    }
+};
+
+struct HandlerLookupKeyHash {
+    std::size_t operator()(const HandlerLookupKey& key) const {
+        const auto scriptHash = std::hash<const void*>{}(key.script);
+        const auto namesHash = std::hash<const void*>{}(key.scriptNames);
+        const auto nameHash = std::hash<std::string>{}(key.handlerName);
+        return scriptHash ^ (namesHash << 1U) ^ (nameHash << 2U);
+    }
+};
+
+std::string lowerAscii(std::string_view value) {
+    std::string lowered(value);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered;
+}
 
 int configuredTempo(const std::shared_ptr<DirectorFile>& file) {
     if (file == nullptr) {
@@ -1065,18 +1095,29 @@ void Player::wireComponents() {
         };
     };
 
-    auto findHandlerInScript = [this](const std::shared_ptr<chunks::ScriptChunk>& script,
-                                      const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNames,
-                                      const std::shared_ptr<const DirectorFile>& scriptOwner,
-                                      chunks::ScriptChunkType scriptType,
-                                      std::string_view handlerName)
+    auto handlerLookupCache =
+        std::make_shared<std::unordered_map<HandlerLookupKey, lingo::vm::HandlerRef, HandlerLookupKeyHash>>();
+    auto scriptRefTargetCache = std::make_shared<std::unordered_map<std::uint64_t, ResolvedScriptTarget>>();
+    auto scriptInstanceTargetCache = std::make_shared<std::unordered_map<std::uint64_t, ResolvedScriptTarget>>();
+
+    auto findHandlerInScript = [this, handlerLookupCache](const std::shared_ptr<chunks::ScriptChunk>& script,
+                                                          const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNames,
+                                                          const std::shared_ptr<const DirectorFile>& scriptOwner,
+                                                          chunks::ScriptChunkType scriptType,
+                                                          std::string_view handlerName)
         -> std::optional<lingo::vm::HandlerRef> {
         if (!script) {
             return std::nullopt;
         }
+        const HandlerLookupKey key{script.get(), scriptNames.get(), lowerAscii(handlerName)};
+        if (const auto cached = handlerLookupCache->find(key); cached != handlerLookupCache->end()) {
+            return cached->second;
+        }
         if (scriptNames) {
             if (auto handler = script->findHandlerPtr(handlerName, scriptNames.get())) {
-                return lingo::vm::HandlerRef{script.get(), handler, script, scriptOwner, scriptNames, scriptType};
+                auto ref = lingo::vm::HandlerRef{script.get(), handler, script, scriptOwner, scriptNames, scriptType};
+                handlerLookupCache->emplace(std::move(key), ref);
+                return ref;
             }
         }
         if (auto handler = vm_.findHandler(*script, handlerName)) {
@@ -1088,30 +1129,37 @@ void Player::wireComponents() {
             if (scriptNames) {
                 handler->scriptNamesOwner = scriptNames;
             }
-            return handler;
+            auto ref = *handler;
+            handlerLookupCache->emplace(std::move(key), ref);
+            return ref;
         }
         return std::nullopt;
     };
 
-    auto resolveScriptInstance = [this](const lingo::Datum::ScriptInstanceRef& instance)
+    auto resolveScriptRef = [this, scriptRefTargetCache](int castLib, int memberNum)
         -> std::optional<ResolvedScriptTarget> {
-        const auto& scriptRef = instance.scriptRef();
-        if (!scriptRef.has_value()) {
+        castLib = castLib > 0 ? castLib : 1;
+        if (memberNum <= 0) {
             return std::nullopt;
         }
 
-        const int castLib = scriptRef->castLib > 0 ? scriptRef->castLib : 1;
-        const int memberNum = scriptRef->memberNum();
+        const auto cacheKey = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(castLib)) << 32U) |
+                              static_cast<std::uint32_t>(memberNum);
+        if (const auto cached = scriptRefTargetCache->find(cacheKey); cached != scriptRefTargetCache->end()) {
+            return cached->second;
+        }
 
         if (auto castLibRef = castLibManager_.getCastLib(castLib)) {
             if (auto resolvedScript = castLibRef->getScript(memberNum)) {
                 const auto source = castLibRef->sourceFile();
-                return ResolvedScriptTarget{
+                auto resolved = ResolvedScriptTarget{
                     resolvedScript,
                     source ? source->getScriptNamesForScript(resolvedScript) : castLibRef->scriptNames(),
                     source,
                     castLibRef->scriptTypeForScript(resolvedScript)
                 };
+                scriptRefTargetCache->emplace(cacheKey, resolved);
+                return resolved;
             }
         }
 
@@ -1119,17 +1167,37 @@ void Player::wireComponents() {
             if (auto member = file_->getCastMemberByNumber(castLib, memberNum); member && member->isScript()) {
                 if (auto resolvedScript = file_->getScriptForCastMember(member, file_->getMappedCastChunk(castLib))) {
                     const auto scriptType = resolvedScript->resolvedScriptType();
-                    return ResolvedScriptTarget{
+                    auto resolved = ResolvedScriptTarget{
                         resolvedScript,
                         file_->getScriptNamesForScript(resolvedScript),
                         file_,
                         scriptType
                     };
+                    scriptRefTargetCache->emplace(cacheKey, resolved);
+                    return resolved;
                 }
             }
         }
 
         return std::nullopt;
+    };
+
+    auto resolveScriptInstance = [resolveScriptRef, scriptInstanceTargetCache](
+        const lingo::Datum::ScriptInstanceRef& instance)
+        -> std::optional<ResolvedScriptTarget> {
+        if (const auto cached = scriptInstanceTargetCache->find(instance.identityId());
+            cached != scriptInstanceTargetCache->end()) {
+            return cached->second;
+        }
+        const auto& scriptRef = instance.scriptRef();
+        if (!scriptRef.has_value()) {
+            return std::nullopt;
+        }
+        auto resolved = resolveScriptRef(scriptRef->castLib, scriptRef->memberNum());
+        if (resolved.has_value()) {
+            scriptInstanceTargetCache->emplace(instance.identityId(), *resolved);
+        }
+        return resolved;
     };
 
     auto findEventHandler = [this, findHandlerInScript, resolveScriptInstance](
@@ -1167,17 +1235,20 @@ void Player::wireComponents() {
         return std::nullopt;
     };
 
-    context.scriptHandlerFinder = [findEventHandler](
+    context.scriptHandlerFinder = [findHandlerInScript, resolveScriptRef](
         int castLib,
         int memberNum,
         const std::string& handlerName)
         -> std::optional<lingo::builtin::BuiltinContext::ScriptHandlerLocation> {
-        event::EventTarget target;
-        target.kind = event::EventTargetKind::ScriptInstance;
-        target.scriptInstance = lingo::Datum::scriptInstance(
-            "script",
-            lingo::Datum::CastMemberRef{castLib, memberNum});
-        const auto handler = findEventHandler(target, handlerName);
+        const auto resolved = resolveScriptRef(castLib, memberNum);
+        if (!resolved.has_value()) {
+            return std::nullopt;
+        }
+        const auto handler = findHandlerInScript(resolved->script,
+                                                 resolved->scriptNames,
+                                                 resolved->scriptOwner,
+                                                 resolved->scriptType,
+                                                 handlerName);
         if (!handler || handler->script == nullptr || handler->handler == nullptr) {
             return std::nullopt;
         }
