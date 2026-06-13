@@ -11761,6 +11761,61 @@ void testLingoVmRuntimeFoundation() {
                                 {});
     assert(vm.executeHandler(director8Script, scaledLocalHandler).intValue() == 42);
 
+    auto tracePrologueHandler = makeHandler(0, {
+        {Opcode::GET_MOVIE_PROP, 1},
+        {Opcode::JMP_IF_Z, 4},
+        {Opcode::PUSH_ZERO, 0},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 1},
+        {Opcode::EXT_CALL, 2},
+        {Opcode::PUSH_ZERO, 0},
+        {Opcode::SET_MOVIE_PROP, 1},
+        {Opcode::GET_TOP_LEVEL_PROP, 3},
+        {Opcode::PUSH_ZERO, 0},
+        {Opcode::SET_OBJ_PROP, 1},
+        {Opcode::GET_TOP_LEVEL_PROP, 4},
+        {Opcode::PUSH_ZERO, 0},
+        {Opcode::SET_OBJ_PROP, 1},
+        {Opcode::PUSH_INT8, 42},
+        {Opcode::RET, 0}
+    });
+    ScriptChunk tracePrologueScript(nullptr,
+                                    ChunkId(962),
+                                    ScriptChunkType::MovieScript,
+                                    0,
+                                    {tracePrologueHandler},
+                                    {},
+                                    {},
+                                    {},
+                                    {});
+    auto tracePrologueNames = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(963),
+        std::vector<std::string>{
+            "tracePrologue",
+            "traceScript",
+            "return",
+            "_movie",
+            "_player"
+        });
+    MovieProperties tracePrologueMovie;
+    LingoVM tracePrologueVm;
+    tracePrologueVm.builtinContext().movieProperties = &tracePrologueMovie;
+    assert(tracePrologueVm.executeHandler(
+        HandlerRef{&tracePrologueScript,
+                   &tracePrologueScript.handlers().front(),
+                   nullptr,
+                   nullptr,
+                   tracePrologueNames}).intValue() == 42);
+    assert(tracePrologueMovie.getMovieProp("traceScript").intValue() == 0);
+    assert(tracePrologueMovie.setMovieProp("traceScript", Datum::TRUE));
+    assert(tracePrologueVm.executeHandler(
+        HandlerRef{&tracePrologueScript,
+                   &tracePrologueScript.handlers().front(),
+                   nullptr,
+                   nullptr,
+                   tracePrologueNames}).intValue() == 0);
+    assert(tracePrologueMovie.getMovieProp("traceScript").intValue() == 1);
+
     auto indexedMutationHandler = makeHandler(30, {
         {Opcode::PUSH_INT8, 1},
         {Opcode::SET_LOCAL, 0},

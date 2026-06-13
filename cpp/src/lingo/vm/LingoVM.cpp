@@ -804,6 +804,7 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
         if (traceListener_ && traceListener_->needsHandlerTrace() && handlerInfo.has_value()) {
             traceListener_->onHandlerEnter(*handlerInfo);
         }
+        (void)skipDisabledTraceScriptPrologue(scope, script, fileOwner, scriptNamesOwner);
         if (const auto* first = scope.currentInstruction()) {
             auto callbacks = callbacksFor(script, fileOwner, scriptNamesOwner);
             const bool traceInstruction =
@@ -1107,6 +1108,58 @@ bool LingoVM::handlerDeclaresMeAsFirstParam(
         return false;
     }
     return equalsIgnoreCase(resolveName(script, handler.argNameIds.front(), fileOwner, scriptNamesOwner), "me");
+}
+
+bool LingoVM::skipDisabledTraceScriptPrologue(
+    Scope& scope,
+    const chunks::ScriptChunk& script,
+    const std::shared_ptr<const DirectorFile>& fileOwner,
+    const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner) const {
+    if (scope.bytecodeIndex() != 0 || traceEnabled_ || !tracedHandlers_.empty() ||
+        (traceListener_ != nullptr &&
+         (traceListener_->needsInstructionTrace() || traceListener_->needsVariableTrace())) ||
+        builtinContext_.movieProperties == nullptr ||
+        builtinContext_.movieProperties->getMovieProp("traceScript").boolValue()) {
+        return false;
+    }
+
+    const auto& handler = scope.handler();
+    const auto& instructions = handler.instructions;
+    constexpr int prologueLength = 13;
+    if (static_cast<int>(instructions.size()) <= prologueLength) {
+        return false;
+    }
+
+    auto opcodeAt = [&](int index, Opcode opcode) {
+        return instructions[static_cast<std::size_t>(index)].opcode == opcode;
+    };
+    auto nameAt = [&](int index, std::string_view name) {
+        return equalsIgnoreCase(resolveName(script,
+                                            instructions[static_cast<std::size_t>(index)].argument,
+                                            fileOwner,
+                                            scriptNamesOwner),
+                                name);
+    };
+
+    if (!opcodeAt(0, Opcode::GET_MOVIE_PROP) || !nameAt(0, "traceScript") ||
+        !opcodeAt(1, Opcode::JMP_IF_Z) ||
+        handler.getInstructionIndex(instructions[1].offset + instructions[1].argument) != 5 ||
+        !opcodeAt(2, Opcode::PUSH_ZERO) ||
+        !opcodeAt(3, Opcode::PUSH_ARG_LIST_NO_RET) || instructions[3].argument != 1 ||
+        !opcodeAt(4, Opcode::EXT_CALL) || !nameAt(4, "return") ||
+        !opcodeAt(5, Opcode::PUSH_ZERO) ||
+        !opcodeAt(6, Opcode::SET_MOVIE_PROP) || !nameAt(6, "traceScript") ||
+        !opcodeAt(7, Opcode::GET_TOP_LEVEL_PROP) || !nameAt(7, "_movie") ||
+        !opcodeAt(8, Opcode::PUSH_ZERO) ||
+        !opcodeAt(9, Opcode::SET_OBJ_PROP) || !nameAt(9, "traceScript") ||
+        !opcodeAt(10, Opcode::GET_TOP_LEVEL_PROP) || !nameAt(10, "_player") ||
+        !opcodeAt(11, Opcode::PUSH_ZERO) ||
+        !opcodeAt(12, Opcode::SET_OBJ_PROP) || !nameAt(12, "traceScript")) {
+        return false;
+    }
+
+    scope.setBytecodeIndex(prologueLength);
+    return true;
 }
 
 void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context, bool traceInstruction) {
