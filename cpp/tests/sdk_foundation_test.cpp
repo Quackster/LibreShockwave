@@ -6424,11 +6424,21 @@ void testBuiltinRegistryFoundation() {
     assert(valueList.listValue().getAt(2).stringValue() == "dog");
     const Datum valueProps = registry.invoke("value", context, {Datum::of(std::string("[#foo: 9]"))});
     assert(valueProps.propListValue().get(Datum::symbol("foo")).intValue() == 9);
-    context.valueEvaluator = [](const Datum& value) {
-        assert(value.stringValue() == "3");
-        return Datum::of(33);
+    int valueEvaluatorCalls = 0;
+    context.valueEvaluator = [&valueEvaluatorCalls](const Datum& value) {
+        ++valueEvaluatorCalls;
+        assert(value.stringValue() == "1 + 2");
+        return Datum::of(3);
     };
-    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 33);
+    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 3);
+    assert(valueEvaluatorCalls == 0);
+    assert(registry.invoke("value", context, {Datum::of(std::string("[#fast: 4]"))})
+               .propListValue()
+               .get(Datum::symbol("fast"))
+               .intValue() == 4);
+    assert(valueEvaluatorCalls == 0);
+    assert(registry.invoke("value", context, {Datum::of(std::string("1 + 2"))}).intValue() == 3);
+    assert(valueEvaluatorCalls == 1);
     context.valueEvaluator = {};
     std::string valueMemberName;
     context.castMemberNameResolver = [&valueMemberName](int castLib, const std::string& memberName) {
@@ -12900,6 +12910,29 @@ void testScoreNavigationFoundation() {
     assert(flatMixedList.listValue().items()[1].intValue() == 7);
     assert(std::fabs(flatMixedList.listValue().items()[2].floatValue() - 3.5F) < 0.0001F);
     assert(flatMixedList.listValue().items()[3].stringValue() == "Broker Manager Class");
+
+    std::ostringstream largeListValue;
+    largeListValue << "[";
+    for (int i = 0; i < 256; ++i) {
+        if (i > 0) {
+            largeListValue << ",";
+        }
+        largeListValue << "[\"s\"," << i << ",\"class_" << i
+                       << "\",[#revision:" << (i + 1) << ",#name:\"Chair, " << i << "\"]]";
+    }
+    largeListValue << "]";
+    const Datum largeParsedList = LingoValueParser::parseWithPartial(largeListValue.str());
+    assert(largeParsedList.isList());
+    assert(largeParsedList.listValue().count() == 256);
+    const Datum largeSample = largeParsedList.listValue().items()[173];
+    assert(largeSample.isList());
+    assert(largeSample.listValue().items()[0].stringValue() == "s");
+    assert(largeSample.listValue().items()[1].intValue() == 173);
+    assert(largeSample.listValue().items()[2].stringValue() == "class_173");
+    const Datum largeSampleProps = largeSample.listValue().items()[3];
+    assert(largeSampleProps.isPropList());
+    assert(largeSampleProps.propListValue().get(Datum::symbol("revision")).intValue() == 174);
+    assert(largeSampleProps.propListValue().get(Datum::symbol("name")).stringValue() == "Chair, 173");
 
     ScoreChunk::ScoreFrameData frameData = ScoreChunk::ScoreFrameData::empty();
     frameData.header.frameCount = 12;

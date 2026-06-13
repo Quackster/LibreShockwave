@@ -2498,13 +2498,17 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
     if (!args[0].isString()) {
         return args[0];
     }
+    const std::string raw = args[0].stringValue();
+    if (const auto parsedLiteral = LingoValueParser::parseComplete(raw, identifierResolver);
+        parsedLiteral.has_value() && !parsedLiteral->isVoid()) {
+        return *parsedLiteral;
+    }
     if (context.valueEvaluator) {
         Datum evaluated = context.valueEvaluator(args[0]);
         if (!evaluated.isVoid()) {
             return evaluated;
         }
     }
-    const std::string raw = args[0].stringValue();
     Datum parsed = LingoValueParser::parseWithPartial(raw, identifierResolver);
     if (!parsed.isVoid()) {
         return parsed;

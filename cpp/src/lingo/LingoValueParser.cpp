@@ -1,10 +1,12 @@
 #include "libreshockwave/lingo/LingoValueParser.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace libreshockwave::lingo {
@@ -12,7 +14,7 @@ namespace {
 
 using IdentifierResolver = LingoValueParser::IdentifierResolver;
 
-std::string trim(std::string_view value) {
+std::string_view trimView(std::string_view value) {
     std::size_t begin = 0;
     while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
         ++begin;
@@ -21,7 +23,7 @@ std::string trim(std::string_view value) {
     while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
         --end;
     }
-    return std::string(value.substr(begin, end - begin));
+    return value.substr(begin, end - begin);
 }
 
 bool startsWith(std::string_view value, std::string_view prefix) {
@@ -95,17 +97,23 @@ bool isFloatLiteral(std::string_view value) {
 }
 
 std::optional<int> parseInt(std::string_view value) {
+    value = trimView(value);
     if (!isIntegerLiteral(value)) {
         return std::nullopt;
     }
-    try {
-        return std::stoi(std::string(value));
-    } catch (const std::exception&) {
+
+    int result = 0;
+    const auto* begin = value.data();
+    const auto* end = value.data() + value.size();
+    const auto parsed = std::from_chars(begin, end, result);
+    if (parsed.ec != std::errc{} || parsed.ptr != end) {
         return std::nullopt;
     }
+    return result;
 }
 
 std::optional<float> parseFloat(std::string_view value) {
+    value = trimView(value);
     if (!isFloatLiteral(value)) {
         return std::nullopt;
     }
@@ -138,9 +146,9 @@ std::string unescapeString(std::string_view value) {
     return result;
 }
 
-std::vector<std::string> splitListElements(std::string_view content) {
-    std::vector<std::string> elements;
-    std::string current;
+std::vector<std::string_view> splitListElements(std::string_view content) {
+    std::vector<std::string_view> elements;
+    std::size_t elementStart = 0;
     int bracketDepth = 0;
     int parenDepth = 0;
     bool inQuote = false;
@@ -149,31 +157,24 @@ std::vector<std::string> splitListElements(std::string_view content) {
         char ch = content[i];
         if (ch == '"' && (i == 0 || content[i - 1] != '\\')) {
             inQuote = !inQuote;
-            current.push_back(ch);
-        } else if (inQuote) {
-            current.push_back(ch);
-        } else if (ch == '[') {
-            ++bracketDepth;
-            current.push_back(ch);
-        } else if (ch == ']') {
-            --bracketDepth;
-            current.push_back(ch);
-        } else if (ch == '(') {
-            ++parenDepth;
-            current.push_back(ch);
-        } else if (ch == ')') {
-            --parenDepth;
-            current.push_back(ch);
-        } else if (ch == ',' && bracketDepth == 0 && parenDepth == 0) {
-            elements.push_back(current);
-            current.clear();
-        } else {
-            current.push_back(ch);
+        } else if (!inQuote) {
+            if (ch == '[') {
+                ++bracketDepth;
+            } else if (ch == ']') {
+                --bracketDepth;
+            } else if (ch == '(') {
+                ++parenDepth;
+            } else if (ch == ')') {
+                --parenDepth;
+            } else if (ch == ',' && bracketDepth == 0 && parenDepth == 0) {
+                elements.push_back(content.substr(elementStart, i - elementStart));
+                elementStart = i + 1;
+            }
         }
     }
 
-    if (!current.empty()) {
-        elements.push_back(current);
+    if (elementStart < content.size()) {
+        elements.push_back(content.substr(elementStart));
     }
     return elements;
 }
@@ -212,12 +213,12 @@ bool isPropListElement(std::string_view element) {
     if (colonIndex < 0) {
         return false;
     }
-    const std::string rawKey = trim(element.substr(0, static_cast<std::size_t>(colonIndex)));
+    const std::string_view rawKey = trimView(element.substr(0, static_cast<std::size_t>(colonIndex)));
     if (rawKey.empty()) {
         return true;
     }
     if (startsWith(rawKey, "#")) {
-        const std::string key = trim(std::string_view(rawKey).substr(1));
+        const std::string_view key = trimView(rawKey.substr(1));
         return isIdentifier(key) || tryParseComplete(key, {}).has_value();
     }
     if (startsWith(rawKey, "\"") && endsWith(rawKey, "\"") && rawKey.size() >= 2) {
@@ -227,26 +228,26 @@ bool isPropListElement(std::string_view element) {
 }
 
 Datum parsePropListKey(std::string_view rawKey, const IdentifierResolver& identifierResolver) {
-    const std::string key = trim(rawKey);
+    const std::string_view key = trimView(rawKey);
     if (startsWith(key, "#") && key.size() > 1) {
-        const std::string symbolText = trim(std::string_view(key).substr(1));
+        const std::string_view symbolText = trimView(key.substr(1));
         if (isIdentifier(symbolText)) {
-            return Datum::symbol(symbolText);
+            return Datum::symbol(std::string(symbolText));
         }
         const auto parsed = tryParseComplete(symbolText, identifierResolver);
-        return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::symbol(symbolText);
+        return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::symbol(std::string(symbolText));
     }
     if (startsWith(key, "\"") && endsWith(key, "\"") && key.size() >= 2) {
-        const std::string unquoted = unescapeString(std::string_view(key).substr(1, key.size() - 2));
+        std::string unquoted = unescapeString(key.substr(1, key.size() - 2));
         const auto parsed = tryParseComplete(unquoted, identifierResolver);
-        return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(unquoted);
+        return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(std::move(unquoted));
     }
     const auto parsed = tryParseComplete(key, identifierResolver);
-    return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(key);
+    return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(std::string(key));
 }
 
 Datum parseListOrPropList(std::string_view content, const IdentifierResolver& identifierResolver) {
-    const std::string trimmed = trim(content);
+    const std::string_view trimmed = trimView(content);
     if (trimmed.empty()) {
         return Datum::list();
     }
@@ -259,10 +260,10 @@ Datum parseListOrPropList(std::string_view content, const IdentifierResolver& id
         return Datum::list();
     }
 
-    if (isPropListElement(trim(elements.front()))) {
+    if (isPropListElement(trimView(elements.front()))) {
         Datum props = Datum::propList();
         for (const auto& rawElement : elements) {
-            const std::string element = trim(rawElement);
+            const std::string_view element = trimView(rawElement);
             const int colonIndex = findPropListColon(element);
             if (colonIndex <= 0) {
                 continue;
@@ -280,17 +281,20 @@ Datum parseListOrPropList(std::string_view content, const IdentifierResolver& id
     std::vector<Datum> items;
     items.reserve(elements.size());
     for (const auto& element : elements) {
-        items.push_back(LingoValueParser::parseWithPartial(trim(element), identifierResolver));
+        items.push_back(LingoValueParser::parseWithPartial(trimView(element), identifierResolver));
     }
     return Datum::list(std::move(items));
 }
 
 std::optional<Datum> parseNumericCall(std::string_view expression, std::string_view name, int expectedParts) {
-    const std::string prefix = std::string(name) + "(";
-    if (!startsWith(expression, prefix) || !endsWith(expression, ")")) {
+    if (expression.size() <= name.size() + 1 ||
+        expression.substr(0, name.size()) != name ||
+        expression[name.size()] != '(' ||
+        expression.back() != ')') {
         return std::nullopt;
     }
-    const std::string inner = trim(expression.substr(prefix.size(), expression.size() - prefix.size() - 1));
+    const std::string_view inner = trimView(expression.substr(name.size() + 1,
+                                                             expression.size() - name.size() - 2));
     const auto parts = splitListElements(inner);
     if (static_cast<int>(parts.size()) != expectedParts) {
         return std::nullopt;
@@ -298,7 +302,7 @@ std::optional<Datum> parseNumericCall(std::string_view expression, std::string_v
     std::vector<int> values;
     values.reserve(parts.size());
     for (const auto& part : parts) {
-        const auto parsed = parseInt(trim(part));
+        const auto parsed = parseInt(trimView(part));
         if (!parsed.has_value()) {
             return std::nullopt;
         }
@@ -320,28 +324,27 @@ std::optional<Datum> parseRgb(std::string_view expression) {
     if (!startsWith(expression, "rgb(") || !endsWith(expression, ")")) {
         return std::nullopt;
     }
-    const std::string inner = trim(expression.substr(4, expression.size() - 5));
+    const std::string_view inner = trimView(expression.substr(4, expression.size() - 5));
     if (startsWith(inner, "\"") && endsWith(inner, "\"") && inner.size() >= 2) {
-        std::string hex = trim(std::string_view(inner).substr(1, inner.size() - 2));
+        std::string_view hex = trimView(inner.substr(1, inner.size() - 2));
         if (startsWith(hex, "#")) {
-            hex.erase(hex.begin());
+            hex.remove_prefix(1);
         }
-        try {
-            std::size_t parsedChars = 0;
-            const unsigned long value = std::stoul(hex, &parsedChars, 16);
-            if (parsedChars == hex.size()) {
-                return Datum::colorRef(static_cast<int>((value >> 16U) & 0xFFU),
-                                       static_cast<int>((value >> 8U) & 0xFFU),
-                                       static_cast<int>(value & 0xFFU));
-            }
-        } catch (const std::exception&) {
-            return std::nullopt;
+        unsigned int value = 0;
+        const auto* begin = hex.data();
+        const auto* end = hex.data() + hex.size();
+        const auto parsed = std::from_chars(begin, end, value, 16);
+        if (parsed.ec == std::errc{} && parsed.ptr == end) {
+            return Datum::colorRef(static_cast<int>((value >> 16U) & 0xFFU),
+                                   static_cast<int>((value >> 8U) & 0xFFU),
+                                   static_cast<int>(value & 0xFFU));
         }
+        return std::nullopt;
     }
 
     const auto parts = splitListElements(inner);
     if (parts.size() == 1) {
-        const auto parsed = parseInt(trim(parts[0]));
+        const auto parsed = parseInt(trimView(parts[0]));
         if (parsed.has_value()) {
             const unsigned int value = static_cast<unsigned int>(*parsed);
             return Datum::colorRef(static_cast<int>((value >> 16U) & 0xFFU),
@@ -352,7 +355,7 @@ std::optional<Datum> parseRgb(std::string_view expression) {
     if (parts.size() == 3) {
         std::vector<int> values;
         for (const auto& part : parts) {
-            const auto parsed = parseInt(trim(part));
+            const auto parsed = parseInt(trimView(part));
             if (!parsed.has_value()) {
                 return std::nullopt;
             }
@@ -365,7 +368,7 @@ std::optional<Datum> parseRgb(std::string_view expression) {
 
 std::optional<Datum> tryParseComplete(std::string_view expression,
                                       const IdentifierResolver& identifierResolver) {
-    const std::string expr = trim(expression);
+    const std::string_view expr = trimView(expression);
     if (expr.empty()) {
         return Datum::voidValue();
     }
@@ -376,9 +379,9 @@ std::optional<Datum> tryParseComplete(std::string_view expression,
         return Datum::of(*parsed);
     }
     if (startsWith(expr, "#") && expr.size() > 1) {
-        const std::string symbolName(std::string_view(expr).substr(1));
+        const std::string_view symbolName = expr.substr(1);
         if (isIdentifier(symbolName)) {
-            return Datum::symbol(symbolName);
+            return Datum::symbol(std::string(symbolName));
         }
     }
     if (startsWith(expr, "\"") && endsWith(expr, "\"") && expr.size() >= 2) {
@@ -417,7 +420,7 @@ std::optional<Datum> tryParseComplete(std::string_view expression,
 
 Datum parseFirstValidExpression(std::string_view expression,
                                 const IdentifierResolver& identifierResolver) {
-    const std::string expr = trim(expression);
+    const std::string_view expr = trimView(expression);
     if (expr.empty()) {
         return Datum::voidValue();
     }
@@ -470,7 +473,7 @@ Datum parseFirstValidExpression(std::string_view expression,
                (std::isalnum(static_cast<unsigned char>(expr[pos])) || expr[pos] == '_')) {
             ++pos;
         }
-        return pos > start ? Datum::symbol(expr.substr(start, pos - start)) : Datum::voidValue();
+        return pos > start ? Datum::symbol(std::string(expr.substr(start, pos - start))) : Datum::voidValue();
     }
 
     if (first == '[') {
@@ -500,7 +503,7 @@ Datum parseFirstValidExpression(std::string_view expression,
                (std::isalnum(static_cast<unsigned char>(expr[pos])) || expr[pos] == '_')) {
             ++pos;
         }
-        const std::string identifier = expr.substr(start, pos - start);
+        const std::string_view identifier = expr.substr(start, pos - start);
         if (equalsIgnoreCase(identifier, "TRUE")) return Datum::TRUE;
         if (equalsIgnoreCase(identifier, "FALSE")) return Datum::FALSE;
         if (equalsIgnoreCase(identifier, "VOID")) return Datum::voidValue();
@@ -521,8 +524,13 @@ Datum LingoValueParser::parseLiteral(std::string_view expression) {
     return parseWithPartial(expression);
 }
 
+std::optional<Datum> LingoValueParser::parseComplete(std::string_view expression,
+                                                     IdentifierResolver identifierResolver) {
+    return tryParseComplete(expression, identifierResolver);
+}
+
 Datum LingoValueParser::parseWithPartial(std::string_view expression, IdentifierResolver identifierResolver) {
-    const std::string expr = trim(expression);
+    const std::string_view expr = trimView(expression);
     if (expr.empty()) {
         return Datum::voidValue();
     }
