@@ -9411,6 +9411,56 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(fieldScope.stackSize() == 0);
     builtinContext.fieldResolver = {};
 
+    builtinContext.castLibNameResolver = [](const std::string& name) {
+        return name == "SecurityCast" ? 6 : -1;
+    };
+    builtinContext.castLibNumberResolver = [](int castLib) {
+        return castLib == 6 ? 6 : -1;
+    };
+    builtinContext.castMemberNameResolver = [](int castLib, const std::string& name) {
+        if ((castLib == 0 || castLib == 6) && name == "SecurityCode") {
+            return Datum::castMemberRef(CastLibId(6), MemberId(12));
+        }
+        return Datum::voidValue();
+    };
+    builtinContext.castLibPropertyGetter = [](int castLib, const std::string& propName) {
+        if (castLib == 6 && propName == "name") {
+            return Datum::of(std::string("SecurityCast"));
+        }
+        return Datum::voidValue();
+    };
+
+    Scope securityCtorScope(&script, handler, {});
+    ExecutionContext securityCtorContext(
+        securityCtorScope,
+        ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 122},
+        &registry,
+        &builtinContext,
+        callbacks);
+    securityCtorContext.push(Datum::argList({Datum::of(std::string("SecurityCode"))}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, securityCtorContext));
+    securityCtorContext.setInstruction(
+        ScriptChunk::Instruction{1, Opcode::GET_OBJ_PROP, libreshockwave::lingo::code(Opcode::GET_OBJ_PROP), 90});
+    assert(opcodeRegistry.execute(Opcode::GET_OBJ_PROP, securityCtorContext));
+    assert(securityCtorContext.peek().intValue() == 6);
+    securityCtorContext.setInstruction(
+        ScriptChunk::Instruction{2, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 1});
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, securityCtorContext));
+    securityCtorContext.setInstruction(
+        ScriptChunk::Instruction{3, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 91});
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, securityCtorContext));
+    assert(securityCtorContext.peek().asCastLibRef() != nullptr);
+    assert(securityCtorContext.peek().asCastLibRef()->castLib == 6);
+    securityCtorContext.setInstruction(
+        ScriptChunk::Instruction{4, Opcode::GET_OBJ_PROP, libreshockwave::lingo::code(Opcode::GET_OBJ_PROP), 123});
+    assert(opcodeRegistry.execute(Opcode::GET_OBJ_PROP, securityCtorContext));
+    assert(securityCtorContext.pop().stringValue() == "SecurityCast");
+    assert(securityCtorScope.stackSize() == 0);
+    builtinContext.castLibNumberResolver = {};
+    builtinContext.castLibNameResolver = {};
+    builtinContext.castMemberNameResolver = {};
+    builtinContext.castLibPropertyGetter = {};
+
     Scope moviePropScope(&script, handler, {});
     ExecutionContext moviePropContext(moviePropScope,
                                       ScriptChunk::Instruction{0, Opcode::GET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::GET_MOVIE_PROP), 57},
