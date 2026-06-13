@@ -3,9 +3,13 @@
 #include <array>
 #include <cerrno>
 #include <cstring>
+#include <cstdint>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <utility>
+
+#include "libreshockwave/player/xtra/QueuedMultiuserBridge.hpp"
 
 #include <netdb.h>
 #include <sys/socket.h>
@@ -15,6 +19,8 @@ namespace libreshockwave::player::xtra {
 namespace {
 
 constexpr std::size_t READ_BUFFER_SIZE = 8192;
+constexpr int SMUS_MODE = 0;
+constexpr std::size_t SMUS_HEADER_SIZE = 6;
 
 void closeSocket(int& socketFd) {
     if (socketFd >= 0) {
@@ -54,17 +60,6 @@ int connectSocket(const std::string& host, int port) {
     return -1;
 }
 
-std::string serializeWireContent(const std::string& subject, const lingo::Datum& content) {
-    const std::string body = content.stringValue();
-    if (subject.empty() || subject == "0") {
-        return body;
-    }
-    if (body.empty()) {
-        return subject;
-    }
-    return subject + " " + body;
-}
-
 int sendFlags() {
 #ifdef MSG_NOSIGNAL
     return MSG_NOSIGNAL;
@@ -81,16 +76,63 @@ int recvFlags() {
 #endif
 }
 
+bool sendAll(int socketFd, const std::vector<std::uint8_t>& bytes) {
+    if (socketFd < 0 || bytes.empty()) {
+        return true;
+    }
+
+    const auto* cursor = bytes.data();
+    std::size_t remaining = bytes.size();
+    while (remaining > 0) {
+        const ssize_t sent = ::send(socketFd, cursor, remaining, sendFlags());
+        if (sent <= 0) {
+            return false;
+        }
+        cursor += sent;
+        remaining -= static_cast<std::size_t>(sent);
+    }
+    return true;
+}
+
+std::optional<std::vector<std::uint8_t>> takeSmusFrame(std::vector<std::uint8_t>& buffer) {
+    if (buffer.size() < SMUS_HEADER_SIZE) {
+        return std::nullopt;
+    }
+
+    const int bodyLength = (static_cast<int>(buffer[2]) << 24) |
+                           (static_cast<int>(buffer[3]) << 16) |
+                           (static_cast<int>(buffer[4]) << 8) |
+                           static_cast<int>(buffer[5]);
+    if (buffer[0] != 114 || buffer[1] != 0 || bodyLength < 0) {
+        auto invalid = std::move(buffer);
+        buffer.clear();
+        return invalid;
+    }
+
+    const std::size_t frameLength = SMUS_HEADER_SIZE + static_cast<std::size_t>(bodyLength);
+    if (buffer.size() < frameLength) {
+        return std::nullopt;
+    }
+
+    std::vector<std::uint8_t> frame(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frameLength));
+    buffer.erase(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frameLength));
+    return frame;
+}
+
 } // namespace
 
 struct SocketMultiuserBridge::Connection {
     mutable std::mutex mutex;
     int socketFd = -1;
+    int instanceId = 0;
     bool connected = false;
     bool connecting = false;
     bool closeRequested = false;
     int mode = 0;
     std::array<char, READ_BUFFER_SIZE> readBuf{};
+    std::vector<std::uint8_t> inboundBuffer;
+    std::vector<NetMessage> queuedMessages;
+    QueuedMultiuserBridge protocol;
 
     ~Connection() {
         closeSocket(socketFd);
@@ -105,8 +147,11 @@ void SocketMultiuserBridge::requestConnect(int instanceId, const std::string& ho
     auto connection = std::make_shared<Connection>();
     {
         std::lock_guard lock(connection->mutex);
+        connection->instanceId = instanceId;
         connection->connecting = true;
         connection->mode = mode;
+        connection->protocol.requestConnect(instanceId, host, port, mode);
+        connection->protocol.drainPendingRequests();
     }
 
     {
@@ -118,17 +163,36 @@ void SocketMultiuserBridge::requestConnect(int instanceId, const std::string& ho
         int socketFd = connectSocket(host, port);
         std::lock_guard lock(connection->mutex);
         connection->connecting = false;
-        if (connection->closeRequested || socketFd < 0) {
+        if (connection->closeRequested) {
             closeSocket(socketFd);
+            return;
+        }
+        if (socketFd < 0) {
+            connection->protocol.notifyError(connection->instanceId, -3);
+            auto messages = connection->protocol.pollMessages(connection->instanceId);
+            connection->queuedMessages.insert(connection->queuedMessages.end(), messages.begin(), messages.end());
             return;
         }
         connection->socketFd = socketFd;
         connection->connected = true;
+        connection->protocol.notifyConnected(connection->instanceId);
+        for (const auto& request : connection->protocol.pendingRequests()) {
+            if (request.type == QueuedMultiuserBridge::REQ_SEND &&
+                !sendAll(connection->socketFd, request.wireBytes())) {
+                closeSocket(connection->socketFd);
+                connection->connected = false;
+                connection->protocol.notifyError(connection->instanceId, -2);
+                break;
+            }
+        }
+        connection->protocol.drainPendingRequests();
+        auto messages = connection->protocol.pollMessages(connection->instanceId);
+        connection->queuedMessages.insert(connection->queuedMessages.end(), messages.begin(), messages.end());
     }).detach();
 }
 
 void SocketMultiuserBridge::requestSend(int instanceId,
-                                        const std::string&,
+                                        const std::string& senderID,
                                         const std::string& subject,
                                         const lingo::Datum& content) {
     auto connection = connectionFor(instanceId);
@@ -136,24 +200,27 @@ void SocketMultiuserBridge::requestSend(int instanceId,
         return;
     }
 
-    const std::string wire = serializeWireContent(subject, content);
     std::lock_guard lock(connection->mutex);
-    if (!connection->connected || connection->socketFd < 0 || wire.empty()) {
+    if (!connection->connected || connection->socketFd < 0) {
         return;
     }
 
-    const auto* bytes = wire.data();
-    std::size_t remaining = wire.size();
-    while (remaining > 0) {
-        const ssize_t sent = ::send(connection->socketFd, bytes, remaining, sendFlags());
-        if (sent <= 0) {
+    connection->protocol.requestSend(instanceId, senderID, subject, content);
+    for (const auto& request : connection->protocol.pendingRequests()) {
+        if (request.type != QueuedMultiuserBridge::REQ_SEND) {
+            continue;
+        }
+        if (!sendAll(connection->socketFd, request.wireBytes())) {
             closeSocket(connection->socketFd);
             connection->connected = false;
+            connection->protocol.notifyError(instanceId, -2);
+            auto messages = connection->protocol.pollMessages(instanceId);
+            connection->queuedMessages.insert(connection->queuedMessages.end(), messages.begin(), messages.end());
+            connection->protocol.drainPendingRequests();
             return;
         }
-        bytes += sent;
-        remaining -= static_cast<std::size_t>(sent);
     }
+    connection->protocol.drainPendingRequests();
 }
 
 void SocketMultiuserBridge::requestDisconnect(int instanceId) {
@@ -172,6 +239,7 @@ void SocketMultiuserBridge::requestDisconnect(int instanceId) {
     connection->closeRequested = true;
     connection->connecting = false;
     connection->connected = false;
+    connection->protocol.notifyDisconnected(instanceId);
     closeSocket(connection->socketFd);
 }
 
@@ -191,33 +259,53 @@ std::vector<SocketMultiuserBridge::NetMessage> SocketMultiuserBridge::pollMessag
     }
 
     std::lock_guard lock(connection->mutex);
+    std::vector<NetMessage> result = std::move(connection->queuedMessages);
+    connection->queuedMessages.clear();
+
     if (!connection->connected || connection->socketFd < 0) {
-        return {};
+        return result;
     }
 
-    const ssize_t read = ::recv(connection->socketFd,
-                               connection->readBuf.data(),
-                               connection->readBuf.size(),
-                               recvFlags());
-    if (read > 0) {
-        return {NetMessage{0,
-                           "",
-                           "",
-                           lingo::Datum::of(std::string(connection->readBuf.data(),
-                                                        static_cast<std::size_t>(read)))}};
-    }
-    if (read == 0) {
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        const ssize_t read = ::recv(connection->socketFd,
+                                   connection->readBuf.data(),
+                                   connection->readBuf.size(),
+                                   recvFlags());
+        if (read > 0) {
+            const auto* begin = reinterpret_cast<const std::uint8_t*>(connection->readBuf.data());
+            if (connection->mode == SMUS_MODE) {
+                connection->inboundBuffer.insert(connection->inboundBuffer.end(),
+                                                 begin,
+                                                 begin + read);
+                while (auto frame = takeSmusFrame(connection->inboundBuffer)) {
+                    connection->protocol.deliverMessageBytes(instanceId, *frame);
+                }
+            } else {
+                connection->protocol.deliverMessageBytes(
+                    instanceId,
+                    std::vector<std::uint8_t>(begin, begin + read));
+            }
+            continue;
+        }
+        if (read == 0) {
+            closeSocket(connection->socketFd);
+            connection->connected = false;
+            connection->protocol.notifyDisconnected(instanceId);
+            break;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            break;
+        }
+
         closeSocket(connection->socketFd);
         connection->connected = false;
-        return {};
-    }
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        return {};
+        connection->protocol.notifyError(instanceId, -2);
+        break;
     }
 
-    closeSocket(connection->socketFd);
-    connection->connected = false;
-    return {};
+    auto messages = connection->protocol.pollMessages(instanceId);
+    result.insert(result.end(), messages.begin(), messages.end());
+    return result;
 }
 
 void SocketMultiuserBridge::destroyInstance(int instanceId) {

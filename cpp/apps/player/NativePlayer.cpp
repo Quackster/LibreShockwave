@@ -23,12 +23,14 @@
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/player/Player.hpp"
+#include "libreshockwave/player/input/DirectorKeyCodes.hpp"
 #include "libreshockwave/player/net/QueuedNetProvider.hpp"
 #include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
 #define GDK_DISABLE_DEPRECATION_WARNINGS
 #define GTK_DISABLE_DEPRECATION_WARNINGS
+#include <gdk/gdkkeysyms.h>
 #include <gtk/gtk.h>
 
 namespace {
@@ -76,6 +78,12 @@ struct PlayerUi {
     bool updatingControls = false;
 };
 
+struct StageTransform {
+    double x = 0.0;
+    double y = 0.0;
+    double scale = 1.0;
+};
+
 std::string trim(std::string_view value) {
     std::size_t begin = 0;
     while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
@@ -87,6 +95,19 @@ std::string trim(std::string_view value) {
         --end;
     }
     return std::string(value.substr(begin, end - begin));
+}
+
+bool asciiEqualsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+        if (std::tolower(static_cast<unsigned char>(lhs[index])) !=
+            std::tolower(static_cast<unsigned char>(rhs[index]))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool startsWith(std::string_view value, std::string_view prefix) {
@@ -139,7 +160,8 @@ void setParam(PlayerSettings& settings, std::string key, std::string value) {
     }
 
     for (auto& entry : settings.params) {
-        if (entry.first == key) {
+        if (asciiEqualsIgnoreCase(entry.first, key)) {
+            entry.first = std::move(key);
             entry.second = std::move(value);
             return;
         }
@@ -153,35 +175,6 @@ void setParamAssignment(PlayerSettings& settings, std::string_view assignment, s
         throw std::runtime_error(std::string(optionName) + " expects key=value");
     }
     setParam(settings, trim(assignment.substr(0, equals)), std::string(assignment.substr(equals + 1)));
-}
-
-std::vector<std::pair<std::string, std::string>> parseParamText(std::string_view text) {
-    PlayerSettings parsed;
-    std::istringstream input{std::string(text)};
-    std::string line;
-    int lineNumber = 0;
-    while (std::getline(input, line)) {
-        ++lineNumber;
-        const std::string cleaned = trim(line);
-        if (cleaned.empty() || cleaned.front() == '#') {
-            continue;
-        }
-
-        try {
-            setParamAssignment(parsed, cleaned, "line " + std::to_string(lineNumber));
-        } catch (const std::exception& error) {
-            throw std::runtime_error(std::string(error.what()));
-        }
-    }
-    return parsed.params;
-}
-
-std::string formatParams(const std::vector<std::pair<std::string, std::string>>& params) {
-    std::ostringstream output;
-    for (const auto& [key, value] : params) {
-        output << key << '=' << value << '\n';
-    }
-    return output.str();
 }
 
 PlayerSettings loadSettings(const fs::path& path) {
@@ -371,6 +364,7 @@ std::string urlOrigin(std::string_view url) {
 }
 
 std::string cleanUrl(std::string value);
+std::string decodeUrlPath(std::string_view value);
 
 std::string sourceDirectory(std::string_view source) {
     if (isHttpUrl(source)) {
@@ -391,6 +385,62 @@ std::vector<std::uint8_t> readMovieSource(const std::string& source) {
         return fetchHttpUrl(source);
     }
     return readFile(fs::path(source));
+}
+
+std::vector<std::pair<std::string, std::string>> parseUrlQueryParams(std::string_view url) {
+    const auto queryBegin = url.find('?');
+    if (queryBegin == std::string_view::npos) {
+        return {};
+    }
+
+    const auto fragmentBegin = url.find('#', queryBegin + 1);
+    std::string_view query = fragmentBegin == std::string_view::npos
+        ? url.substr(queryBegin + 1)
+        : url.substr(queryBegin + 1, fragmentBegin - queryBegin - 1);
+
+    std::vector<std::pair<std::string, std::string>> params;
+    while (!query.empty()) {
+        const auto separator = query.find('&');
+        const std::string_view part = separator == std::string_view::npos
+            ? query
+            : query.substr(0, separator);
+        if (!part.empty()) {
+            const auto equals = part.find('=');
+            const std::string key = decodeUrlPath(equals == std::string_view::npos
+                ? part
+                : part.substr(0, equals));
+            if (!key.empty()) {
+                const std::string value = equals == std::string_view::npos
+                    ? std::string()
+                    : decodeUrlPath(part.substr(equals + 1));
+                params.emplace_back(key, value);
+            }
+        }
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        query.remove_prefix(separator + 1);
+    }
+    return params;
+}
+
+void applyUrlParams(PlayerSettings& settings,
+                    const std::string& source,
+                    bool importQueryParams,
+                    bool fillSrcParam) {
+    bool queryHadSrc = false;
+    if (importQueryParams) {
+        for (auto [key, value] : parseUrlQueryParams(source)) {
+            if (asciiEqualsIgnoreCase(key, "src")) {
+                queryHadSrc = true;
+            }
+            setParam(settings, std::move(key), std::move(value));
+        }
+    }
+
+    if (fillSrcParam && !queryHadSrc) {
+        setParam(settings, "src", cleanUrl(source));
+    }
 }
 
 std::string toLower(std::string_view value) {
@@ -735,6 +785,43 @@ std::uint8_t blendChannel(std::uint8_t foreground, std::uint8_t background, std:
         (static_cast<int>(foreground) * alpha + static_cast<int>(background) * (255 - alpha) + 127) / 255);
 }
 
+std::optional<StageTransform> stageTransformForSize(const PlayerUi& ui, int width, int height) {
+    if (ui.stageWidth <= 0 || ui.stageHeight <= 0 || width <= 0 || height <= 0) {
+        return std::nullopt;
+    }
+
+    const double scale = std::min(static_cast<double>(width) / static_cast<double>(ui.stageWidth),
+                                  static_cast<double>(height) / static_cast<double>(ui.stageHeight));
+    if (scale <= 0.0 || !std::isfinite(scale)) {
+        return std::nullopt;
+    }
+
+    const double targetWidth = static_cast<double>(ui.stageWidth) * scale;
+    const double targetHeight = static_cast<double>(ui.stageHeight) * scale;
+    return StageTransform{
+        (static_cast<double>(width) - targetWidth) / 2.0,
+        (static_cast<double>(height) - targetHeight) / 2.0,
+        scale
+    };
+}
+
+std::optional<std::pair<int, int>> stagePointFromWidgetPoint(PlayerUi& ui, double widgetX, double widgetY) {
+    if (ui.stageArea == nullptr) {
+        return std::nullopt;
+    }
+
+    const auto transform = stageTransformForSize(ui,
+                                                 gtk_widget_get_width(ui.stageArea),
+                                                 gtk_widget_get_height(ui.stageArea));
+    if (!transform.has_value()) {
+        return std::nullopt;
+    }
+
+    const int stageX = static_cast<int>(std::lround((widgetX - transform->x) / transform->scale));
+    const int stageY = static_cast<int>(std::lround((widgetY - transform->y) / transform->scale));
+    return std::pair<int, int>{stageX, stageY};
+}
+
 void setStageBitmap(PlayerUi& ui, const libreshockwave::bitmap::Bitmap& bitmap, int backgroundRgb) {
     ui.stageWidth = bitmap.width();
     ui.stageHeight = bitmap.height();
@@ -841,7 +928,11 @@ void renderCurrentFrame(PlayerUi& ui) {
     }
 
     const auto snapshot = ui.player->frameSnapshot();
-    setStageBitmap(ui, snapshot.renderFrame(), snapshot.backgroundColor);
+    auto frame = snapshot.renderFrame();
+    libreshockwave::player::InputHandler::applyEditableFieldOverlay(
+        frame,
+        ui.player->inputHandler().editableFieldOverlay());
+    setStageBitmap(ui, frame, snapshot.backgroundColor);
     if (ui.stageArea != nullptr) {
         gtk_drawing_area_set_content_width(GTK_DRAWING_AREA(ui.stageArea), std::max(320, ui.stageWidth));
         gtk_drawing_area_set_content_height(GTK_DRAWING_AREA(ui.stageArea), std::max(240, ui.stageHeight));
@@ -1044,18 +1135,18 @@ void drawStage(GtkDrawingArea*, cairo_t* cr, int width, int height, gpointer use
         return;
     }
 
-    const double scale = std::min(static_cast<double>(width) / static_cast<double>(ui.stageWidth),
-                                  static_cast<double>(height) / static_cast<double>(ui.stageHeight));
-    const double targetWidth = static_cast<double>(ui.stageWidth) * scale;
-    const double targetHeight = static_cast<double>(ui.stageHeight) * scale;
-    const double x = (static_cast<double>(width) - targetWidth) / 2.0;
-    const double y = (static_cast<double>(height) - targetHeight) / 2.0;
+    const auto transform = stageTransformForSize(ui, width, height);
+    if (!transform.has_value()) {
+        return;
+    }
+    const double targetWidth = static_cast<double>(ui.stageWidth) * transform->scale;
+    const double targetHeight = static_cast<double>(ui.stageHeight) * transform->scale;
 
     cairo_save(cr);
-    cairo_rectangle(cr, x, y, targetWidth, targetHeight);
+    cairo_rectangle(cr, transform->x, transform->y, targetWidth, targetHeight);
     cairo_clip(cr);
-    cairo_translate(cr, x, y);
-    cairo_scale(cr, scale, scale);
+    cairo_translate(cr, transform->x, transform->y);
+    cairo_scale(cr, transform->scale, transform->scale);
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
         reinterpret_cast<unsigned char*>(ui.stagePixels.data()),
         CAIRO_FORMAT_ARGB32,
@@ -1069,6 +1160,289 @@ void drawStage(GtkDrawingArea*, cairo_t* cr, int width, int height, gpointer use
     cairo_restore(cr);
 }
 
+bool hasControlModifier(GdkModifierType state) {
+    return (state & GDK_CONTROL_MASK) != 0;
+}
+
+bool hasAltModifier(GdkModifierType state) {
+    return (state & GDK_ALT_MASK) != 0;
+}
+
+bool hasShiftModifier(GdkModifierType state) {
+    return (state & GDK_SHIFT_MASK) != 0;
+}
+
+int browserKeyCodeFromGdkKeyval(guint keyval) {
+    switch (keyval) {
+        case GDK_KEY_BackSpace: return 8;
+        case GDK_KEY_Tab:
+        case GDK_KEY_ISO_Left_Tab: return 9;
+        case GDK_KEY_Return:
+        case GDK_KEY_KP_Enter: return 13;
+        case GDK_KEY_Escape: return 27;
+        case GDK_KEY_space: return 32;
+        case GDK_KEY_Page_Up:
+        case GDK_KEY_KP_Page_Up: return 33;
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_KP_Page_Down: return 34;
+        case GDK_KEY_End:
+        case GDK_KEY_KP_End: return 35;
+        case GDK_KEY_Home:
+        case GDK_KEY_KP_Home: return 36;
+        case GDK_KEY_Left:
+        case GDK_KEY_KP_Left: return 37;
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Up: return 38;
+        case GDK_KEY_Right:
+        case GDK_KEY_KP_Right: return 39;
+        case GDK_KEY_Down:
+        case GDK_KEY_KP_Down: return 40;
+        case GDK_KEY_Insert:
+        case GDK_KEY_KP_Insert: return 45;
+        case GDK_KEY_Delete:
+        case GDK_KEY_KP_Delete: return 46;
+        case GDK_KEY_F1: return 112;
+        case GDK_KEY_F2: return 113;
+        case GDK_KEY_F3: return 114;
+        case GDK_KEY_F4: return 115;
+        case GDK_KEY_F5: return 116;
+        case GDK_KEY_F6: return 117;
+        case GDK_KEY_F7: return 118;
+        case GDK_KEY_F8: return 119;
+        case GDK_KEY_F9: return 120;
+        case GDK_KEY_F10: return 121;
+        case GDK_KEY_F11: return 122;
+        case GDK_KEY_F12: return 123;
+        default:
+            break;
+    }
+
+    const guint upper = gdk_keyval_to_upper(keyval);
+    if (upper >= GDK_KEY_A && upper <= GDK_KEY_Z) {
+        return 65 + static_cast<int>(upper - GDK_KEY_A);
+    }
+    if (keyval >= GDK_KEY_0 && keyval <= GDK_KEY_9) {
+        return 48 + static_cast<int>(keyval - GDK_KEY_0);
+    }
+    if (keyval >= GDK_KEY_KP_0 && keyval <= GDK_KEY_KP_9) {
+        return 48 + static_cast<int>(keyval - GDK_KEY_KP_0);
+    }
+
+    const gunichar unicode = gdk_keyval_to_unicode(keyval);
+    if (unicode > 0 && unicode <= 255) {
+        return static_cast<int>(unicode);
+    }
+    return static_cast<int>(keyval);
+}
+
+std::string keyTextFromGdkKeyval(guint keyval, GdkModifierType state) {
+    if (hasControlModifier(state) || hasAltModifier(state)) {
+        return {};
+    }
+
+    if (keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab) {
+        return "\t";
+    }
+    if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) {
+        return "\r";
+    }
+
+    const gunichar unicode = gdk_keyval_to_unicode(keyval);
+    if (unicode == 0 || !g_unichar_isprint(unicode)) {
+        return {};
+    }
+
+    char buffer[7]{};
+    const int length = g_unichar_to_utf8(unicode, buffer);
+    return length > 0 ? std::string(buffer, static_cast<std::size_t>(length)) : std::string();
+}
+
+bool processQueuedInput(PlayerUi& ui) {
+    if (ui.player == nullptr) {
+        return false;
+    }
+
+    try {
+        const bool processed = ui.player->inputHandler().processInputEvents();
+        pumpHostFetches(ui);
+        renderCurrentFrame(ui);
+        return processed;
+    } catch (const std::exception& error) {
+        setStatus(ui, error.what());
+        return false;
+    }
+}
+
+void stageMotion(GtkEventControllerMotion*, double x, double y, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+    if (const auto point = stagePointFromWidgetPoint(ui, x, y)) {
+        ui.player->inputHandler().onMouseMove(point->first, point->second);
+        processQueuedInput(ui);
+    }
+}
+
+void stagePointerLeave(GtkEventControllerMotion*, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+    ui.player->inputHandler().onBlur();
+    processQueuedInput(ui);
+}
+
+void stagePressed(GtkGestureClick* gesture, int, double x, double y, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+    gtk_widget_grab_focus(ui.stageArea);
+    if (const auto point = stagePointFromWidgetPoint(ui, x, y)) {
+        const guint button = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
+        if (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY) {
+            ui.player->inputHandler().onMouseDown(point->first, point->second, button == GDK_BUTTON_SECONDARY);
+            processQueuedInput(ui);
+        }
+    }
+}
+
+void stageReleased(GtkGestureClick* gesture, int, double x, double y, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+    if (const auto point = stagePointFromWidgetPoint(ui, x, y)) {
+        const guint button = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
+        if (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY) {
+            ui.player->inputHandler().onMouseUp(point->first, point->second, button == GDK_BUTTON_SECONDARY);
+            processQueuedInput(ui);
+        }
+    }
+}
+
+bool isShortcutKey(guint keyval, char expected) {
+    const guint lower = gdk_keyval_to_lower(keyval);
+    return lower == static_cast<guint>(expected);
+}
+
+void copySelectedTextToClipboard(PlayerUi& ui) {
+    if (ui.player == nullptr || ui.stageArea == nullptr) {
+        return;
+    }
+    const auto selected = ui.player->inputHandler().getSelectedText();
+    if (!selected.has_value()) {
+        return;
+    }
+    GdkClipboard* clipboard = gtk_widget_get_clipboard(ui.stageArea);
+    if (clipboard != nullptr) {
+        gdk_clipboard_set_text(clipboard, selected->c_str());
+    }
+}
+
+void pasteClipboardTextReady(GObject* source, GAsyncResult* result, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+
+    GError* error = nullptr;
+    char* text = gdk_clipboard_read_text_finish(GDK_CLIPBOARD(source), result, &error);
+    if (error != nullptr) {
+        setStatus(ui, error->message);
+        g_error_free(error);
+        return;
+    }
+    if (text != nullptr) {
+        ui.player->inputHandler().onPasteText(text);
+        g_free(text);
+        processQueuedInput(ui);
+    }
+}
+
+void pasteTextFromClipboard(PlayerUi& ui) {
+    if (ui.stageArea == nullptr) {
+        return;
+    }
+    GdkClipboard* clipboard = gtk_widget_get_clipboard(ui.stageArea);
+    if (clipboard != nullptr) {
+        gdk_clipboard_read_text_async(clipboard, nullptr, pasteClipboardTextReady, &ui);
+    }
+}
+
+bool handleStageShortcut(PlayerUi& ui, guint keyval, GdkModifierType state) {
+    if (!hasControlModifier(state) || ui.player == nullptr) {
+        return false;
+    }
+
+    if (isShortcutKey(keyval, 'a')) {
+        ui.player->inputHandler().selectAll();
+        renderCurrentFrame(ui);
+        return true;
+    }
+    if (isShortcutKey(keyval, 'c')) {
+        copySelectedTextToClipboard(ui);
+        return true;
+    }
+    if (isShortcutKey(keyval, 'x')) {
+        copySelectedTextToClipboard(ui);
+        (void)ui.player->inputHandler().cutSelectedText();
+        renderCurrentFrame(ui);
+        return true;
+    }
+    if (isShortcutKey(keyval, 'v')) {
+        pasteTextFromClipboard(ui);
+        return true;
+    }
+    return false;
+}
+
+gboolean stageKeyPressed(GtkEventControllerKey*, guint keyval, guint, GdkModifierType state, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return FALSE;
+    }
+    if (handleStageShortcut(ui, keyval, state)) {
+        return TRUE;
+    }
+
+    const int directorKeyCode =
+        libreshockwave::player::input::DirectorKeyCodes::fromBrowserKeyCode(browserKeyCodeFromGdkKeyval(keyval));
+    ui.player->inputHandler().onKeyDown(directorKeyCode,
+                                        keyTextFromGdkKeyval(keyval, state),
+                                        hasShiftModifier(state),
+                                        hasControlModifier(state),
+                                        hasAltModifier(state));
+    processQueuedInput(ui);
+    return TRUE;
+}
+
+void stageKeyReleased(GtkEventControllerKey*, guint keyval, guint, GdkModifierType state, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+
+    const int directorKeyCode =
+        libreshockwave::player::input::DirectorKeyCodes::fromBrowserKeyCode(browserKeyCodeFromGdkKeyval(keyval));
+    ui.player->inputHandler().onKeyUp(directorKeyCode,
+                                      keyTextFromGdkKeyval(keyval, state),
+                                      hasShiftModifier(state),
+                                      hasControlModifier(state),
+                                      hasAltModifier(state));
+    processQueuedInput(ui);
+}
+
+void stageFocusLeave(GtkEventControllerFocus*, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    if (ui.player == nullptr) {
+        return;
+    }
+    ui.player->inputHandler().onBlur();
+    processQueuedInput(ui);
+}
+
 GtkWidget* iconButton(const char* iconName, const char* tooltip) {
     GtkWidget* button = gtk_button_new_from_icon_name(iconName);
     gtk_widget_set_size_request(button, 38, 34);
@@ -1076,7 +1450,18 @@ GtkWidget* iconButton(const char* iconName, const char* tooltip) {
     return button;
 }
 
-void openMovieResponse(GtkNativeDialog* dialog, int response, gpointer userData) {
+constexpr int OpenMovieLocalResponse = 1;
+constexpr int OpenMovieUrlResponse = 2;
+
+struct UrlDialogData {
+    PlayerUi* ui{nullptr};
+    GtkWidget* urlEntry{nullptr};
+    GtkWidget* importQueryCheck{nullptr};
+    GtkWidget* fillSrcCheck{nullptr};
+    GtkWidget* errorLabel{nullptr};
+};
+
+void openLocalMovieResponse(GtkNativeDialog* dialog, int response, gpointer userData) {
     auto& ui = *static_cast<PlayerUi*>(userData);
     if (response == GTK_RESPONSE_ACCEPT) {
         GFile* file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog));
@@ -1092,8 +1477,7 @@ void openMovieResponse(GtkNativeDialog* dialog, int response, gpointer userData)
     gtk_native_dialog_destroy(dialog);
 }
 
-void openMovieClicked(GtkButton*, gpointer userData) {
-    auto& ui = *static_cast<PlayerUi*>(userData);
+void showOpenLocalMovieDialog(PlayerUi& ui) {
     GtkFileChooserNative* dialog = gtk_file_chooser_native_new("Open Movie",
                                                                GTK_WINDOW(ui.window),
                                                                GTK_FILE_CHOOSER_ACTION_OPEN,
@@ -1114,8 +1498,123 @@ void openMovieClicked(GtkButton*, gpointer userData) {
         g_object_unref(current);
     }
 
-    g_signal_connect(dialog, "response", G_CALLBACK(openMovieResponse), &ui);
+    g_signal_connect(dialog, "response", G_CALLBACK(openLocalMovieResponse), &ui);
     gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog));
+}
+
+void openUrlMovieResponse(GtkDialog* dialog, int response, gpointer userData) {
+    auto* data = static_cast<UrlDialogData*>(userData);
+    if (response == GTK_RESPONSE_ACCEPT) {
+        const char* text = gtk_editable_get_text(GTK_EDITABLE(data->urlEntry));
+        const std::string source = normalizeMovieSource(text == nullptr ? "" : text);
+        if (source.empty() || !isHttpUrl(source)) {
+            gtk_label_set_text(GTK_LABEL(data->errorLabel), "Enter an HTTP or HTTPS movie URL.");
+            return;
+        }
+
+        applyUrlParams(data->ui->settings,
+                       source,
+                       gtk_check_button_get_active(GTK_CHECK_BUTTON(data->importQueryCheck)),
+                       gtk_check_button_get_active(GTK_CHECK_BUTTON(data->fillSrcCheck)));
+        loadMovie(*data->ui, source, true);
+    }
+
+    gtk_window_destroy(GTK_WINDOW(dialog));
+    delete data;
+}
+
+void showOpenUrlMovieDialog(PlayerUi& ui) {
+    GtkWidget* dialog = gtk_dialog_new_with_buttons("Open Movie URL",
+                                                    GTK_WINDOW(ui.window),
+                                                    GTK_DIALOG_MODAL,
+                                                    "_Cancel",
+                                                    GTK_RESPONSE_CANCEL,
+                                                    "_Open",
+                                                    GTK_RESPONSE_ACCEPT,
+                                                    nullptr);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 520, -1);
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+
+    GtkWidget* content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_top(box, 12);
+    gtk_widget_set_margin_bottom(box, 12);
+    gtk_widget_set_margin_start(box, 12);
+    gtk_widget_set_margin_end(box, 12);
+    gtk_box_append(GTK_BOX(content), box);
+
+    GtkWidget* label = gtk_label_new("Movie URL");
+    gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
+    gtk_box_append(GTK_BOX(box), label);
+
+    GtkWidget* urlEntry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(urlEntry), "https://example.com/path/movie.dcr");
+    gtk_entry_set_input_purpose(GTK_ENTRY(urlEntry), GTK_INPUT_PURPOSE_URL);
+    gtk_entry_set_activates_default(GTK_ENTRY(urlEntry), TRUE);
+    gtk_widget_set_hexpand(urlEntry, TRUE);
+    if (isHttpUrl(ui.settings.movieSource)) {
+        gtk_editable_set_text(GTK_EDITABLE(urlEntry), ui.settings.movieSource.c_str());
+    }
+    gtk_box_append(GTK_BOX(box), urlEntry);
+
+    GtkWidget* importQueryCheck = gtk_check_button_new_with_label("Use URL query string as external parameters");
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(importQueryCheck), TRUE);
+    gtk_box_append(GTK_BOX(box), importQueryCheck);
+
+    GtkWidget* fillSrcCheck = gtk_check_button_new_with_label("Set src to the movie URL when the query does not provide it");
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(fillSrcCheck), TRUE);
+    gtk_box_append(GTK_BOX(box), fillSrcCheck);
+
+    GtkWidget* errorLabel = gtk_label_new("");
+    gtk_label_set_xalign(GTK_LABEL(errorLabel), 0.0F);
+    gtk_widget_add_css_class(errorLabel, "error");
+    gtk_box_append(GTK_BOX(box), errorLabel);
+
+    auto* data = new UrlDialogData{&ui, urlEntry, importQueryCheck, fillSrcCheck, errorLabel};
+    g_signal_connect(dialog, "response", G_CALLBACK(openUrlMovieResponse), data);
+    gtk_window_present(GTK_WINDOW(dialog));
+    gtk_widget_grab_focus(urlEntry);
+}
+
+void openMovieChoiceResponse(GtkDialog* dialog, int response, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    gtk_window_destroy(GTK_WINDOW(dialog));
+
+    if (response == OpenMovieLocalResponse) {
+        showOpenLocalMovieDialog(ui);
+    } else if (response == OpenMovieUrlResponse) {
+        showOpenUrlMovieDialog(ui);
+    }
+}
+
+void openMovieClicked(GtkButton*, gpointer userData) {
+    auto& ui = *static_cast<PlayerUi*>(userData);
+    GtkWidget* dialog = gtk_dialog_new_with_buttons("Open Movie",
+                                                    GTK_WINDOW(ui.window),
+                                                    GTK_DIALOG_MODAL,
+                                                    "_Cancel",
+                                                    GTK_RESPONSE_CANCEL,
+                                                    "Local _File",
+                                                    OpenMovieLocalResponse,
+                                                    "_URL",
+                                                    OpenMovieUrlResponse,
+                                                    nullptr);
+
+    GtkWidget* content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_top(box, 12);
+    gtk_widget_set_margin_bottom(box, 12);
+    gtk_widget_set_margin_start(box, 12);
+    gtk_widget_set_margin_end(box, 12);
+    gtk_box_append(GTK_BOX(content), box);
+
+    GtkWidget* label = gtk_label_new("Open a local Director/Shockwave file or load one from an HTTP(S) URL.");
+    gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
+    gtk_box_append(GTK_BOX(box), label);
+
+    g_signal_connect(dialog, "response", G_CALLBACK(openMovieChoiceResponse), &ui);
+    gtk_window_present(GTK_WINDOW(dialog));
 }
 
 void reloadClicked(GtkButton*, gpointer userData) {
@@ -1186,34 +1685,154 @@ void tempoChanged(GtkSpinButton*, gpointer userData) {
 
 struct ParamsDialogData {
     PlayerUi* ui{nullptr};
-    GtkWidget* textView{nullptr};
+    GtkWidget* rowsBox{nullptr};
+    GtkWidget* errorLabel{nullptr};
+    struct Row {
+        GtkWidget* container{nullptr};
+        GtkWidget* keyEntry{nullptr};
+        GtkWidget* valueEntry{nullptr};
+        GtkWidget* removeButton{nullptr};
+    };
+    std::vector<Row> rows;
 };
+
+void appendParamRow(ParamsDialogData& data,
+                    std::string_view key = {},
+                    std::string_view value = {},
+                    bool focusKey = false);
+
+void setParamsDialogError(ParamsDialogData& data, std::string_view message) {
+    if (data.errorLabel != nullptr) {
+        gtk_label_set_text(GTK_LABEL(data.errorLabel), std::string(message).c_str());
+    }
+}
+
+ParamsDialogData::Row* findParamRow(ParamsDialogData& data, GtkWidget* widget) {
+    for (auto& row : data.rows) {
+        if (row.container == widget || row.keyEntry == widget ||
+            row.valueEntry == widget || row.removeButton == widget) {
+            return &row;
+        }
+    }
+    return nullptr;
+}
+
+void paramKeyActivated(GtkEntry* entry, gpointer userData) {
+    auto& data = *static_cast<ParamsDialogData*>(userData);
+    if (auto* row = findParamRow(data, GTK_WIDGET(entry)); row != nullptr) {
+        gtk_widget_grab_focus(row->valueEntry);
+    }
+}
+
+void paramValueActivated(GtkEntry* entry, gpointer userData) {
+    auto& data = *static_cast<ParamsDialogData*>(userData);
+    for (std::size_t index = 0; index < data.rows.size(); ++index) {
+        if (data.rows[index].valueEntry != GTK_WIDGET(entry)) {
+            continue;
+        }
+        if (index + 1 < data.rows.size()) {
+            gtk_widget_grab_focus(data.rows[index + 1].keyEntry);
+        } else {
+            appendParamRow(data, {}, {}, true);
+        }
+        return;
+    }
+}
+
+void removeParamRowClicked(GtkButton* button, gpointer userData) {
+    auto& data = *static_cast<ParamsDialogData*>(userData);
+    const auto it = std::find_if(data.rows.begin(), data.rows.end(), [button](const ParamsDialogData::Row& row) {
+        return row.removeButton == GTK_WIDGET(button);
+    });
+    if (it == data.rows.end()) {
+        return;
+    }
+
+    gtk_box_remove(GTK_BOX(data.rowsBox), it->container);
+    data.rows.erase(it);
+    if (data.rows.empty()) {
+        appendParamRow(data, {}, {}, true);
+    }
+}
+
+void appendParamRow(ParamsDialogData& data,
+                    std::string_view key,
+                    std::string_view value,
+                    bool focusKey) {
+    GtkWidget* rowBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_widget_set_hexpand(rowBox, TRUE);
+
+    GtkWidget* keyEntry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(keyEntry), "name");
+    gtk_entry_set_activates_default(GTK_ENTRY(keyEntry), FALSE);
+    gtk_widget_set_size_request(keyEntry, 180, -1);
+    gtk_editable_set_text(GTK_EDITABLE(keyEntry), std::string(key).c_str());
+    gtk_box_append(GTK_BOX(rowBox), keyEntry);
+
+    GtkWidget* valueEntry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(valueEntry), "value");
+    gtk_entry_set_activates_default(GTK_ENTRY(valueEntry), FALSE);
+    gtk_widget_set_hexpand(valueEntry, TRUE);
+    gtk_editable_set_text(GTK_EDITABLE(valueEntry), std::string(value).c_str());
+    gtk_box_append(GTK_BOX(rowBox), valueEntry);
+
+    GtkWidget* removeButton = iconButton("list-remove-symbolic", "Remove parameter");
+    gtk_box_append(GTK_BOX(rowBox), removeButton);
+
+    data.rows.push_back({rowBox, keyEntry, valueEntry, removeButton});
+    gtk_box_append(GTK_BOX(data.rowsBox), rowBox);
+
+    g_signal_connect(keyEntry, "activate", G_CALLBACK(paramKeyActivated), &data);
+    g_signal_connect(valueEntry, "activate", G_CALLBACK(paramValueActivated), &data);
+    g_signal_connect(removeButton, "clicked", G_CALLBACK(removeParamRowClicked), &data);
+
+    if (focusKey) {
+        gtk_widget_grab_focus(keyEntry);
+    }
+}
+
+std::vector<std::pair<std::string, std::string>> collectParamRows(const ParamsDialogData& data) {
+    PlayerSettings parsed;
+    int rowNumber = 0;
+    for (const auto& row : data.rows) {
+        ++rowNumber;
+        const char* rawKey = gtk_editable_get_text(GTK_EDITABLE(row.keyEntry));
+        const char* rawValue = gtk_editable_get_text(GTK_EDITABLE(row.valueEntry));
+        std::string key = trim(rawKey == nullptr ? "" : rawKey);
+        std::string value = rawValue == nullptr ? "" : rawValue;
+        if (key.empty() && trim(value).empty()) {
+            continue;
+        }
+        if (key.empty()) {
+            throw std::runtime_error("Parameter row " + std::to_string(rowNumber) + " needs a name.");
+        }
+        if (key.find('=') != std::string::npos) {
+            throw std::runtime_error("Parameter row " + std::to_string(rowNumber) + " has '=' in the name.");
+        }
+        setParam(parsed, std::move(key), std::move(value));
+    }
+    return parsed.params;
+}
+
+void addParamClicked(GtkButton*, gpointer userData) {
+    auto& data = *static_cast<ParamsDialogData*>(userData);
+    appendParamRow(data, {}, {}, true);
+}
 
 void paramsDialogResponse(GtkDialog* dialog, int response, gpointer userData) {
     auto* data = static_cast<ParamsDialogData*>(userData);
     if (response == GTK_RESPONSE_APPLY || response == GTK_RESPONSE_ACCEPT) {
-        GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->textView));
-        GtkTextIter begin{};
-        GtkTextIter end{};
-        gtk_text_buffer_get_bounds(buffer, &begin, &end);
-        char* text = gtk_text_buffer_get_text(buffer, &begin, &end, FALSE);
         try {
-            data->ui->settings.params = parseParamText(text == nullptr ? "" : text);
+            data->ui->settings.params = collectParamRows(*data);
             if (data->ui->player != nullptr) {
                 data->ui->player->setExternalParams(data->ui->settings.params);
             }
             saveSettingsQuietly(*data->ui);
             updateControls(*data->ui);
-            setStatus(*data->ui, "External parameters updated");
+            setStatus(*data->ui, "External parameters updated; reload the movie for startup-only parameters");
         } catch (const std::exception& error) {
-            setStatus(*data->ui, error.what());
-            if (text != nullptr) {
-                g_free(text);
-            }
+            setParamsDialogError(*data, error.what());
             return;
-        }
-        if (text != nullptr) {
-            g_free(text);
         }
     }
 
@@ -1231,7 +1850,7 @@ void paramsClicked(GtkButton*, gpointer userData) {
                                                     "_Apply",
                                                     GTK_RESPONSE_APPLY,
                                                     nullptr);
-    gtk_window_set_default_size(GTK_WINDOW(dialog), 460, 360);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 760, 420);
 
     GtkWidget* content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
@@ -1241,21 +1860,56 @@ void paramsClicked(GtkButton*, gpointer userData) {
     gtk_widget_set_margin_end(box, 12);
     gtk_box_append(GTK_BOX(content), box);
 
-    GtkWidget* label = gtk_label_new("One key=value pair per line.");
+    GtkWidget* label = gtk_label_new("External parameters");
     gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
     gtk_box_append(GTK_BOX(box), label);
 
+    GtkWidget* header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget* keyHeader = gtk_label_new("Name");
+    gtk_label_set_xalign(GTK_LABEL(keyHeader), 0.0F);
+    gtk_widget_set_size_request(keyHeader, 180, -1);
+    gtk_box_append(GTK_BOX(header), keyHeader);
+
+    GtkWidget* valueHeader = gtk_label_new("Value");
+    gtk_label_set_xalign(GTK_LABEL(valueHeader), 0.0F);
+    gtk_widget_set_hexpand(valueHeader, TRUE);
+    gtk_box_append(GTK_BOX(header), valueHeader);
+
+    GtkWidget* spacer = gtk_label_new("");
+    gtk_widget_set_size_request(spacer, 38, -1);
+    gtk_box_append(GTK_BOX(header), spacer);
+    gtk_box_append(GTK_BOX(box), header);
+
     GtkWidget* scroller = gtk_scrolled_window_new();
     gtk_widget_set_vexpand(scroller, TRUE);
-    GtkWidget* textView = gtk_text_view_new();
-    gtk_text_view_set_monospace(GTK_TEXT_VIEW(textView), TRUE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(textView), GTK_WRAP_WORD_CHAR);
-    const std::string params = formatParams(ui.settings.params);
-    gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(textView)), params.c_str(), -1);
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), textView);
+    GtkWidget* rowsBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_set_margin_top(rowsBox, 2);
+    gtk_widget_set_margin_bottom(rowsBox, 2);
+    gtk_widget_set_margin_start(rowsBox, 2);
+    gtk_widget_set_margin_end(rowsBox, 2);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), rowsBox);
     gtk_box_append(GTK_BOX(box), scroller);
 
-    auto* data = new ParamsDialogData{&ui, textView};
+    GtkWidget* actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget* addButton = gtk_button_new_with_label("Add Parameter");
+    gtk_box_append(GTK_BOX(actions), addButton);
+
+    GtkWidget* errorLabel = gtk_label_new("");
+    gtk_label_set_xalign(GTK_LABEL(errorLabel), 0.0F);
+    gtk_widget_add_css_class(errorLabel, "error");
+    gtk_widget_set_hexpand(errorLabel, TRUE);
+    gtk_box_append(GTK_BOX(actions), errorLabel);
+    gtk_box_append(GTK_BOX(box), actions);
+
+    auto* data = new ParamsDialogData{&ui, rowsBox, errorLabel};
+    for (const auto& [key, value] : ui.settings.params) {
+        appendParamRow(*data, key, value);
+    }
+    if (data->rows.empty()) {
+        appendParamRow(*data);
+    }
+
+    g_signal_connect(addButton, "clicked", G_CALLBACK(addParamClicked), data);
     g_signal_connect(dialog, "response", G_CALLBACK(paramsDialogResponse), data);
     gtk_window_present(GTK_WINDOW(dialog));
 }
@@ -1303,9 +1957,31 @@ void buildUi(PlayerUi& ui) {
     gtk_widget_add_css_class(ui.stageArea, "stage-view");
     gtk_widget_set_hexpand(ui.stageArea, TRUE);
     gtk_widget_set_vexpand(ui.stageArea, TRUE);
+    gtk_widget_set_focusable(ui.stageArea, TRUE);
     gtk_drawing_area_set_content_width(GTK_DRAWING_AREA(ui.stageArea), 640);
     gtk_drawing_area_set_content_height(GTK_DRAWING_AREA(ui.stageArea), 480);
     gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(ui.stageArea), drawStage, &ui, nullptr);
+
+    GtkEventController* motionController = gtk_event_controller_motion_new();
+    g_signal_connect(motionController, "motion", G_CALLBACK(stageMotion), &ui);
+    g_signal_connect(motionController, "leave", G_CALLBACK(stagePointerLeave), &ui);
+    gtk_widget_add_controller(ui.stageArea, motionController);
+
+    GtkGesture* clickGesture = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(clickGesture), 0);
+    g_signal_connect(clickGesture, "pressed", G_CALLBACK(stagePressed), &ui);
+    g_signal_connect(clickGesture, "released", G_CALLBACK(stageReleased), &ui);
+    gtk_widget_add_controller(ui.stageArea, GTK_EVENT_CONTROLLER(clickGesture));
+
+    GtkEventController* keyController = gtk_event_controller_key_new();
+    g_signal_connect(keyController, "key-pressed", G_CALLBACK(stageKeyPressed), &ui);
+    g_signal_connect(keyController, "key-released", G_CALLBACK(stageKeyReleased), &ui);
+    gtk_widget_add_controller(ui.stageArea, keyController);
+
+    GtkEventController* focusController = gtk_event_controller_focus_new();
+    g_signal_connect(focusController, "leave", G_CALLBACK(stageFocusLeave), &ui);
+    gtk_widget_add_controller(ui.stageArea, focusController);
+
     gtk_box_append(GTK_BOX(root), ui.stageArea);
 
     GtkWidget* controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 7);
