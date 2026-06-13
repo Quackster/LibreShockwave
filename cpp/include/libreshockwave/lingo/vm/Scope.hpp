@@ -75,12 +75,29 @@ public:
     void pushLoopReturnIndex(int index);
     [[nodiscard]] int popLoopReturnIndex();
     [[nodiscard]] bool inLoop() const;
+    [[nodiscard]] int indexedCollectionSnapshotCount(int loopHeaderIndex,
+                                                     const void* collectionIdentity,
+                                                     const Datum& collection);
+    [[nodiscard]] std::optional<Datum> indexedCollectionSnapshotValue(int loopHeaderIndex,
+                                                                       const void* collectionIdentity,
+                                                                       const Datum& collection,
+                                                                       int position);
+    void clearIndexedCollectionSnapshots(int loopHeaderIndex);
 
     [[nodiscard]] std::string toString() const;
 
 private:
+    struct IndexedCollectionSnapshot {
+        int loopHeaderIndex;
+        const void* collectionIdentity;
+        std::vector<Datum> values;
+    };
+
     [[nodiscard]] int paramOffset() const;
     [[nodiscard]] int displayArgumentOffset() const;
+    [[nodiscard]] IndexedCollectionSnapshot& indexedCollectionSnapshot(int loopHeaderIndex,
+                                                                       const void* collectionIdentity,
+                                                                       const Datum& collection);
 
     const chunks::ScriptChunk* script_;
     std::shared_ptr<const chunks::ScriptChunk> scriptOwner_;
@@ -99,6 +116,7 @@ private:
     Datum returnValue_{Datum::voidValue()};
     bool returned_ = false;
     std::vector<int> loopReturnStack_;
+    std::vector<IndexedCollectionSnapshot> indexedCollectionSnapshots_;
 };
 
 } // namespace libreshockwave::lingo::vm

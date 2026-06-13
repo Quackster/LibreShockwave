@@ -4392,6 +4392,7 @@ bool jmp(ExecutionContext& context) {
 
 bool jmpIfZero(ExecutionContext& context) {
     if (!truthy(context.pop())) {
+        context.scope().clearIndexedCollectionSnapshots(context.scope().bytecodeIndex());
         context.jumpTo(context.instructionOffset() + context.argument());
         return false;
     }
@@ -5226,9 +5227,17 @@ bool setMovieProp(ExecutionContext& context) {
     return true;
 }
 
+std::optional<Datum> indexedCollectionSnapshotCount(ExecutionContext& context,
+                                                    std::string_view propName,
+                                                    const Datum& collection);
+
 bool getObjProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     const Datum object = context.pop();
+    if (const auto snapshotCount = indexedCollectionSnapshotCount(context, propName, object)) {
+        context.push(*snapshotCount);
+        return true;
+    }
     context.push(getObjectProperty(context, object, propName));
     return true;
 }
@@ -5521,6 +5530,218 @@ std::optional<Datum> fastListBuiltinCall(std::string_view handlerName, const std
     return std::nullopt;
 }
 
+std::optional<Opcode> setOpcodeForGetOpcode(Opcode opcode) {
+    switch (opcode) {
+        case Opcode::GET_GLOBAL: return Opcode::SET_GLOBAL;
+        case Opcode::GET_PROP: return Opcode::SET_PROP;
+        case Opcode::GET_PARAM: return Opcode::SET_PARAM;
+        case Opcode::GET_LOCAL: return Opcode::SET_LOCAL;
+        default: return std::nullopt;
+    }
+}
+
+bool sameVariableInstruction(const chunks::ScriptChunk::Instruction& lhs,
+                             const chunks::ScriptChunk::Instruction& rhs) {
+    return lhs.opcode == rhs.opcode && lhs.argument == rhs.argument;
+}
+
+bool isIndexedCollectionLoadOpcode(Opcode opcode) {
+    return opcode == Opcode::GET_GLOBAL ||
+           opcode == Opcode::GET_PROP ||
+           opcode == Opcode::GET_PARAM ||
+           opcode == Opcode::GET_LOCAL;
+}
+
+bool indexedCollectionLoopHeaderMatches(const ExecutionContext& context,
+                                        int headerIndex,
+                                        const chunks::ScriptChunk::Instruction& collectionLoad,
+                                        const chunks::ScriptChunk::Instruction& indexLoad) {
+    const auto& handler = context.scope().handler();
+    const auto& instructions = handler.instructions;
+    if (headerIndex < 4 || headerIndex >= static_cast<int>(instructions.size())) {
+        return false;
+    }
+    const auto& jmpIfZero = instructions[static_cast<std::size_t>(headerIndex)];
+    if (jmpIfZero.opcode != Opcode::JMP_IF_Z) {
+        return false;
+    }
+
+    const int loopEndOffset = jmpIfZero.offset + jmpIfZero.argument;
+    const int endIndex = handler.getInstructionIndex(loopEndOffset);
+    if (endIndex < 1 || endIndex > static_cast<int>(instructions.size())) {
+        return false;
+    }
+    const auto& endRepeat = instructions[static_cast<std::size_t>(endIndex - 1)];
+    if (endRepeat.opcode != Opcode::END_REPEAT) {
+        return false;
+    }
+
+    const int condStart = handler.getInstructionIndex(endRepeat.offset - endRepeat.argument);
+    if (condStart < 1 || condStart + 4 != headerIndex) {
+        return false;
+    }
+    if (!sameVariableInstruction(instructions[static_cast<std::size_t>(condStart)], indexLoad) ||
+        !sameVariableInstruction(instructions[static_cast<std::size_t>(condStart + 1)], collectionLoad)) {
+        return false;
+    }
+    const auto& countProp = instructions[static_cast<std::size_t>(condStart + 2)];
+    if (countProp.opcode != Opcode::GET_OBJ_PROP || !equalsIgnoreCase(context.resolveName(countProp.argument), "count")) {
+        return false;
+    }
+    const auto comparison = instructions[static_cast<std::size_t>(condStart + 3)].opcode;
+    if (comparison != Opcode::LT_EQ && comparison != Opcode::GT_EQ) {
+        return false;
+    }
+
+    const auto setOpcode = setOpcodeForGetOpcode(indexLoad.opcode);
+    if (!setOpcode.has_value()) {
+        return false;
+    }
+    const auto& initialSet = instructions[static_cast<std::size_t>(condStart - 1)];
+    if (initialSet.opcode != *setOpcode || initialSet.argument != indexLoad.argument) {
+        return false;
+    }
+    if (endIndex < 5) {
+        return false;
+    }
+    const int expectedIncrement = comparison == Opcode::LT_EQ ? 1 : -1;
+    return instructions[static_cast<std::size_t>(endIndex - 5)].opcode == Opcode::PUSH_INT8 &&
+           instructions[static_cast<std::size_t>(endIndex - 5)].argument == expectedIncrement &&
+           sameVariableInstruction(instructions[static_cast<std::size_t>(endIndex - 4)], indexLoad) &&
+           instructions[static_cast<std::size_t>(endIndex - 3)].opcode == Opcode::ADD &&
+           instructions[static_cast<std::size_t>(endIndex - 2)].opcode == *setOpcode &&
+           instructions[static_cast<std::size_t>(endIndex - 2)].argument == indexLoad.argument;
+}
+
+bool isLoopHeaderForIndexedCollection(const ExecutionContext& context,
+                                      int headerIndex,
+                                      int currentIndex,
+                                      const chunks::ScriptChunk::Instruction& collectionLoad,
+                                      const chunks::ScriptChunk::Instruction& indexLoad) {
+    if (currentIndex <= headerIndex ||
+        !indexedCollectionLoopHeaderMatches(context, headerIndex, collectionLoad, indexLoad)) {
+        return false;
+    }
+    const auto& jmpIfZero = context.scope().handler().instructions[static_cast<std::size_t>(headerIndex)];
+    return jmpIfZero.offset + jmpIfZero.argument > context.instructionOffset();
+}
+
+bool loopBodyHasIndexedCollectionGetAt(const ExecutionContext& context,
+                                       int headerIndex,
+                                       const chunks::ScriptChunk::Instruction& collectionLoad,
+                                       const chunks::ScriptChunk::Instruction& indexLoad) {
+    const auto& handler = context.scope().handler();
+    const auto& instructions = handler.instructions;
+    const auto& jmpIfZero = instructions[static_cast<std::size_t>(headerIndex)];
+    const int endIndex = handler.getInstructionIndex(jmpIfZero.offset + jmpIfZero.argument);
+    if (endIndex < 1) {
+        return false;
+    }
+
+    for (int index = headerIndex + 1; index < endIndex - 1; ++index) {
+        const auto& instruction = instructions[static_cast<std::size_t>(index)];
+        if (instruction.opcode != Opcode::OBJ_CALL || !equalsIgnoreCase(context.resolveName(instruction.argument), "getAt") ||
+            index < 3) {
+            continue;
+        }
+        const auto& pushArgs = instructions[static_cast<std::size_t>(index - 1)];
+        if (pushArgs.opcode == Opcode::PUSH_ARG_LIST && pushArgs.argument == 2 &&
+            sameVariableInstruction(instructions[static_cast<std::size_t>(index - 2)], indexLoad) &&
+            sameVariableInstruction(instructions[static_cast<std::size_t>(index - 3)], collectionLoad)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<int> indexedCollectionLoopHeader(const ExecutionContext& context) {
+    const auto& handler = context.scope().handler();
+    const auto& instructions = handler.instructions;
+    const int currentIndex = context.scope().bytecodeIndex();
+    if (currentIndex < 3 || currentIndex >= static_cast<int>(instructions.size())) {
+        return std::nullopt;
+    }
+    const auto& pushArgs = instructions[static_cast<std::size_t>(currentIndex - 1)];
+    const auto& indexLoad = instructions[static_cast<std::size_t>(currentIndex - 2)];
+    const auto& collectionLoad = instructions[static_cast<std::size_t>(currentIndex - 3)];
+    if (pushArgs.opcode != Opcode::PUSH_ARG_LIST || pushArgs.argument != 2 ||
+        !isIndexedCollectionLoadOpcode(collectionLoad.opcode) ||
+        !isIndexedCollectionLoadOpcode(indexLoad.opcode)) {
+        return std::nullopt;
+    }
+
+    for (int headerIndex = currentIndex - 1; headerIndex >= 0; --headerIndex) {
+        if (isLoopHeaderForIndexedCollection(context, headerIndex, currentIndex, collectionLoad, indexLoad)) {
+            return headerIndex;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<int> indexedCollectionCountLoopHeader(const ExecutionContext& context) {
+    const auto& handler = context.scope().handler();
+    const auto& instructions = handler.instructions;
+    const int currentIndex = context.scope().bytecodeIndex();
+    if (currentIndex < 2 || currentIndex + 2 >= static_cast<int>(instructions.size())) {
+        return std::nullopt;
+    }
+    const auto& indexLoad = instructions[static_cast<std::size_t>(currentIndex - 2)];
+    const auto& collectionLoad = instructions[static_cast<std::size_t>(currentIndex - 1)];
+    if (!isIndexedCollectionLoadOpcode(collectionLoad.opcode) ||
+        !isIndexedCollectionLoadOpcode(indexLoad.opcode)) {
+        return std::nullopt;
+    }
+    const int headerIndex = currentIndex + 2;
+    if (indexedCollectionLoopHeaderMatches(context, headerIndex, collectionLoad, indexLoad) &&
+        loopBodyHasIndexedCollectionGetAt(context, headerIndex, collectionLoad, indexLoad)) {
+        return headerIndex;
+    }
+    return std::nullopt;
+}
+
+const void* collectionIdentity(const Datum& value) {
+    if (value.isList()) {
+        return &value.listValue();
+    }
+    if (value.isPropList()) {
+        return &value.propListValue();
+    }
+    return nullptr;
+}
+
+std::optional<Datum> indexedCollectionSnapshotGetAt(ExecutionContext& context,
+                                                    std::string_view methodName,
+                                                    const std::vector<Datum>& args) {
+    if (!equalsIgnoreCase(methodName, "getAt") || args.size() < 2 ||
+        (!args[0].isList() && !args[0].isPropList()) ||
+        args[1].isString() || args[1].isSymbol()) {
+        return std::nullopt;
+    }
+    const auto loopHeader = indexedCollectionLoopHeader(context);
+    if (!loopHeader.has_value()) {
+        return std::nullopt;
+    }
+    return context.scope().indexedCollectionSnapshotValue(*loopHeader,
+                                                          collectionIdentity(args[0]),
+                                                          args[0],
+                                                          toIntLikeJava(args[1]));
+}
+
+std::optional<Datum> indexedCollectionSnapshotCount(ExecutionContext& context,
+                                                    std::string_view propName,
+                                                    const Datum& collection) {
+    if (!equalsIgnoreCase(propName, "count") || (!collection.isList() && !collection.isPropList())) {
+        return std::nullopt;
+    }
+    const auto loopHeader = indexedCollectionCountLoopHeader(context);
+    if (!loopHeader.has_value()) {
+        return std::nullopt;
+    }
+    return Datum::of(context.scope().indexedCollectionSnapshotCount(*loopHeader,
+                                                                    collectionIdentity(collection),
+                                                                    collection));
+}
+
 std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::vector<Datum>& args) {
     if (args.empty()) {
         return std::nullopt;
@@ -5685,6 +5906,12 @@ bool objCall(ExecutionContext& context) {
     const bool noReturn = isNoReturnArgList(argListDatum);
     std::vector<Datum> argStorage;
     const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
+    if (const auto snapshotResult = indexedCollectionSnapshotGetAt(context, methodName, args)) {
+        if (!noReturn) {
+            context.push(*snapshotResult);
+        }
+        return true;
+    }
     if (const auto fastResult = fastListObjectCall(methodName, args)) {
         if (!noReturn) {
             context.push(*fastResult);

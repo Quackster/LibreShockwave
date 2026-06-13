@@ -253,6 +253,65 @@ bool Scope::inLoop() const {
     return !loopReturnStack_.empty();
 }
 
+Scope::IndexedCollectionSnapshot& Scope::indexedCollectionSnapshot(int loopHeaderIndex,
+                                                                   const void* collectionIdentity,
+                                                                   const Datum& collection) {
+    auto snapshot = std::find_if(indexedCollectionSnapshots_.begin(),
+                                 indexedCollectionSnapshots_.end(),
+                                 [&](const IndexedCollectionSnapshot& candidate) {
+                                     return candidate.loopHeaderIndex == loopHeaderIndex &&
+                                            candidate.collectionIdentity == collectionIdentity;
+                                 });
+    if (snapshot == indexedCollectionSnapshots_.end()) {
+        IndexedCollectionSnapshot created;
+        created.loopHeaderIndex = loopHeaderIndex;
+        created.collectionIdentity = collectionIdentity;
+        if (collection.isList()) {
+            created.values = collection.listValue().items();
+        } else {
+            const auto& properties = collection.propListValue().properties();
+            created.values.reserve(properties.size());
+            for (const auto& entry : properties) {
+                created.values.push_back(entry.second);
+            }
+        }
+        indexedCollectionSnapshots_.push_back(std::move(created));
+        snapshot = indexedCollectionSnapshots_.end() - 1;
+    }
+    return *snapshot;
+}
+
+int Scope::indexedCollectionSnapshotCount(int loopHeaderIndex,
+                                          const void* collectionIdentity,
+                                          const Datum& collection) {
+    if (collectionIdentity == nullptr || (!collection.isList() && !collection.isPropList())) {
+        return 0;
+    }
+    return static_cast<int>(indexedCollectionSnapshot(loopHeaderIndex, collectionIdentity, collection).values.size());
+}
+
+std::optional<Datum> Scope::indexedCollectionSnapshotValue(int loopHeaderIndex,
+                                                           const void* collectionIdentity,
+                                                           const Datum& collection,
+                                                           int position) {
+    if (collectionIdentity == nullptr || position < 1 || (!collection.isList() && !collection.isPropList())) {
+        return std::nullopt;
+    }
+
+    auto& snapshot = indexedCollectionSnapshot(loopHeaderIndex, collectionIdentity, collection);
+    const auto index = static_cast<std::size_t>(position - 1);
+    if (index >= snapshot.values.size()) {
+        return Datum::voidValue();
+    }
+    return snapshot.values[index];
+}
+
+void Scope::clearIndexedCollectionSnapshots(int loopHeaderIndex) {
+    std::erase_if(indexedCollectionSnapshots_, [loopHeaderIndex](const IndexedCollectionSnapshot& snapshot) {
+        return snapshot.loopHeaderIndex == loopHeaderIndex;
+    });
+}
+
 std::string Scope::toString() const {
     std::ostringstream out;
     out << "Scope{handler#" << handler().nameId << ", bytecodeIndex=" << bytecodeIndex_

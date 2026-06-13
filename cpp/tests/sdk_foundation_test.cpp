@@ -11691,6 +11691,77 @@ void testLingoVmRuntimeFoundation() {
                                 {});
     assert(vm.executeHandler(director8Script, scaledLocalHandler).intValue() == 42);
 
+    auto indexedMutationHandler = makeHandler(30, {
+        {Opcode::PUSH_INT8, 1},
+        {Opcode::SET_LOCAL, 0},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::GET_OBJ_PROP, 3},
+        {Opcode::LT_EQ, 0},
+        {Opcode::JMP_IF_Z, 19},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::PUSH_ARG_LIST, 2},
+        {Opcode::OBJ_CALL, 4},
+        {Opcode::SET_LOCAL, 1},
+        {Opcode::GET_GLOBAL, 2},
+        {Opcode::GET_LOCAL, 1},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 2},
+        {Opcode::OBJ_CALL, 5},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 2},
+        {Opcode::OBJ_CALL, 6},
+        {Opcode::PUSH_INT8, 1},
+        {Opcode::GET_LOCAL, 0},
+        {Opcode::ADD, 0},
+        {Opcode::SET_LOCAL, 0},
+        {Opcode::END_REPEAT, 22},
+        {Opcode::GET_GLOBAL, 2},
+        {Opcode::RET, 0}
+    }, 2);
+    ScriptChunk indexedMutationScript(nullptr,
+                                      ChunkId(963),
+                                      ScriptChunkType::MovieScript,
+                                      0,
+                                      {indexedMutationHandler},
+                                      {},
+                                      {},
+                                      {ScriptChunk::GlobalEntry{1}, ScriptChunk::GlobalEntry{2}},
+                                      {});
+    auto indexedMutationNames = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(964),
+        std::vector<std::string>{
+            "snapshotLoop",
+            "tasks",
+            "seen",
+            "count",
+            "getAt",
+            "append",
+            "deleteAt"
+        });
+    Datum taskList = Datum::propList();
+    taskList.propListValue().properties().emplace_back(Datum::symbol("a"), Datum::of(10));
+    taskList.propListValue().properties().emplace_back(Datum::symbol("b"), Datum::of(20));
+    taskList.propListValue().properties().emplace_back(Datum::symbol("c"), Datum::of(30));
+    taskList.propListValue().properties().emplace_back(Datum::symbol("d"), Datum::of(40));
+    LingoVM indexedMutationVm;
+    indexedMutationVm.setGlobal("tasks", taskList);
+    indexedMutationVm.setGlobal("seen", Datum::list());
+    const Datum indexedMutationResult = indexedMutationVm.executeHandler(
+        HandlerRef{&indexedMutationScript,
+                   &indexedMutationScript.handlers().front(),
+                   nullptr,
+                   nullptr,
+                   indexedMutationNames});
+    const auto& indexedMutationSeen = indexedMutationResult.listValue().items();
+    assert(indexedMutationSeen.size() == 4);
+    assert(indexedMutationSeen[0].intValue() == 10);
+    assert(indexedMutationSeen[1].intValue() == 20);
+    assert(indexedMutationSeen[2].intValue() == 30);
+    assert(indexedMutationSeen[3].intValue() == 40);
+
     auto childAncestorHandler = makeHandler(6, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto parentAncestorHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto grandAncestorHandler = makeHandler(8, {{Opcode::GET_PARAM, 0}, {Opcode::RET, 0}}, 0, {9});
