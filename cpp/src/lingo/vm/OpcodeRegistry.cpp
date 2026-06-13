@@ -6008,16 +6008,23 @@ std::optional<Datum> fastScriptInstanceObjectCall(std::string_view methodName, c
         return std::nullopt;
     }
 
+    const bool isCount = equalsIgnoreCase(methodName, "count");
+    const bool isGetProp = equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef");
+    const bool isSetProp = equalsIgnoreCase(methodName, "setProp");
+    if (!isCount && !isGetProp && !isSetProp) {
+        return std::nullopt;
+    }
+
     Datum receiver = args.front();
     auto& instance = receiver.scriptInstanceValue();
     std::string propNameStorage;
     const std::string_view propName = keyNameLikeJavaView(args[1], propNameStorage);
 
-    if (equalsIgnoreCase(methodName, "count")) {
+    if (isCount) {
         return scriptInstanceCountValue(util::getProperty(instance, propName));
     }
 
-    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef")) {
+    if (isGetProp) {
         Datum localProp = util::getProperty(instance, propName);
         if (args.size() >= 3) {
             return scriptInstanceNestedProperty(localProp, args[2]);
@@ -6025,7 +6032,7 @@ std::optional<Datum> fastScriptInstanceObjectCall(std::string_view methodName, c
         return localProp;
     }
 
-    if (equalsIgnoreCase(methodName, "setProp")) {
+    if (isSetProp) {
         if (args.size() == 3) {
             util::setProperty(instance, propName, args[2]);
         } else if (args.size() >= 4) {
@@ -6071,7 +6078,9 @@ bool executeObjCallWithArgs(ExecutionContext& context,
         methodArgs.assign(args.begin() + 1, args.end());
     }
 
-    const Datum result = dispatchObjectMethod(context, std::move(target), methodName, methodArgs);
+    const Datum result = target.type() == DatumType::ScriptInstanceRef
+        ? scriptInstanceObjectMethod(context, target, methodName, methodArgs)
+        : dispatchObjectMethod(context, std::move(target), methodName, methodArgs);
     if (!noReturn) {
         context.push(result);
     }
@@ -6110,7 +6119,11 @@ bool extCall(ExecutionContext& context) {
     const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
 
     Datum result = Datum::voidValue();
-    if (equalsIgnoreCase(handlerName, "new")) {
+    if (equalsIgnoreCase(handlerName, "return")) {
+        context.setReturnValue(args.empty() ? Datum::voidValue() : args[0]);
+    } else if (equalsIgnoreCase(handlerName, "voidp")) {
+        result = (args.empty() || args[0].isVoid()) ? Datum::TRUE : Datum::FALSE;
+    } else if (equalsIgnoreCase(handlerName, "new")) {
         if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
             result = *builtinResult;
         } else if (const auto handler = context.findHandler(handlerName)) {
