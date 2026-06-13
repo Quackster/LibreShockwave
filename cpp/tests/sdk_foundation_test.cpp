@@ -17806,6 +17806,18 @@ void testQueuedNetProviderFoundation() {
     assert(provider.getStreamStatus(failedTask) == "Error");
     assert(statusProp(provider.getStreamStatusDatum(failedTask), "error").stringValue() == "503");
 
+    QueuedNetProvider retryStatusProvider("https://example.invalid/movies/entry.dcr");
+    const int failedRoomTask = retryStatusProvider.preloadNetThing("hh_room.cct");
+    retryStatusProvider.drainPendingRequests();
+    retryStatusProvider.onFetchError(failedRoomTask, 404);
+    const int completedRoomTask = retryStatusProvider.preloadNetThing("hh_room.cct");
+    retryStatusProvider.drainPendingRequests();
+    retryStatusProvider.onFetchComplete(completedRoomTask, {'R', 'O', 'O', 'M'});
+    const auto roomStatus = retryStatusProvider.getStreamStatusDatum(std::string_view("hh_room.cct"));
+    assert(statusProp(roomStatus, "state").stringValue() == "Complete");
+    assert(statusProp(roomStatus, "bytesSoFar").intValue() == 4);
+    assert(statusProp(roomStatus, "error").stringValue() == "OK");
+
     QueuedNetProvider satisfiedProvider("https://example.invalid/movie.dcr");
     satisfiedProvider.setSatisfiedFetchPredicate([](std::string_view url) {
         return url == "already.cct" || url == "https://example.invalid/already.cct";
@@ -23005,6 +23017,16 @@ void testCastLibManagerFoundation() {
         {"BITD", bitdData},
         {"snd ", soundChunkData},
     });
+    manager.cacheExternalData("runtime/newCast.cct", externalCastData);
+    auto retargetedCast = manager.castLibs().find(2);
+    assert(retargetedCast != manager.castLibs().end());
+    assert(retargetedCast->second != nullptr);
+    assert(!retargetedCast->second->usesStableRegistryBinding());
+    assert(retargetedCast->second->isFetched());
+    assert(!retargetedCast->second->isLoaded());
+    assert(manager.getRegistryMemberByName(0, "Source Door").isVoid());
+    assert(!retargetedCast->second->isLoaded());
+
     Player externalPlayer(file);
     RecordingExternalCastLoadHandler externalLoadHandler;
     std::vector<ExternalCastLoadEvent> externalLoadEvents;
@@ -23053,6 +23075,97 @@ void testCastLibManagerFoundation() {
     assert(externalSoundBackend.lastFormat == "wav");
     assert(externalSoundBackend.lastLoopCount == 1);
     assert(externalSoundBackend.lastVolume == 255);
+
+    auto makeDeadlineHandler = [](int nameId, std::vector<std::pair<Opcode, int>> ops) {
+        std::vector<ScriptChunk::Instruction> instructions;
+        std::unordered_map<int, int> indexMap;
+        instructions.reserve(ops.size());
+        for (std::size_t index = 0; index < ops.size(); ++index) {
+            const int offset = static_cast<int>(index);
+            const auto [opcode, argument] = ops[index];
+            indexMap[offset] = static_cast<int>(index);
+            instructions.push_back(ScriptChunk::Instruction{
+                offset,
+                opcode,
+                static_cast<int>(opcode),
+                argument
+            });
+        }
+        return ScriptChunk::Handler{
+            nameId,
+            0,
+            static_cast<int>(instructions.size()),
+            0,
+            0,
+            0,
+            0,
+            0,
+            {},
+            {},
+            std::move(instructions),
+            std::move(indexMap)
+        };
+    };
+    std::vector<std::pair<Opcode, int>> deadlineOps;
+    deadlineOps.reserve(65537);
+    for (int index = 0; index < 65536; ++index) {
+        deadlineOps.emplace_back(Opcode::PUSH_ZERO, 0);
+    }
+    deadlineOps.emplace_back(Opcode::RET, 0);
+    auto deadlineScriptHandler = makeDeadlineHandler(901, std::move(deadlineOps));
+    ScriptChunk deadlineScript(nullptr,
+                               ChunkId(901),
+                               ScriptChunkType::MovieScript,
+                               0,
+                               {deadlineScriptHandler},
+                               {},
+                               {},
+                               {},
+                               {});
+    class DeadlineExternalCastLoadHandler final : public ExternalCastLoadHandler {
+    public:
+        DeadlineExternalCastLoadHandler(const ScriptChunk& scriptValue,
+                                        const ScriptChunk::Handler& handlerValue)
+            : script(scriptValue),
+              handler(handlerValue) {}
+
+        void onExternalCastLoaded(Player& player,
+                                  int,
+                                  std::string_view) override {
+            called = true;
+            (void)player.vm().executeHandler(script, handler);
+        }
+
+        const ScriptChunk& script;
+        const ScriptChunk::Handler& handler;
+        bool called = false;
+    };
+
+    Player deadlinePlayer(file);
+    DeadlineExternalCastLoadHandler deadlineLoadHandler(deadlineScript, deadlineScriptHandler);
+    deadlinePlayer.addExternalCastLoadHandler(&deadlineLoadHandler);
+    deadlinePlayer.vm().setTickDeadlineMs(250);
+    std::vector<std::int64_t> deadlineTimes{0, 251, 251};
+    std::size_t deadlineTimeIndex = 0;
+    deadlinePlayer.vm().setTimeProvider([&deadlineTimes, &deadlineTimeIndex] {
+        const auto index = std::min(deadlineTimeIndex++, deadlineTimes.size() - 1);
+        return deadlineTimes[index];
+    });
+    int deadlinePushes = 0;
+    deadlinePlayer.vm().opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&deadlinePushes](ExecutionContext&) {
+        ++deadlinePushes;
+        return true;
+    });
+    bool externalLoadTimedOut = false;
+    try {
+        (void)deadlinePlayer.loadExternalCastFromCachedData(2, externalCastData);
+    } catch (const LingoException& error) {
+        externalLoadTimedOut = std::string(error.what()).find("Tick deadline exceeded") != std::string::npos;
+    }
+    assert(deadlineLoadHandler.called);
+    assert(externalLoadTimedOut);
+    assert(deadlinePlayer.vm().tickDeadline() == 0);
+    assert(deadlinePushes == 65535);
 
     Player fetchPlayer(file);
     RecordingExternalCastLoadHandler fetchLoadHandler;

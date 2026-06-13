@@ -604,10 +604,10 @@ lingo::Datum CastLibManager::getMemberByName(int castLibNumber, const std::strin
     }
 
     for (const auto& [_, castLib] : castLibs_) {
-        auto loadedCast = getCastLib(castLib->number());
-        if (!isRegistryFallbackEligibleCast(loadedCast)) {
+        if (!isRegistryFallbackEligibleCast(castLib)) {
             continue;
         }
+        auto loadedCast = getCastLib(castLib->number());
         auto found = getMemberByNameInCast(loadedCast, memberName);
         if (!found.isVoid()) {
             return found;
@@ -626,18 +626,19 @@ lingo::Datum CastLibManager::getMemberByName(int castLibNumber, const std::strin
 lingo::Datum CastLibManager::getRegistryMemberByName(int castLibNumber, const std::string& memberName) {
     ensureInitialized();
     if (castLibNumber > 0) {
-        auto castLib = getCastLib(castLibNumber);
+        const auto found = castLibs_.find(castLibNumber);
+        auto castLib = found == castLibs_.end() ? nullptr : found->second;
         if (!isRegistryFallbackEligibleCast(castLib)) {
             return lingo::Datum::voidValue();
         }
-        return getMemberByNameInCast(castLib, memberName);
+        return getMemberByNameInCast(getCastLib(castLibNumber), memberName);
     }
 
     for (const auto& [_, castLib] : castLibs_) {
-        auto loadedCast = getCastLib(castLib->number());
-        if (!isRegistryFallbackEligibleCast(loadedCast)) {
+        if (!isRegistryFallbackEligibleCast(castLib)) {
             continue;
         }
+        auto loadedCast = getCastLib(castLib->number());
         auto found = getMemberByNameInCast(loadedCast, memberName);
         if (!found.isVoid()) {
             return found;

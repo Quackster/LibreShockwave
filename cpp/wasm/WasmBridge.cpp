@@ -42,6 +42,8 @@ using libreshockwave::player::input::DirectorKeyCodes;
 using libreshockwave::player::net::QueuedNetProvider;
 using libreshockwave::player::xtra::QueuedMultiuserBridge;
 
+constexpr int DEFAULT_WASM_SCRIPT_DEADLINE_MS = 1000;
+
 struct WasmPlayerContext {
     std::shared_ptr<DirectorFile> file;
     std::unique_ptr<QueuedNetProvider> netProvider;
@@ -451,6 +453,32 @@ const char* scratch(WasmPlayerContext& ctx, std::string value) {
     return ctx.scratch.c_str();
 }
 
+class WasmFetchScriptDeadlineGuard {
+public:
+    explicit WasmFetchScriptDeadlineGuard(Player* player)
+        : player_(player) {
+        if (player_ == nullptr) {
+            return;
+        }
+        previousDeadlineMs_ = player_->vm().tickDeadlineMs();
+        if (previousDeadlineMs_ == 0) {
+            player_->vm().setTickDeadlineMs(DEFAULT_WASM_SCRIPT_DEADLINE_MS);
+            changed_ = true;
+        }
+    }
+
+    ~WasmFetchScriptDeadlineGuard() {
+        if (changed_ && player_ != nullptr) {
+            player_->vm().setTickDeadlineMs(previousDeadlineMs_);
+        }
+    }
+
+private:
+    Player* player_{nullptr};
+    std::int64_t previousDeadlineMs_{0};
+    bool changed_{false};
+};
+
 std::string operationError(std::string_view operation, std::string_view detail) {
     std::string message(operation);
     if (!detail.empty()) {
@@ -811,6 +839,7 @@ EMSCRIPTEN_KEEPALIVE void lsw_fetch_complete(int handle,
         return;
     }
     guardedVoid(*ctx, "complete fetch", [&]() {
+        WasmFetchScriptDeadlineGuard scriptDeadline(ctx->player.get());
         ctx->netProvider->onFetchComplete(taskId, std::vector<std::uint8_t>(bytes, bytes + byteCount));
     });
 }

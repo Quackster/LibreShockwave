@@ -370,13 +370,16 @@ const QueuedNetProvider::Task* QueuedNetProvider::getTask(std::string_view url) 
         return nullptr;
     }
     const std::string normalizedUrl = normalizeLookupUrl(url);
+    const Task* bestMatch = nullptr;
     for (const auto& [id, task] : tasks_) {
         (void)id;
         if (taskMatchesUrl(task, normalizedUrl)) {
-            return &task;
+            if (bestMatch == nullptr || task.id > bestMatch->id) {
+                bestMatch = &task;
+            }
         }
     }
-    return nullptr;
+    return bestMatch;
 }
 
 bool QueuedNetProvider::taskMatchesUrl(const Task& task, std::string_view url) const {

@@ -38,16 +38,20 @@ constexpr int DEFAULT_TEMPO = 15;
 class TickDeadlineGuard {
 public:
     explicit TickDeadlineGuard(lingo::vm::LingoVM& vm)
-        : vm_(vm) {
-        vm_.armTickDeadline();
+        : vm_(vm),
+          previousDeadline_(vm.tickDeadline()) {
+        if (previousDeadline_ == 0) {
+            vm_.armTickDeadline();
+        }
     }
 
     ~TickDeadlineGuard() {
-        vm_.setTickDeadline(0);
+        vm_.setTickDeadline(previousDeadline_);
     }
 
 private:
     lingo::vm::LingoVM& vm_;
+    std::int64_t previousDeadline_{0};
 };
 
 struct ResolvedScriptTarget {
@@ -708,6 +712,7 @@ bool Player::loadExternalCastFromCachedData(int castLibNumber,
     if (castLibNumber <= 0 || data.empty()) {
         return false;
     }
+    TickDeadlineGuard deadlineGuard(vm_);
     return applyExternalCastDataNow(castLibNumber, data, std::move(afterLoad));
 }
 
