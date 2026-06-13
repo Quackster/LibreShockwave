@@ -259,18 +259,18 @@
 
   <script src="libreshockwave-cpp-player.js"></script>
   <script>
-    const habboUrl = "https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr";
-    const loaderUrl = "http://localhost/dcr0910/loader.dcr";
-    const betaClientMovieUrl = "https://images.classichabbo.com/dcr/r31_20090312_0433_13751_b40895fb6101dbe96dc7b9d6477eeeb4/habbo.dcr?";
+    const habboUrl = "http://127.0.0.1/dcr/14.1_b8/habbo.dcr";
+    const loaderUrl = "http://127.0.0.1/dcr0910/loader.dcr";
+    const betaClientMovieUrl = "http://127.0.0.1/dcr/r31_20090312_0433_13751_b40895fb6101dbe96dc7b9d6477eeeb4/habbo.dcr?";
     const betaClientParams = {
       "venus.websocket.mode": "ws",
       "sw1": "client.allow.cross.domain=1;client.notify.cross.domain=0",
       "sw2": "connection.info.host=verysecret.classichabbo.com;connection.info.port=30100",
       "sw3": "connection.mus.host=verysecret.classichabbo.com;connection.mus.port=38201",
-      "sw4": "site.url=;url.prefix=",
-      "sw5": "client.reload.url=/client/beta?x=reauthenticate;client.fatal.error.url=/clientutils?key=error",
-      "sw6": "client.connection.failed.url=/clientutils?key=connection_failed;external.variables.txt=https://images.classichabbo.com/gamedata/external_variables.txt?",
-      "sw7": "external.texts.txt=https://images.classichabbo.com/gamedata/external_texts.txt?",
+      "sw4": "site.url=http://127.0.0.1;url.prefix=http://127.0.0.1",
+      "sw5": "client.reload.url=http://127.0.0.1/client/beta?x=reauthenticate;client.fatal.error.url=http://127.0.0.1/clientutils?key=error",
+      "sw6": "client.connection.failed.url=http://127.0.0.1/clientutils?key=connection_failed;external.variables.txt=http://127.0.0.1/gamedata/external_variables.txt?",
+      "sw7": "external.texts.txt=http://127.0.0.1/gamedata/external_texts.txt?",
       "sw8": "use.sso.ticket=1;sso.ticket=SSO_TICKET"
     };
     const paramsBox = document.getElementById("params");

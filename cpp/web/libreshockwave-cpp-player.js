@@ -2,11 +2,11 @@
 
 (function attach(global) {
   const defaultHabboParams = {
-    sw1: "site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk",
+    sw1: "site.url=http://127.0.0.1;url.prefix=http://127.0.0.1",
     sw2: "connection.info.host=au.h4bbo.net;connection.info.port=30001",
-    sw3: "client.reload.url=https://sandbox.h4bbo.net/",
+    sw3: "client.reload.url=http://127.0.0.1/",
     sw4: "connection.mus.host=au.h4bbo.net;connection.mus.port=38101",
-    sw5: "external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt"
+    sw5: "external.variables.txt=http://127.0.0.1/gamedata/external_variables.txt;external.texts.txt=http://127.0.0.1/gamedata/external_texts.txt"
   };
   const defaultHabboSocketProxy = [
     { host: "au.h4bbo.net", port: 30001, proxyUrl: "ws://127.0.0.1:30002" },
