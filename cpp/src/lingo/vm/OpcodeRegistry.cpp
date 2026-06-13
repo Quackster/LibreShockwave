@@ -5854,15 +5854,17 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
     }
     const Datum& target = args[0];
     if (target.isList()) {
+        Datum mutableTarget = target;
+        auto& list = mutableTarget.listValue();
+        auto& items = list.items();
         if (equalsIgnoreCase(methodName, "count")) {
-            return Datum::of(target.listValue().count());
+            return Datum::of(static_cast<int>(items.size()));
         }
         if (equalsIgnoreCase(methodName, "getAt")) {
             if (args.size() < 2) {
                 return Datum::voidValue();
             }
             const int index = toIntLikeJava(args[1]);
-            const auto& items = target.listValue().items();
             if (index < 1 || index > static_cast<int>(items.size())) {
                 throw LingoException("getAt: index " + std::to_string(index) +
                                      " out of range (list size: " + std::to_string(items.size()) + ")");
@@ -5871,9 +5873,7 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
         }
         if (equalsIgnoreCase(methodName, "setAt")) {
             if (args.size() >= 3) {
-                Datum mutableTarget = target;
                 const int index = toIntLikeJava(args[1]);
-                auto& items = mutableTarget.listValue().items();
                 if (index >= 1) {
                     const auto zeroIndex = static_cast<std::size_t>(index - 1);
                     if (zeroIndex < items.size()) {
@@ -5887,6 +5887,45 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
                 }
             }
             return Datum::voidValue();
+        }
+        if (equalsIgnoreCase(methodName, "append") || equalsIgnoreCase(methodName, "add")) {
+            if (args.size() >= 2) {
+                items.push_back(args[1]);
+            }
+            return Datum::voidValue();
+        }
+        if (equalsIgnoreCase(methodName, "addAt")) {
+            if (args.size() >= 3) {
+                int index = toIntLikeJava(args[1]) - 1;
+                if (index < 0) {
+                    index = 0;
+                }
+                const auto insertIndex = static_cast<std::size_t>(index);
+                if (insertIndex >= items.size()) {
+                    items.push_back(args[2]);
+                } else {
+                    items.insert(items.begin() + static_cast<std::ptrdiff_t>(insertIndex), args[2]);
+                }
+            }
+            return Datum::voidValue();
+        }
+        if (equalsIgnoreCase(methodName, "deleteAt")) {
+            if (args.size() >= 2) {
+                const int index = toIntLikeJava(args[1]) - 1;
+                if (index >= 0 && index < static_cast<int>(items.size())) {
+                    items.erase(items.begin() + index);
+                }
+            }
+            return Datum::voidValue();
+        }
+        if (equalsIgnoreCase(methodName, "duplicate")) {
+            return Datum::list(items, list.sorted()).deepCopy();
+        }
+        if (equalsIgnoreCase(methodName, "getLast")) {
+            return items.empty() ? Datum::voidValue() : items.back();
+        }
+        if (equalsIgnoreCase(methodName, "getFirst")) {
+            return items.empty() ? Datum::voidValue() : items.front();
         }
         return std::nullopt;
     }

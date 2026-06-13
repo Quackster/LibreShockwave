@@ -11912,6 +11912,62 @@ void testLingoVmRuntimeFoundation() {
     assert(indexedPropPairValues[0].stringValue() == "alpha");
     assert(indexedPropPairValues[1].intValue() == 42);
 
+    auto fastListMutationHandler = makeHandler(32, {
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::PUSH_INT8, 3},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 2},
+        {Opcode::OBJ_CALL, 2},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::PUSH_INT8, 2},
+        {Opcode::PUSH_INT8, 55},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 3},
+        {Opcode::OBJ_CALL, 3},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::PUSH_INT8, 4},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 2},
+        {Opcode::OBJ_CALL, 4},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::PUSH_ARG_LIST, 1},
+        {Opcode::OBJ_CALL, 5},
+        {Opcode::RET, 0}
+    });
+    ScriptChunk fastListMutationScript(nullptr,
+                                       ChunkId(967),
+                                       ScriptChunkType::MovieScript,
+                                       0,
+                                       {fastListMutationHandler},
+                                       {},
+                                       {},
+                                       {ScriptChunk::GlobalEntry{1}},
+                                       {});
+    auto fastListMutationNames = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(968),
+        std::vector<std::string>{
+            "fastListMutation",
+            "items",
+            "append",
+            "addAt",
+            "deleteAt",
+            "duplicate"
+        });
+    LingoVM fastListMutationVm;
+    fastListMutationVm.setGlobal("items", Datum::list({Datum::of(1), Datum::of(2)}));
+    Datum fastListDuplicate = fastListMutationVm.executeHandler(
+        HandlerRef{&fastListMutationScript,
+                   &fastListMutationScript.handlers().front(),
+                   nullptr,
+                   nullptr,
+                   fastListMutationNames});
+    auto& fastListItems = fastListMutationVm.getGlobal("items").listValue().items();
+    assert(fastListItems.size() == 3);
+    assert(fastListItems[0].intValue() == 1);
+    assert(fastListItems[1].intValue() == 55);
+    assert(fastListItems[2].intValue() == 2);
+    fastListItems.push_back(Datum::of(99));
+    assert(fastListDuplicate.listValue().count() == 3);
+    assert(fastListDuplicate.listValue().getAt(2).intValue() == 55);
+
     auto childAncestorHandler = makeHandler(6, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto parentAncestorHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto grandAncestorHandler = makeHandler(8, {{Opcode::GET_PARAM, 0}, {Opcode::RET, 0}}, 0, {9});
