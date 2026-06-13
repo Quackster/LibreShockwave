@@ -461,7 +461,7 @@ void QueuedMultiuserBridge::deliverMessageBytes(int instanceId, const std::vecto
         deliverSmusMessage(instanceId, data);
         return;
     }
-    deliverMessage(instanceId, 0, "", "", stringFromBytes(data));
+    deliverMessage(instanceId, 0, "System", "String", stringFromBytes(data));
 }
 
 std::string QueuedMultiuserBridge::serializeWireContent(std::string_view subject, std::string_view content) {

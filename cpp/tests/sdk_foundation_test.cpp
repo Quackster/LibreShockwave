@@ -7126,8 +7126,8 @@ void testSocketMultiuserBridgeFoundation() {
     }));
     assert(messages.size() == 1);
     assert(messages[0].errorCode == 0);
-    assert(messages[0].senderID.empty());
-    assert(messages[0].subject.empty());
+    assert(messages[0].senderID == "System");
+    assert(messages[0].subject == "String");
     assert(messages[0].content.stringValue() == "server-payload");
 
     bridge.requestDisconnect(instanceId);
@@ -7193,10 +7193,22 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(bridge.pendingRequests().size() == pendingBeforePong + 2);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
 
-    bridge.deliverMessageBytes(7, {'A', 0x00, 0xFF});
+    bridge.deliverMessageBytes(7, {'@', '@', 0x01});
     messages = bridge.pollMessages(7);
     assert(messages.size() == 1);
-    assert(messages[0].content.stringValue() == std::string({'A', '\0', static_cast<char>(0xFF)}));
+    assert(messages[0].errorCode == 0);
+    assert(messages[0].senderID == "System");
+    assert(messages[0].subject == "String");
+    assert(messages[0].content.stringValue() == std::string({'@', '@', '\x01'}));
+
+    bridge.deliverMessageBytes(7, {'D', 'U', '8', '6', '5', '7', '6', '3', '0', '7', '7', '3', '4', '1',
+                                   '0', '6', '7', '2', '8', '2', '5', '9', '5', '6', '1', '8', 0x02, 'I', 0x01});
+    messages = bridge.pollMessages(7);
+    assert(messages.size() == 1);
+    assert(messages[0].senderID == "System");
+    assert(messages[0].subject == "String");
+    assert(messages[0].content.stringValue() == std::string({'D', 'U', '8', '6', '5', '7', '6', '3', '0', '7', '7', '3', '4', '1',
+                                                             '0', '6', '7', '2', '8', '2', '5', '9', '5', '6', '1', '8', 0x02, 'I', 0x01}));
 
     bridge.notifyError(7, -3);
     messages = bridge.pollMessages(7);

@@ -54,6 +54,7 @@ namespace {
 
 namespace fs = std::filesystem;
 using libreshockwave::lingo::Datum;
+using libreshockwave::lingo::xtra::MultiuserNetBridge;
 using libreshockwave::player::xtra::QueuedMultiuserBridge;
 
 void require(bool condition, const std::string& message) {
@@ -101,7 +102,9 @@ void probeQueuedMultiuserBridge() {
     require(QueuedMultiuserBridge::decodeShockwaveCommand('C', 'D') == 196,
             "multiuser command decoding failed");
 
-    bridge.requestConnect(7, "chat.example", 1234, 1);
+    MultiuserNetBridge::ConnectOptions chatOptions;
+    chatOptions.userName = "me";
+    bridge.requestConnect(7, "chat.example", 1234, 1, chatOptions);
     require(bridge.pendingRequests().size() == 1, "multiuser connect was not queued");
     const auto* connect = bridge.getRequest(0);
     require(connect != nullptr, "multiuser queued connect missing");
@@ -114,7 +117,7 @@ void probeQueuedMultiuserBridge() {
     require(messages.size() == 1 && messages[0].subject == "ConnectToNetServer",
             "multiuser connect callback message missing");
 
-    bridge.requestSend(7, "me", "CHAT", Datum::of(std::string("hello")));
+    bridge.requestSend(7, Datum::of(std::string("room")), "CHAT", Datum::of(std::string("hello")));
     require(bridge.pendingRequests().size() == 2, "multiuser send was not queued");
     const auto* send = bridge.getRequest(1);
     require(send != nullptr && send->type == QueuedMultiuserBridge::REQ_SEND, "multiuser send request missing");
@@ -125,6 +128,8 @@ void probeQueuedMultiuserBridge() {
     bridge.deliverMessageBytes(7, {'A', 0x00, 0xFF});
     messages = bridge.pollMessages(7);
     require(messages.size() == 1, "multiuser delivered byte message missing");
+    require(messages[0].senderID == "System" && messages[0].subject == "String",
+            "multiuser delivered byte message metadata mismatch");
     require(messages[0].content.stringValue() == std::string({'A', '\0', static_cast<char>(0xFF)}),
             "multiuser delivered byte content mismatch");
 
@@ -134,7 +139,9 @@ void probeQueuedMultiuserBridge() {
             "multiuser disconnect was not queued");
 
     QueuedMultiuserBridge smus;
-    smus.requestConnect(3, "smus.example", 1235, 0);
+    MultiuserNetBridge::ConnectOptions smusOptions;
+    smusOptions.userName = "alice";
+    smus.requestConnect(3, "smus.example", 1235, 0, smusOptions);
     smus.drainPendingRequests();
     smus.notifyConnected(3);
     require(smus.pendingRequests().size() == 1, "SMUS logon was not queued after connect");
