@@ -173,7 +173,7 @@ LingoVM::LingoVM(DirectorFile* file)
             return globalValue;
         }
         if (auto handler = findHandler(*identifier)) {
-            return executeHandler(*handler->script, handler->handler);
+            return executeHandler(*handler);
         }
         return Datum::voidValue();
     };
@@ -479,8 +479,18 @@ Datum LingoVM::callAncestor(const std::vector<Datum>& args) {
             const int castLib = scriptRef->castLib > 0 ? scriptRef->castLib : 1;
             const int memberNum = scriptRef->memberNum();
             auto location = builtinContext_.scriptHandlerFinder(castLib, memberNum, handlerName);
-            if (location.has_value() && location->script != nullptr) {
-                return executeHandler(*location->script, location->handler, callArgs, args[1]);
+            if (location.has_value() && location->script != nullptr && location->handler != nullptr) {
+                return executeHandler(
+                    HandlerRef{
+                        location->script,
+                        location->handler,
+                        location->scriptOwner,
+                        location->fileOwner,
+                        location->scriptNamesOwner,
+                        location->scriptType
+                    },
+                    callArgs,
+                    args[1]);
             }
         }
 
@@ -584,6 +594,8 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
                 continue;
             }
             if (auto handler = findHandler(*script, handlerNameValue)) {
+                handler->scriptOwner = script;
+                handler->scriptType = script->resolvedScriptType();
                 handlerCache_[cacheKey] = *handler;
                 return handler;
             }
@@ -605,8 +617,10 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
 std::optional<HandlerRef> LingoVM::findHandler(const chunks::ScriptChunk& script,
                                                std::string_view handlerNameValue) const {
     const auto names = scriptNamesForScript(script);
-    if (auto found = script.findHandler(handlerNameValue, names.get())) {
-        return HandlerRef{&script, *found};
+    if (auto found = script.findHandlerPtr(handlerNameValue, names.get())) {
+        auto ref = HandlerRef{&script, found};
+        ref.scriptType = script.file() == file_ ? script.resolvedScriptType() : script.scriptType();
+        return ref;
     }
     if (names != nullptr) {
         return std::nullopt;
@@ -615,7 +629,9 @@ std::optional<HandlerRef> LingoVM::findHandler(const chunks::ScriptChunk& script
     for (const auto& handler : script.handlers()) {
         if (equalsIgnoreCase(script.getHandlerName(handler, nullptr), handlerNameValue) ||
             equalsIgnoreCase("#" + std::to_string(handler.nameId), handlerNameValue)) {
-            return HandlerRef{&script, handler};
+            auto ref = HandlerRef{&script, &handler};
+            ref.scriptType = script.file() == file_ ? script.resolvedScriptType() : script.scriptType();
+            return ref;
         }
     }
     return std::nullopt;
@@ -628,7 +644,7 @@ void LingoVM::invalidateHandlerCache() {
 
 Datum LingoVM::callHandler(std::string_view handlerNameValue, const std::vector<Datum>& args) {
     if (auto handler = findHandler(handlerNameValue)) {
-        return executeHandler(*handler->script, handler->handler, args);
+        return executeHandler(*handler, args);
     }
     return callBuiltin(handlerNameValue, args);
 }
@@ -637,7 +653,7 @@ Datum LingoVM::callHandler(std::string_view handlerNameValue,
                            const std::vector<Datum>& args,
                            const Datum& receiver) {
     if (auto handler = findHandler(handlerNameValue)) {
-        return executeHandler(*handler->script, handler->handler, args, receiver);
+        return executeHandler(*handler, args, receiver);
     }
     return Datum::voidValue();
 }
@@ -661,11 +677,26 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
                               const chunks::ScriptChunk::Handler& handler,
                               const std::vector<Datum>& args,
                               const Datum& receiver) {
+    return executeHandler(HandlerRef{&script, &handler}, args, receiver);
+}
+
+Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
+                              const std::vector<Datum>& args,
+                              const Datum& receiver) {
     if (inErrorState_) {
         return Datum::voidValue();
     }
+    if (handlerRef.script == nullptr || handlerRef.handler == nullptr) {
+        return Datum::voidValue();
+    }
 
-    const std::string currentHandlerName = handlerName(script, handler);
+    const auto& script = *handlerRef.script;
+    const auto& handler = *handlerRef.handler;
+    const auto scriptOwner = handlerRef.scriptOwner;
+    const auto fileOwner = handlerRef.fileOwner;
+    const auto scriptNamesOwner = handlerRef.scriptNamesOwner;
+
+    const std::string currentHandlerName = handlerName(script, handler, fileOwner, scriptNamesOwner);
     const std::string normalizedHandlerName = normalizeLookupName(currentHandlerName);
     const bool isAlertHookHandler = alertHookHandler_.isErrorHandler(currentHandlerName);
     if (alertHookHandler_.shouldSkipErrorHandler(currentHandlerName, args)) {
@@ -707,11 +738,18 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     std::vector<Datum> effectiveArgs = args;
     bool firstParamDeclaredMe = false;
     if (!receiver.isVoid() && !receiver.isNull()) {
-        firstParamDeclaredMe = handlerDeclaresMeAsFirstParam(script, handler);
+        firstParamDeclaredMe = handlerDeclaresMeAsFirstParam(script, handler, fileOwner, scriptNamesOwner);
         effectiveArgs.insert(effectiveArgs.begin(), receiver);
     }
 
-    callStack_.emplace_back(&script, handler, std::move(effectiveArgs), scopeReceiver, firstParamDeclaredMe);
+    callStack_.emplace_back(&script,
+                            &handler,
+                            std::move(effectiveArgs),
+                            scopeReceiver,
+                            firstParamDeclaredMe,
+                            scriptOwner,
+                            fileOwner,
+                            scriptNamesOwner);
     Scope& scope = callStack_.back();
     auto previousHandlerArgs = builtinContext_.currentHandlerArgs;
     builtinContext_.currentHandlerArgs = scope.arguments();
@@ -741,17 +779,18 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         flushDeferredScriptInstanceCalls();
     };
     try {
-        if (traceListener_ || traceEnabled_) {
-            handlerInfo = buildHandlerInfo(script, handler, args, receiver);
+        const bool traceHandler = traceEnabled_ || (traceListener_ && traceListener_->needsHandlerTrace());
+        if (traceHandler) {
+            handlerInfo = buildHandlerInfo(script, handler, args, receiver, fileOwner, scriptNamesOwner);
             if (traceEnabled_) {
                 emitConsoleHandlerEnter(*handlerInfo);
             }
         }
-        if (traceListener_ && handlerInfo.has_value()) {
+        if (traceListener_ && traceListener_->needsHandlerTrace() && handlerInfo.has_value()) {
             traceListener_->onHandlerEnter(*handlerInfo);
         }
         if (const auto* first = scope.currentInstruction()) {
-            auto callbacks = callbacksFor(script);
+            auto callbacks = callbacksFor(script, fileOwner, scriptNamesOwner);
             ExecutionContext context(scope,
                                      *first,
                                      &builtinRegistry_,
@@ -765,7 +804,7 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
                 ++steps;
                 if (stepLimit_ > 0 && steps > stepLimit_) {
                     throw LingoException("Step limit exceeded (" + std::to_string(stepLimit_) +
-                                         " instructions) in handler '" + handlerName(script, handler) + "'");
+                                         " instructions) in handler '" + currentHandlerName + "'");
                 }
                 if ((steps % SAFEPOINT_CHECK_INTERVAL) == 0) {
                     const std::int64_t now = currentTimeMillis();
@@ -848,13 +887,21 @@ bool LingoVM::shouldSkipDeconstructReentry(std::string_view normalizedHandlerNam
            &currentScript == &existingScript;
 }
 
-ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& script) {
+ExecutionContext::Callbacks LingoVM::callbacksFor(
+    const chunks::ScriptChunk& script,
+    std::shared_ptr<const DirectorFile> fileOwner,
+    std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner) {
     ExecutionContext::Callbacks callbacks;
-    callbacks.nameResolver = [this, &script](int nameId) {
-        return resolveName(script, nameId);
+    callbacks.nameResolver = [this, &script, fileOwner, scriptNamesOwner](int nameId) {
+        return resolveName(script, nameId, fileOwner, scriptNamesOwner);
     };
     callbacks.handlerFinder = [this](std::string_view name) {
         return findHandler(name);
+    };
+    callbacks.handlerRefExecutor = [this](const HandlerRef& handler,
+                                          const std::vector<Datum>& args,
+                                          const Datum& receiver) {
+        return executeHandler(handler, args, receiver);
     };
     callbacks.handlerExecutor = [this](const chunks::ScriptChunk& targetScript,
                                        const chunks::ScriptChunk::Handler& targetHandler,
@@ -885,13 +932,14 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& scr
         if (scope == nullptr || scope->script() == nullptr) {
             return;
         }
-        const std::string currentHandlerName = handlerName(*scope->script(), scope->handler());
+        const std::string currentHandlerName =
+            handlerName(*scope->script(), scope->handler(), scope->fileOwner(), scope->scriptNamesOwner());
         if (!tracedHandlers_.contains(normalizeLookupName(currentHandlerName))) {
             return;
         }
 
         std::string displayName(name);
-        const auto names = scriptNamesForScript(*scope->script());
+        const auto names = scriptNamesForScript(*scope->script(), scope->fileOwner(), scope->scriptNamesOwner());
         const auto& handler = scope->handler();
         if (type == "local") {
             if (const auto index = parseTraceSlotIndex(name, "local");
@@ -911,8 +959,15 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& scr
     return callbacks;
 }
 
-std::shared_ptr<chunks::ScriptNamesChunk> LingoVM::scriptNamesForScript(const chunks::ScriptChunk& script) const {
-    auto findInFile = [&script](DirectorFile* source) -> std::shared_ptr<chunks::ScriptNamesChunk> {
+std::shared_ptr<const chunks::ScriptNamesChunk> LingoVM::scriptNamesForScript(
+    const chunks::ScriptChunk& script,
+    const std::shared_ptr<const DirectorFile>& fileOwner,
+    const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner) const {
+    if (scriptNamesOwner) {
+        return scriptNamesOwner;
+    }
+
+    auto findInFile = [&script](DirectorFile* source) -> std::shared_ptr<const chunks::ScriptNamesChunk> {
         if (source == nullptr) {
             return nullptr;
         }
@@ -932,24 +987,35 @@ std::shared_ptr<chunks::ScriptNamesChunk> LingoVM::scriptNamesForScript(const ch
     if (auto names = findInFile(file_)) {
         return names;
     }
+    if (fileOwner) {
+        if (auto names = findInFile(const_cast<DirectorFile*>(fileOwner.get()))) {
+            return names;
+        }
+    }
     if (auto* owner = const_cast<DirectorFile*>(script.file()); owner != file_) {
         return findInFile(owner);
     }
     return nullptr;
 }
 
-std::string LingoVM::resolveName(const chunks::ScriptChunk& script, int nameId) const {
-    const auto names = scriptNamesForScript(script);
+std::string LingoVM::resolveName(const chunks::ScriptChunk& script,
+                                 int nameId,
+                                 const std::shared_ptr<const DirectorFile>& fileOwner,
+                                 const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner) const {
+    const auto names = scriptNamesForScript(script, fileOwner, scriptNamesOwner);
     return script.resolveName(nameId, names.get());
 }
 
 std::string LingoVM::handlerName(const chunks::ScriptChunk& script,
-                                 const chunks::ScriptChunk::Handler& handler) const {
-    const auto names = scriptNamesForScript(script);
+                                 const chunks::ScriptChunk::Handler& handler,
+                                 const std::shared_ptr<const DirectorFile>& fileOwner,
+                                 const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner) const {
+    const auto names = scriptNamesForScript(script, fileOwner, scriptNamesOwner);
     return script.getHandlerName(handler, names.get());
 }
 
-std::string LingoVM::scriptDisplayName(const chunks::ScriptChunk& script) const {
+std::string LingoVM::scriptDisplayName(const chunks::ScriptChunk& script,
+                                       const std::shared_ptr<const DirectorFile>& fileOwner) const {
     auto findNameInFile = [&script](DirectorFile* source) -> std::string {
         if (source == nullptr) {
             return "";
@@ -968,6 +1034,11 @@ std::string LingoVM::scriptDisplayName(const chunks::ScriptChunk& script) const 
     if (auto name = findNameInFile(file_); !name.empty()) {
         return name;
     }
+    if (fileOwner) {
+        if (auto name = findNameInFile(const_cast<DirectorFile*>(fileOwner.get())); !name.empty()) {
+            return name;
+        }
+    }
     if (auto* owner = const_cast<DirectorFile*>(script.file()); owner != file_) {
         if (auto name = findNameInFile(owner); !name.empty()) {
             return name;
@@ -980,32 +1051,39 @@ TraceListener::HandlerInfo LingoVM::buildHandlerInfo(
     const chunks::ScriptChunk& script,
     const chunks::ScriptChunk::Handler& handler,
     const std::vector<Datum>& args,
-    const Datum& receiver) const {
-    const auto names = scriptNamesForScript(script);
+    const Datum& receiver,
+    const std::shared_ptr<const DirectorFile>& fileOwner,
+    const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner) const {
+    const auto names = scriptNamesForScript(script, fileOwner, scriptNamesOwner);
     return trace::TracingHelper().buildHandlerInfo(
-        script, handler, args, receiver, globals_, names.get(), scriptDisplayName(script));
+        script, handler, args, receiver, globals_, names.get(), scriptDisplayName(script, fileOwner));
 }
 
 TraceListener::InstructionInfo LingoVM::buildInstructionInfo(
     const Scope& scope,
     const chunks::ScriptChunk::Instruction& instruction) const {
     const auto* script = scope.script();
-    const auto names = script != nullptr ? scriptNamesForScript(*script) : nullptr;
+    const auto names = script != nullptr ? scriptNamesForScript(*script, scope.fileOwner(), scope.scriptNamesOwner())
+                                        : nullptr;
     return trace::TracingHelper().buildInstructionInfo(scope, instruction, globals_, names.get());
 }
 
 std::unordered_map<std::string, Datum> LingoVM::captureLocals(const Scope& scope) const {
     const auto* script = scope.script();
-    const auto names = script != nullptr ? scriptNamesForScript(*script) : nullptr;
+    const auto names = script != nullptr ? scriptNamesForScript(*script, scope.fileOwner(), scope.scriptNamesOwner())
+                                        : nullptr;
     return trace::TracingHelper().captureLocals(scope, names.get());
 }
 
-bool LingoVM::handlerDeclaresMeAsFirstParam(const chunks::ScriptChunk& script,
-                                            const chunks::ScriptChunk::Handler& handler) const {
+bool LingoVM::handlerDeclaresMeAsFirstParam(
+    const chunks::ScriptChunk& script,
+    const chunks::ScriptChunk::Handler& handler,
+    const std::shared_ptr<const DirectorFile>& fileOwner,
+    const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner) const {
     if (handler.argNameIds.empty()) {
         return false;
     }
-    return equalsIgnoreCase(resolveName(script, handler.argNameIds.front()), "me");
+    return equalsIgnoreCase(resolveName(script, handler.argNameIds.front(), fileOwner, scriptNamesOwner), "me");
 }
 
 void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context) {
@@ -1057,8 +1135,8 @@ void LingoVM::traceRandomCall(int max, int result) {
         out << " seed=" << randomSeed_;
     }
     if (const Scope* scope = currentScope(); scope != nullptr && scope->script() != nullptr) {
-        out << " at " << handlerName(*scope->script(), scope->handler())
-            << " in \"" << scriptDisplayName(*scope->script()) << "\"";
+        out << " at " << handlerName(*scope->script(), scope->handler(), scope->fileOwner(), scope->scriptNamesOwner())
+            << " in \"" << scriptDisplayName(*scope->script(), scope->fileOwner()) << "\"";
     }
     traceOutput(out.str());
 }
@@ -1140,7 +1218,9 @@ LingoVM::CallStackFrame LingoVM::toCallStackFrame(const Scope& scope) const {
     }
 
     return CallStackFrame{
-        handlerName(*scope.script(), scope.handler()),
+        scope.script() != nullptr
+            ? handlerName(*scope.script(), scope.handler(), scope.fileOwner(), scope.scriptNamesOwner())
+            : std::string(),
         "script#" + std::to_string(scope.script() != nullptr ? scope.script()->id().value() : 0),
         scope.bytecodeIndex(),
         std::move(args)

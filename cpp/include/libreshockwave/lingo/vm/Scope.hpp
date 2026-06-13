@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -7,17 +8,39 @@
 #include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 
+namespace libreshockwave {
+class DirectorFile;
+}
+
+namespace libreshockwave::chunks {
+class ScriptNamesChunk;
+}
+
 namespace libreshockwave::lingo::vm {
 
 class Scope {
 public:
     Scope(const chunks::ScriptChunk* script,
-          chunks::ScriptChunk::Handler handler,
+          const chunks::ScriptChunk::Handler& handler,
           std::vector<Datum> arguments = {},
           Datum receiver = Datum::voidValue(),
-          bool firstParamDeclaredMe = false);
+          bool firstParamDeclaredMe = false,
+          std::shared_ptr<const chunks::ScriptChunk> scriptOwner = nullptr,
+          std::shared_ptr<const DirectorFile> fileOwner = nullptr,
+          std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner = nullptr);
+    Scope(const chunks::ScriptChunk* script,
+          const chunks::ScriptChunk::Handler* handler,
+          std::vector<Datum> arguments = {},
+          Datum receiver = Datum::voidValue(),
+          bool firstParamDeclaredMe = false,
+          std::shared_ptr<const chunks::ScriptChunk> scriptOwner = nullptr,
+          std::shared_ptr<const DirectorFile> fileOwner = nullptr,
+          std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner = nullptr);
 
     [[nodiscard]] const chunks::ScriptChunk* script() const;
+    [[nodiscard]] const std::shared_ptr<const chunks::ScriptChunk>& scriptOwner() const;
+    [[nodiscard]] const std::shared_ptr<const DirectorFile>& fileOwner() const;
+    [[nodiscard]] const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner() const;
     [[nodiscard]] const chunks::ScriptChunk::Handler& handler() const;
     [[nodiscard]] const std::vector<Datum>& arguments() const;
     [[nodiscard]] std::vector<Datum> displayArguments() const;
@@ -60,7 +83,10 @@ private:
     [[nodiscard]] int displayArgumentOffset() const;
 
     const chunks::ScriptChunk* script_;
-    chunks::ScriptChunk::Handler handler_;
+    std::shared_ptr<const chunks::ScriptChunk> scriptOwner_;
+    std::shared_ptr<const DirectorFile> fileOwner_;
+    std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner_;
+    const chunks::ScriptChunk::Handler* handler_;
     std::vector<Datum> arguments_;
     Datum receiver_;
     bool firstParamDeclaredMe_;

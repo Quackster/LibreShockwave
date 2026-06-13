@@ -197,7 +197,7 @@ Datum LingoExpressionParser::parse(std::string_view expression, LingoVM* vm) {
 
     if (vm != nullptr && isIdentifier(expr)) {
         if (auto handler = vm->findHandler(expr)) {
-            return vm->executeHandler(*handler->script, handler->handler);
+            return vm->executeHandler(*handler);
         }
         const Datum global = vm->getGlobal(expr);
         if (!global.isVoid()) {

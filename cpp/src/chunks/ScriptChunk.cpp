@@ -202,12 +202,20 @@ std::string ScriptChunk::displayName() const {
 }
 
 std::optional<ScriptChunk::Handler> ScriptChunk::findHandlerByNameId(int nameId) const {
-    for (const auto& handler : handlers_) {
-        if (handler.nameId == nameId) {
-            return handler;
-        }
+    const auto* handler = findHandlerByNameIdPtr(nameId);
+    if (handler != nullptr) {
+        return *handler;
     }
     return std::nullopt;
+}
+
+const ScriptChunk::Handler* ScriptChunk::findHandlerByNameIdPtr(int nameId) const {
+    for (const auto& handler : handlers_) {
+        if (handler.nameId == nameId) {
+            return &handler;
+        }
+    }
+    return nullptr;
 }
 
 std::string ScriptChunk::getHandlerName(const Handler& handler) const {
@@ -237,15 +245,27 @@ std::optional<ScriptChunk::Handler> ScriptChunk::findHandler(std::string_view na
 }
 
 std::optional<ScriptChunk::Handler> ScriptChunk::findHandler(std::string_view name, const ScriptNamesChunk* names) const {
+    const auto* handler = findHandlerPtr(name, names);
+    if (handler != nullptr) {
+        return *handler;
+    }
+    return std::nullopt;
+}
+
+const ScriptChunk::Handler* ScriptChunk::findHandlerPtr(std::string_view name) const {
+    return findHandlerPtr(name, scriptNamesFromFile(*this).get());
+}
+
+const ScriptChunk::Handler* ScriptChunk::findHandlerPtr(std::string_view name, const ScriptNamesChunk* names) const {
     if (!names) {
-        return std::nullopt;
+        return nullptr;
     }
     for (const auto& handler : handlers_) {
         if (equalsIgnoreCase(names->getName(handler.nameId), name)) {
-            return handler;
+            return &handler;
         }
     }
-    return std::nullopt;
+    return nullptr;
 }
 
 std::vector<std::string> ScriptChunk::getPropertyNames() const {

@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "libreshockwave/cast/MemberType.hpp"
@@ -25,6 +26,7 @@ class CastChunk;
 class CastMemberChunk;
 class ScriptChunk;
 class ScriptNamesChunk;
+enum class ScriptChunkType;
 }
 
 namespace libreshockwave::player::cast {
@@ -83,6 +85,8 @@ public:
     [[nodiscard]] bool hasMemberNamedExact(const std::string& memberName);
     [[nodiscard]] int getMemberNumber(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScript(int memberNumber);
+    [[nodiscard]] chunks::ScriptChunkType scriptTypeForScript(
+        const std::shared_ptr<chunks::ScriptChunk>& script);
     [[nodiscard]] const std::vector<std::shared_ptr<chunks::ScriptChunk>>& allScripts();
     [[nodiscard]] std::shared_ptr<chunks::ScriptNamesChunk> scriptNames() const;
 
@@ -107,6 +111,7 @@ private:
     [[nodiscard]] int minMember() const;
     void loadMembersFromCast(const std::shared_ptr<chunks::CastChunk>& cast, int minMember);
     void loadFromExternalFile();
+    void cacheScriptTypeForMember(int memberNumber, const std::shared_ptr<chunks::ScriptChunk>& script);
     void scanXmedFonts();
     void invalidateFileBackedBinding();
     [[nodiscard]] bool sameFileBinding(const std::string& currentFileName, const std::string& newFileName) const;
@@ -142,6 +147,8 @@ private:
     std::map<int, std::shared_ptr<chunks::CastMemberChunk>> memberChunks_;
     std::map<int, std::shared_ptr<libreshockwave::cast::CastMember>> members_;
     std::map<int, std::shared_ptr<chunks::ScriptChunk>> scripts_;
+    std::unordered_map<const chunks::ScriptChunk*, chunks::ScriptChunkType> scriptTypesByPointer_;
+    std::unordered_map<int, chunks::ScriptChunkType> scriptTypesById_;
     std::vector<std::shared_ptr<chunks::ScriptChunk>> cachedScripts_;
     int totalSlotCount_ = 0;
     int nextDynamicMember_ = 10000;

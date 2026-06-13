@@ -38,6 +38,7 @@ public:
 
     virtual ~TraceListener() = default;
 
+    [[nodiscard]] virtual bool needsHandlerTrace() const { return true; }
     virtual void onHandlerEnter(const HandlerInfo&) {}
     virtual void onHandlerExit(const HandlerInfo&, const Datum&) {}
     virtual void onInstruction(const InstructionInfo&) {}

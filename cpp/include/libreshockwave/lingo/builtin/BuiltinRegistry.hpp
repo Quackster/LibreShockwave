@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "libreshockwave/chunks/ScriptChunk.hpp"
@@ -20,6 +21,14 @@ namespace libreshockwave::bitmap {
 class Palette;
 } // namespace libreshockwave::bitmap
 
+namespace libreshockwave {
+class DirectorFile;
+}
+
+namespace libreshockwave::chunks {
+class ScriptNamesChunk;
+}
+
 namespace libreshockwave::lingo::builtin {
 
 struct BuiltinContext {
@@ -30,8 +39,38 @@ struct BuiltinContext {
     };
 
     struct ScriptHandlerLocation {
+        ScriptHandlerLocation() = default;
+        ScriptHandlerLocation(const chunks::ScriptChunk* scriptValue,
+                              const chunks::ScriptChunk::Handler* handlerValue,
+                              std::shared_ptr<const chunks::ScriptChunk> scriptOwnerValue = nullptr,
+                              std::shared_ptr<const DirectorFile> fileOwnerValue = nullptr,
+                              std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwnerValue = nullptr,
+                              chunks::ScriptChunkType scriptTypeValue = chunks::ScriptChunkType::Unknown)
+            : script(scriptValue),
+              handler(handlerValue),
+              scriptOwner(std::move(scriptOwnerValue)),
+              fileOwner(std::move(fileOwnerValue)),
+              scriptNamesOwner(std::move(scriptNamesOwnerValue)),
+              scriptType(scriptTypeValue) {}
+        ScriptHandlerLocation(const chunks::ScriptChunk* scriptValue,
+                              const chunks::ScriptChunk::Handler& handlerValue,
+                              std::shared_ptr<const chunks::ScriptChunk> scriptOwnerValue = nullptr,
+                              std::shared_ptr<const DirectorFile> fileOwnerValue = nullptr,
+                              std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwnerValue = nullptr,
+                              chunks::ScriptChunkType scriptTypeValue = chunks::ScriptChunkType::Unknown)
+            : ScriptHandlerLocation(scriptValue,
+                                    &handlerValue,
+                                    std::move(scriptOwnerValue),
+                                    std::move(fileOwnerValue),
+                                    std::move(scriptNamesOwnerValue),
+                                    scriptTypeValue) {}
+
         const chunks::ScriptChunk* script{nullptr};
-        chunks::ScriptChunk::Handler handler{};
+        const chunks::ScriptChunk::Handler* handler{nullptr};
+        std::shared_ptr<const chunks::ScriptChunk> scriptOwner;
+        std::shared_ptr<const DirectorFile> fileOwner;
+        std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner;
+        chunks::ScriptChunkType scriptType{chunks::ScriptChunkType::Unknown};
     };
 
     using PuppetPaletteHandler = std::function<void(std::optional<Datum> paletteRef)>;

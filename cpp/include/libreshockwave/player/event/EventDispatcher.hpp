@@ -35,6 +35,7 @@ struct EventTarget {
     std::shared_ptr<chunks::ScriptChunk> script;
     std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
     std::shared_ptr<const DirectorFile> scriptOwner;
+    chunks::ScriptChunkType scriptType{chunks::ScriptChunkType::Unknown};
 };
 
 struct HandlerResult {
@@ -56,6 +57,7 @@ public:
         std::shared_ptr<chunks::ScriptChunk> script;
         std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
         std::shared_ptr<const DirectorFile> scriptOwner;
+        chunks::ScriptChunkType scriptType{chunks::ScriptChunkType::Unknown};
     };
     using MovieScriptSupplier = std::function<std::vector<MovieScriptTarget>()>;
 

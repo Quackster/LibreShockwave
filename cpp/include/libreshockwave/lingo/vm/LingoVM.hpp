@@ -131,6 +131,9 @@ public:
                                        const chunks::ScriptChunk::Handler& handler,
                                        const std::vector<Datum>& args = {},
                                        const Datum& receiver = Datum::voidValue());
+    [[nodiscard]] Datum executeHandler(const HandlerRef& handler,
+                                       const std::vector<Datum>& args = {},
+                                       const Datum& receiver = Datum::voidValue());
 
     [[nodiscard]] static std::string normalizeLookupName(std::string_view name);
     [[nodiscard]] static std::string formatTraceArgument(const Datum& value);
@@ -144,26 +147,45 @@ public:
         const chunks::ScriptChunk& existingScript);
 
 private:
-    [[nodiscard]] ExecutionContext::Callbacks callbacksFor(const chunks::ScriptChunk& script);
-    [[nodiscard]] std::shared_ptr<chunks::ScriptNamesChunk> scriptNamesForScript(
-        const chunks::ScriptChunk& script) const;
-    [[nodiscard]] std::string resolveName(const chunks::ScriptChunk& script, int nameId) const;
-    [[nodiscard]] std::string handlerName(const chunks::ScriptChunk& script,
-                                          const chunks::ScriptChunk::Handler& handler) const;
+    [[nodiscard]] ExecutionContext::Callbacks callbacksFor(
+        const chunks::ScriptChunk& script,
+        std::shared_ptr<const DirectorFile> fileOwner = nullptr,
+        std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner = nullptr);
+    [[nodiscard]] std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesForScript(
+        const chunks::ScriptChunk& script,
+        const std::shared_ptr<const DirectorFile>& fileOwner = nullptr,
+        const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner = nullptr) const;
+    [[nodiscard]] std::string resolveName(
+        const chunks::ScriptChunk& script,
+        int nameId,
+        const std::shared_ptr<const DirectorFile>& fileOwner = nullptr,
+        const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner = nullptr) const;
+    [[nodiscard]] std::string handlerName(
+        const chunks::ScriptChunk& script,
+        const chunks::ScriptChunk::Handler& handler,
+        const std::shared_ptr<const DirectorFile>& fileOwner = nullptr,
+        const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner = nullptr) const;
     [[nodiscard]] Datum callAncestor(const std::vector<Datum>& args);
     [[nodiscard]] Datum findAncestorForCall(const Datum::ScriptInstanceRef& instance) const;
-    [[nodiscard]] std::string scriptDisplayName(const chunks::ScriptChunk& script) const;
+    [[nodiscard]] std::string scriptDisplayName(
+        const chunks::ScriptChunk& script,
+        const std::shared_ptr<const DirectorFile>& fileOwner = nullptr) const;
     [[nodiscard]] TraceListener::HandlerInfo buildHandlerInfo(
         const chunks::ScriptChunk& script,
         const chunks::ScriptChunk::Handler& handler,
         const std::vector<Datum>& args,
-        const Datum& receiver) const;
+        const Datum& receiver,
+        const std::shared_ptr<const DirectorFile>& fileOwner = nullptr,
+        const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner = nullptr) const;
     [[nodiscard]] TraceListener::InstructionInfo buildInstructionInfo(
         const Scope& scope,
         const chunks::ScriptChunk::Instruction& instruction) const;
     [[nodiscard]] std::unordered_map<std::string, Datum> captureLocals(const Scope& scope) const;
-    [[nodiscard]] bool handlerDeclaresMeAsFirstParam(const chunks::ScriptChunk& script,
-                                                     const chunks::ScriptChunk::Handler& handler) const;
+    [[nodiscard]] bool handlerDeclaresMeAsFirstParam(
+        const chunks::ScriptChunk& script,
+        const chunks::ScriptChunk::Handler& handler,
+        const std::shared_ptr<const DirectorFile>& fileOwner = nullptr,
+        const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner = nullptr) const;
     void executeInstruction(Scope& scope, ExecutionContext& context);
     [[nodiscard]] std::int64_t currentTimeMillis() const;
     void traceRandomCall(int max, int result);

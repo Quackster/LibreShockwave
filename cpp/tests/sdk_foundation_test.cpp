@@ -7842,10 +7842,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     context.jumpTo(99);
     assert(contextScope.bytecodeIndex() == 2);
     assert(context.findLocalHandler(1)->nameId == 99);
-    assert(!context.findLocalHandler(99).has_value());
+    assert(context.findLocalHandler(99) == nullptr);
     assert(context.resolveName(12) == "resolvedName");
     assert(context.resolveName(999) == "#999");
-    assert(context.findHandler("known")->handler.nameId == 99);
+    assert(context.findHandler("known")->handler->nameId == 99);
     assert(!context.findHandler("missing").has_value());
     assert(context.executeHandler(script, handler, {Datum::of(1)}, Datum::voidValue()).stringValue() == "exec:10:1");
 
@@ -23312,6 +23312,31 @@ void testCastLibManagerFoundation() {
     assert(callbackFileNameHandler.player == &callbackFileNamePlayer);
     assert(callbackFileNameHandler.castLibNumber == 2);
     assert(callbackFileNameHandler.fileName == "runtime/missingCast.cct");
+
+    ExternalCastFallbackNetProvider providerFileNameProvider;
+    Player providerFileNamePlayer(file, &providerFileNameProvider);
+    RecordingExternalCastLoadHandler providerFileNameHandler;
+    providerFileNamePlayer.addExternalCastLoadHandler(&providerFileNameHandler);
+    assert(providerFileNamePlayer.builtinContext().netManager == &providerFileNameProvider);
+    assert(providerFileNamePlayer.castLibManager().setCastLibProp(
+        2,
+        "fileName",
+        Datum::of(std::string("runtime/providerMissingCast.cct"))));
+    assert((providerFileNameProvider.preloadUrls == std::vector<std::string>{
+        "runtime/providerMissingCast.cct"
+    }));
+    auto providerFileNameCast = providerFileNamePlayer.castLibManager().castLibs().find(2);
+    assert(providerFileNameCast != providerFileNamePlayer.castLibManager().castLibs().end());
+    assert(providerFileNameCast->second != nullptr);
+    assert(!providerFileNameCast->second->isLoaded());
+    providerFileNamePlayer.onNetFetchComplete("runtime/providerMissingCast.cct", externalCastData);
+    providerFileNameCast = providerFileNamePlayer.castLibManager().castLibs().find(2);
+    assert(providerFileNameCast != providerFileNamePlayer.castLibManager().castLibs().end());
+    assert(providerFileNameCast->second != nullptr);
+    assert(providerFileNameCast->second->isLoaded());
+    assert(providerFileNameHandler.player == &providerFileNamePlayer);
+    assert(providerFileNameHandler.castLibNumber == 2);
+    assert(providerFileNameHandler.fileName == "runtime/providerMissingCast.cct");
 
     CastLib typeSurfaceCast(4, nullptr, nullptr);
     auto buttonMember = typeSurfaceCast.createDynamicMember("button");

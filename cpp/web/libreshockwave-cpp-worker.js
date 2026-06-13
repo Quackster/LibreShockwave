@@ -178,6 +178,22 @@ function fetchCandidates(candidate) {
   return urls;
 }
 
+function isHttpStatusError(error) {
+  return /^(4|5)\d\d\b/.test(errorMessage(error));
+}
+
+function isRemoteCandidate(url) {
+  try {
+    return new URL(url).origin !== self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchBytes(url, request = {}) {
   const method = request.method || "GET";
   const cacheKey = method === "GET" ? url : "";
@@ -201,6 +217,23 @@ async function fetchBytes(url, request = {}) {
   return bytes;
 }
 
+async function fetchCandidateBytes(candidate, request) {
+  const retryDelays = isRemoteCandidate(candidate) ? [350, 1200, 2400] : [];
+  let lastError = null;
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      return await fetchBytes(candidate, request);
+    } catch (error) {
+      lastError = error;
+      if (isHttpStatusError(error) || attempt >= retryDelays.length) {
+        break;
+      }
+      await delay(retryDelays[attempt]);
+    }
+  }
+  throw lastError;
+}
+
 async function satisfyFetchRequest(request) {
   const candidates = [request.url, ...(request.fallbacks || [])]
     .filter(Boolean)
@@ -209,7 +242,7 @@ async function satisfyFetchRequest(request) {
   let lastError = null;
   for (const candidate of uniqueCandidates) {
     try {
-      const bytes = await fetchBytes(candidate, request);
+      const bytes = await fetchCandidateBytes(candidate, request);
       withBytes(bytes, (ptr, length) => bridgeCall("fetch complete", () => api.fetchComplete(handle, request.taskId, ptr, length)));
       return;
     } catch (error) {

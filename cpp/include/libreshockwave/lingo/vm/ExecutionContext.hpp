@@ -1,9 +1,11 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "libreshockwave/chunks/ScriptChunk.hpp"
@@ -11,11 +13,49 @@
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
 
+namespace libreshockwave {
+class DirectorFile;
+}
+
+namespace libreshockwave::chunks {
+class ScriptNamesChunk;
+}
+
 namespace libreshockwave::lingo::vm {
 
 struct HandlerRef {
-    const chunks::ScriptChunk* script;
-    chunks::ScriptChunk::Handler handler;
+    HandlerRef() = default;
+    HandlerRef(const chunks::ScriptChunk* scriptValue,
+               const chunks::ScriptChunk::Handler* handlerValue,
+               std::shared_ptr<const chunks::ScriptChunk> scriptOwnerValue = nullptr,
+               std::shared_ptr<const DirectorFile> fileOwnerValue = nullptr,
+               std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwnerValue = nullptr,
+               chunks::ScriptChunkType scriptTypeValue = chunks::ScriptChunkType::Unknown)
+        : script(scriptValue),
+          handler(handlerValue),
+          scriptOwner(std::move(scriptOwnerValue)),
+          fileOwner(std::move(fileOwnerValue)),
+          scriptNamesOwner(std::move(scriptNamesOwnerValue)),
+          scriptType(scriptTypeValue) {}
+    HandlerRef(const chunks::ScriptChunk* scriptValue,
+               const chunks::ScriptChunk::Handler& handlerValue,
+               std::shared_ptr<const chunks::ScriptChunk> scriptOwnerValue = nullptr,
+               std::shared_ptr<const DirectorFile> fileOwnerValue = nullptr,
+               std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwnerValue = nullptr,
+               chunks::ScriptChunkType scriptTypeValue = chunks::ScriptChunkType::Unknown)
+        : HandlerRef(scriptValue,
+                     &handlerValue,
+                     std::move(scriptOwnerValue),
+                     std::move(fileOwnerValue),
+                     std::move(scriptNamesOwnerValue),
+                     scriptTypeValue) {}
+
+    const chunks::ScriptChunk* script{nullptr};
+    const chunks::ScriptChunk::Handler* handler{nullptr};
+    std::shared_ptr<const chunks::ScriptChunk> scriptOwner;
+    std::shared_ptr<const DirectorFile> fileOwner;
+    std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner;
+    chunks::ScriptChunkType scriptType{chunks::ScriptChunkType::Unknown};
 };
 
 class ExecutionContext {
@@ -24,6 +64,9 @@ public:
                                                 const chunks::ScriptChunk::Handler& handler,
                                                 const std::vector<Datum>& args,
                                                 const Datum& receiver)>;
+    using HandlerRefExecutor = std::function<Datum(const HandlerRef& handler,
+                                                   const std::vector<Datum>& args,
+                                                   const Datum& receiver)>;
     using NameResolver = std::function<std::string(int nameId)>;
     using HandlerFinder = std::function<std::optional<HandlerRef>(std::string_view name)>;
     using GlobalGetter = std::function<Datum(std::string_view name)>;
@@ -37,6 +80,7 @@ public:
 
     struct Callbacks {
         HandlerExecutor handlerExecutor;
+        HandlerRefExecutor handlerRefExecutor;
         NameResolver nameResolver;
         HandlerFinder handlerFinder;
         GlobalGetter globalGetter;
@@ -85,12 +129,15 @@ public:
     void tracePropertySet(std::string_view propName, const Datum& value) const;
 
     void jumpTo(int targetOffset);
-    [[nodiscard]] std::optional<chunks::ScriptChunk::Handler> findLocalHandler(int index) const;
+    [[nodiscard]] const chunks::ScriptChunk::Handler* findLocalHandler(int index) const;
     [[nodiscard]] const std::vector<chunks::ScriptChunk::LiteralEntry>& literals() const;
     [[nodiscard]] std::string resolveName(int nameId) const;
     [[nodiscard]] std::optional<HandlerRef> findHandler(std::string_view name) const;
     [[nodiscard]] Datum executeHandler(const chunks::ScriptChunk& script,
                                        const chunks::ScriptChunk::Handler& handler,
+                                       const std::vector<Datum>& args,
+                                       const Datum& receiver) const;
+    [[nodiscard]] Datum executeHandler(const HandlerRef& handler,
                                        const std::vector<Datum>& args,
                                        const Datum& receiver) const;
 

@@ -7,16 +7,40 @@
 namespace libreshockwave::lingo::vm {
 
 Scope::Scope(const chunks::ScriptChunk* script,
-             chunks::ScriptChunk::Handler handler,
+             const chunks::ScriptChunk::Handler& handler,
              std::vector<Datum> arguments,
              Datum receiver,
-             bool firstParamDeclaredMe)
+             bool firstParamDeclaredMe,
+             std::shared_ptr<const chunks::ScriptChunk> scriptOwner,
+             std::shared_ptr<const DirectorFile> fileOwner,
+             std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner)
+    : Scope(script,
+            &handler,
+            std::move(arguments),
+            std::move(receiver),
+            firstParamDeclaredMe,
+            std::move(scriptOwner),
+            std::move(fileOwner),
+            std::move(scriptNamesOwner)) {}
+
+Scope::Scope(const chunks::ScriptChunk* script,
+             const chunks::ScriptChunk::Handler* handler,
+             std::vector<Datum> arguments,
+             Datum receiver,
+             bool firstParamDeclaredMe,
+             std::shared_ptr<const chunks::ScriptChunk> scriptOwner,
+             std::shared_ptr<const DirectorFile> fileOwner,
+             std::shared_ptr<const chunks::ScriptNamesChunk> scriptNamesOwner)
     : script_(script),
-      handler_(std::move(handler)),
+      scriptOwner_(std::move(scriptOwner)),
+      fileOwner_(std::move(fileOwner)),
+      scriptNamesOwner_(std::move(scriptNamesOwner)),
+      handler_(handler),
       arguments_(std::move(arguments)),
       receiver_(std::move(receiver)),
       firstParamDeclaredMe_(firstParamDeclaredMe),
-      locals_(static_cast<std::size_t>(std::max(0, handler_.localCount)), Datum::voidValue()) {
+      locals_(static_cast<std::size_t>(std::max(0, handler_ != nullptr ? handler_->localCount : 0)),
+              Datum::voidValue()) {
     stack_.reserve(16);
     loopReturnStack_.reserve(4);
 }
@@ -25,8 +49,21 @@ const chunks::ScriptChunk* Scope::script() const {
     return script_;
 }
 
+const std::shared_ptr<const chunks::ScriptChunk>& Scope::scriptOwner() const {
+    return scriptOwner_;
+}
+
+const std::shared_ptr<const DirectorFile>& Scope::fileOwner() const {
+    return fileOwner_;
+}
+
+const std::shared_ptr<const chunks::ScriptNamesChunk>& Scope::scriptNamesOwner() const {
+    return scriptNamesOwner_;
+}
+
 const chunks::ScriptChunk::Handler& Scope::handler() const {
-    return handler_;
+    static const chunks::ScriptChunk::Handler empty{};
+    return handler_ != nullptr ? *handler_ : empty;
 }
 
 const std::vector<Datum>& Scope::arguments() const {
@@ -72,14 +109,15 @@ void Scope::advanceBytecodeIndex() {
 }
 
 bool Scope::hasMoreInstructions() const {
-    return bytecodeIndex_ >= 0 && bytecodeIndex_ < static_cast<int>(handler_.instructions.size());
+    return handler_ != nullptr && bytecodeIndex_ >= 0 &&
+           bytecodeIndex_ < static_cast<int>(handler_->instructions.size());
 }
 
 const chunks::ScriptChunk::Instruction* Scope::currentInstruction() const {
     if (!hasMoreInstructions()) {
         return nullptr;
     }
-    return &handler_.instructions[static_cast<std::size_t>(bytecodeIndex_)];
+    return &handler_->instructions[static_cast<std::size_t>(bytecodeIndex_)];
 }
 
 void Scope::push(Datum value) {
@@ -217,7 +255,7 @@ bool Scope::inLoop() const {
 
 std::string Scope::toString() const {
     std::ostringstream out;
-    out << "Scope{handler#" << handler_.nameId << ", bytecodeIndex=" << bytecodeIndex_
+    out << "Scope{handler#" << handler().nameId << ", bytecodeIndex=" << bytecodeIndex_
         << ", stackSize=" << stack_.size() << ", returned=" << (returned_ ? "true" : "false") << "}";
     return out.str();
 }

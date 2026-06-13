@@ -1063,17 +1063,35 @@ bool isNoReturnArgList(const Datum& datum) {
     return datum.type() == DatumType::ArgListNoRet;
 }
 
+HandlerRef handlerRefFromLocation(const builtin::BuiltinContext::ScriptHandlerLocation& location) {
+    return HandlerRef{
+        location.script,
+        location.handler,
+        location.scriptOwner,
+        location.fileOwner,
+        location.scriptNamesOwner,
+        location.scriptType
+    };
+}
+
+Datum safeExecuteHandler(ExecutionContext& context,
+                         const HandlerRef& handler,
+                         const std::vector<Datum>& args,
+                         const Datum& receiver) {
+    try {
+        return context.executeHandler(handler, args, receiver);
+    } catch (const LingoException&) {
+        context.setErrorState(true);
+        return Datum::voidValue();
+    }
+}
+
 Datum safeExecuteHandler(ExecutionContext& context,
                          const chunks::ScriptChunk& script,
                          const chunks::ScriptChunk::Handler& handler,
                          const std::vector<Datum>& args,
                          const Datum& receiver) {
-    try {
-        return context.executeHandler(script, handler, args, receiver);
-    } catch (const LingoException&) {
-        context.setErrorState(true);
-        return Datum::voidValue();
-    }
+    return safeExecuteHandler(context, HandlerRef{&script, &handler}, args, receiver);
 }
 
 std::string pickLineDelimiter(std::string_view value) {
@@ -2191,7 +2209,7 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     (void)dispatch::MemberRegistryMethodDispatcher::prefill(instance, methodName, args, builtinContext);
     const auto handler = findScriptInstanceScriptHandler(context, instance, methodName);
     if (handler) {
-        return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
+        return safeExecuteHandler(context, handlerRefFromLocation(*handler), args, receiver);
     }
     const auto registryResult =
         dispatch::MemberRegistryMethodDispatcher::dispatch(instance, methodName, args, builtinContext);
@@ -4287,7 +4305,7 @@ Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum
     if (receiver.type() == DatumType::ScriptInstanceRef) {
         auto& instance = receiver.scriptInstanceValue();
         if (const auto handler = findScriptInstanceScriptHandler(context, instance, "new")) {
-            return safeExecuteHandler(context, *handler->script, handler->handler, constructorArgs, receiver);
+            return safeExecuteHandler(context, handlerRefFromLocation(*handler), constructorArgs, receiver);
         }
     }
 
@@ -4295,7 +4313,7 @@ Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum
     if (!handler) {
         return Datum::voidValue();
     }
-    return safeExecuteHandler(context, *handler->script, handler->handler, constructorArgs, receiver);
+    return safeExecuteHandler(context, *handler, constructorArgs, receiver);
 }
 
 bool newObj(ExecutionContext& context) {
@@ -5413,7 +5431,17 @@ bool localCall(ExecutionContext& context) {
         }
     }
 
-    const Datum result = safeExecuteHandler(context, *script, *targetHandler, args, receiver);
+    const Datum result = safeExecuteHandler(
+        context,
+        HandlerRef{
+            script,
+            targetHandler,
+            context.scope().scriptOwner(),
+            context.scope().fileOwner(),
+            context.scope().scriptNamesOwner()
+        },
+        args,
+        receiver);
     if (!noReturn) {
         context.push(result);
     }
@@ -5431,18 +5459,17 @@ bool extCall(ExecutionContext& context) {
         if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
             result = *builtinResult;
         } else if (const auto handler = context.findHandler(handlerName)) {
-            result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+            result = safeExecuteHandler(context, *handler, args, Datum::voidValue());
         }
     } else if (const auto handler = context.findHandler(handlerName)) {
-        if (handler->script != nullptr &&
-            handler->script->resolvedScriptType() == chunks::ScriptChunkType::Parent) {
+        if (handler->script != nullptr && handler->scriptType == chunks::ScriptChunkType::Parent) {
             if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
                 result = *builtinResult;
             } else {
-                result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+                result = safeExecuteHandler(context, *handler, args, Datum::voidValue());
             }
         } else {
-            result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+            result = safeExecuteHandler(context, *handler, args, Datum::voidValue());
         }
     } else if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
         result = *builtinResult;

@@ -27,6 +27,7 @@ EventTarget behaviorTarget(const std::shared_ptr<behavior::BehaviorInstance>& in
     target.behavior = instance;
     target.script = instance ? instance->script() : nullptr;
     target.scriptNames = std::move(names);
+    target.scriptType = target.script ? target.script->scriptType() : chunks::ScriptChunkType::Unknown;
     return target;
 }
 
@@ -215,7 +216,10 @@ void EventDispatcher::dispatchToMovieScripts(std::string_view handlerName, const
     }
 
     for (const auto& movie : scripts) {
-        if (!movie.script || movie.script->resolvedScriptType() != chunks::ScriptChunkType::MovieScript) {
+        const auto scriptType = movie.scriptType == chunks::ScriptChunkType::Unknown && movie.script
+            ? movie.script->resolvedScriptType()
+            : movie.scriptType;
+        if (!movie.script || scriptType != chunks::ScriptChunkType::MovieScript) {
             continue;
         }
 
@@ -224,6 +228,7 @@ void EventDispatcher::dispatchToMovieScripts(std::string_view handlerName, const
         target.script = movie.script;
         target.scriptNames = resolveScriptNames(movie.script, movie.scriptNames);
         target.scriptOwner = movie.scriptOwner;
+        target.scriptType = scriptType;
         if (targetResponds(target, handlerName)) {
             invokeTarget(target, handlerName, args);
         }

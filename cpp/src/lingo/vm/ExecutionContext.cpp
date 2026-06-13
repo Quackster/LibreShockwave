@@ -185,12 +185,12 @@ void ExecutionContext::jumpTo(int targetOffset) {
     }
 }
 
-std::optional<chunks::ScriptChunk::Handler> ExecutionContext::findLocalHandler(int index) const {
+const chunks::ScriptChunk::Handler* ExecutionContext::findLocalHandler(int index) const {
     const auto* script = scope_->script();
     if (script == nullptr || index < 0 || index >= static_cast<int>(script->handlers().size())) {
-        return std::nullopt;
+        return nullptr;
     }
-    return script->handlers()[static_cast<std::size_t>(index)];
+    return &script->handlers()[static_cast<std::size_t>(index)];
 }
 
 const std::vector<chunks::ScriptChunk::LiteralEntry>& ExecutionContext::literals() const {
@@ -218,8 +218,20 @@ Datum ExecutionContext::executeHandler(const chunks::ScriptChunk& script,
                                        const chunks::ScriptChunk::Handler& handler,
                                        const std::vector<Datum>& args,
                                        const Datum& receiver) const {
+    return executeHandler(HandlerRef{&script, &handler}, args, receiver);
+}
+
+Datum ExecutionContext::executeHandler(const HandlerRef& handler,
+                                       const std::vector<Datum>& args,
+                                       const Datum& receiver) const {
+    if (callbacks_.handlerRefExecutor) {
+        return callbacks_.handlerRefExecutor(handler, args, receiver);
+    }
     if (callbacks_.handlerExecutor) {
-        return callbacks_.handlerExecutor(script, handler, args, receiver);
+        if (handler.script == nullptr || handler.handler == nullptr) {
+            return Datum::voidValue();
+        }
+        return callbacks_.handlerExecutor(*handler.script, *handler.handler, args, receiver);
     }
     return Datum::voidValue();
 }

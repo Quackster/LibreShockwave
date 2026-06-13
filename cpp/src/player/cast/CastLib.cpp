@@ -158,6 +158,17 @@ std::string scriptChunkTypePropName(chunks::ScriptChunkType type) {
     return "unknown";
 }
 
+chunks::ScriptChunkType castMemberScriptTypeToScriptChunkType(chunks::CastMemberScriptType type) {
+    switch (type) {
+        case chunks::CastMemberScriptType::Score: return chunks::ScriptChunkType::Score;
+        case chunks::CastMemberScriptType::Behavior: return chunks::ScriptChunkType::Behavior;
+        case chunks::CastMemberScriptType::MovieScript: return chunks::ScriptChunkType::MovieScript;
+        case chunks::CastMemberScriptType::Parent: return chunks::ScriptChunkType::Parent;
+        case chunks::CastMemberScriptType::Unknown: return chunks::ScriptChunkType::Unknown;
+    }
+    return chunks::ScriptChunkType::Unknown;
+}
+
 lingo::Datum bitmapPaletteRefDatum(const std::shared_ptr<libreshockwave::cast::CastMember>& member,
                                    id::CastLibId castLibId) {
     if (!member || !member->isBitmap()) {
@@ -388,6 +399,8 @@ void CastLib::reloadFromFile(std::shared_ptr<DirectorFile> file) {
     memberChunks_.clear();
     members_.clear();
     scripts_.clear();
+    scriptTypesByPointer_.clear();
+    scriptTypesById_.clear();
     cachedScripts_.clear();
     totalSlotCount_ = 0;
     load();
@@ -644,6 +657,46 @@ std::shared_ptr<chunks::ScriptChunk> CastLib::getScript(int memberNumber) {
         return found->second;
     }
     return nullptr;
+}
+
+chunks::ScriptChunkType CastLib::scriptTypeForScript(const std::shared_ptr<chunks::ScriptChunk>& script) {
+    if (!script) {
+        return chunks::ScriptChunkType::Unknown;
+    }
+    if (!isLoaded()) {
+        load();
+    }
+
+    if (const auto found = scriptTypesByPointer_.find(script.get()); found != scriptTypesByPointer_.end()) {
+        return found->second;
+    }
+    if (const auto found = scriptTypesById_.find(script->id().value()); found != scriptTypesById_.end()) {
+        scriptTypesByPointer_[script.get()] = found->second;
+        return found->second;
+    }
+
+    for (const auto& [memberNumber, candidate] : scripts_) {
+        if (!candidate) {
+            continue;
+        }
+        if (candidate.get() != script.get() && candidate->id().value() != script->id().value()) {
+            continue;
+        }
+        if (const auto found = memberChunks_.find(memberNumber);
+            found != memberChunks_.end() && found->second) {
+            if (const auto memberType = found->second->getScriptType(); memberType.has_value()) {
+                const auto scriptType = castMemberScriptTypeToScriptChunkType(memberType.value());
+                scriptTypesByPointer_[script.get()] = scriptType;
+                scriptTypesById_[script->id().value()] = scriptType;
+                return scriptType;
+            }
+        }
+    }
+
+    const auto scriptType = script->scriptType();
+    scriptTypesByPointer_[script.get()] = scriptType;
+    scriptTypesById_[script->id().value()] = scriptType;
+    return scriptType;
 }
 
 const std::vector<std::shared_ptr<chunks::ScriptChunk>>& CastLib::allScripts() {
@@ -1064,6 +1117,8 @@ bool CastLib::setExternalData(const std::vector<std::uint8_t>& data) {
         memberChunks_.clear();
         members_.clear();
         scripts_.clear();
+        scriptTypesByPointer_.clear();
+        scriptTypesById_.clear();
         cachedScripts_.clear();
         totalSlotCount_ = 0;
         load();
@@ -1125,6 +1180,22 @@ int CastLib::minMember() const {
     return 1;
 }
 
+void CastLib::cacheScriptTypeForMember(int memberNumber, const std::shared_ptr<chunks::ScriptChunk>& script) {
+    if (!script) {
+        return;
+    }
+    auto scriptType = script->scriptType();
+    if (const auto found = memberChunks_.find(memberNumber);
+        found != memberChunks_.end() && found->second) {
+        if (const auto memberType = found->second->getScriptType(); memberType.has_value()) {
+            scriptType = castMemberScriptTypeToScriptChunkType(memberType.value());
+        }
+    }
+
+    scriptTypesByPointer_[script.get()] = scriptType;
+    scriptTypesById_[script->id().value()] = scriptType;
+}
+
 void CastLib::loadMembersFromCast(const std::shared_ptr<chunks::CastChunk>& cast, int minMemberValue) {
     if (!cast || !sourceFile_) {
         return;
@@ -1146,6 +1217,7 @@ void CastLib::loadMembersFromCast(const std::shared_ptr<chunks::CastChunk>& cast
             if (member->isScript() && member->scriptId() > 0) {
                 if (auto script = sourceFile_->getScriptForCastMember(member, cast)) {
                     scripts_[memberNumber] = script;
+                    cacheScriptTypeForMember(memberNumber, script);
                 }
             }
             break;
@@ -1214,6 +1286,8 @@ void CastLib::invalidateFileBackedBinding() {
     memberChunks_.clear();
     members_.clear();
     scripts_.clear();
+    scriptTypesByPointer_.clear();
+    scriptTypesById_.clear();
     cachedScripts_.clear();
 }
 
