@@ -5253,15 +5253,26 @@ void testBuiltinRegistryFoundation() {
     assert(debugConfigVm.builtinContext().debugPlaybackEnabled);
     DebugConfig::setDebugPlaybackEnabled(false);
     assert(!DebugConfig::isDebugPlaybackEnabled());
+    LingoVM missingBuiltinVm;
+    missingBuiltinVm.builtinContext().debugPlaybackEnabled = true;
+    missingBuiltinVm.builtinContext().outputHandler = [&outputMessages](std::string_view kind, const std::string& text) {
+        outputMessages.emplace_back(std::string(kind), text);
+    };
+    assert(missingBuiltinVm.callBuiltin("definitelyMissing", {}).isVoid());
+    assert(outputMessages.size() == 2);
+    assert(outputMessages.back().first == "DEBUG");
+    assert(outputMessages.back().second == "Unsupported Lingo global/builtin: definitelyMissing");
+    assert(missingBuiltinVm.callBuiltin("definitelyMissing", {}).isVoid());
+    assert(outputMessages.size() == 2);
     context.debugPlaybackEnabled = true;
     assert(registry.invoke("put",
                            context,
                            {Datum::of(std::string("score")), Datum::of(7), Datum::symbol("ready")}).isVoid());
-    assert(outputMessages.size() == 2);
+    assert(outputMessages.size() == 3);
     assert(outputMessages.back().first == "PUT");
     assert(outputMessages.back().second == "score 7 ready");
     assert(registry.invoke("alert", context).isVoid());
-    assert(outputMessages.size() == 3);
+    assert(outputMessages.size() == 4);
     assert(outputMessages.back().first == "ALERT");
     assert(outputMessages.back().second.empty());
     std::pair<std::string, std::string> hookedAlert;
@@ -5272,7 +5283,7 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("alert", context, {Datum::of(std::string("hooked"))}).isVoid());
     assert(hookedAlert.first == "Alert");
     assert(hookedAlert.second == "hooked");
-    assert(outputMessages.size() == 3);
+    assert(outputMessages.size() == 4);
     context.alertHookHandler = {};
     std::string handledAlert;
     context.alertHandler = [&handledAlert](const std::string& text) {
@@ -5281,7 +5292,7 @@ void testBuiltinRegistryFoundation() {
     };
     assert(registry.invoke("alert", context, {Datum::of(std::string("handled"))}).isVoid());
     assert(handledAlert == "handled");
-    assert(outputMessages.size() == 3);
+    assert(outputMessages.size() == 4);
 
     assert(registry.contains("castLib"));
     assert(registry.contains("member"));
@@ -7174,6 +7185,10 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(QueuedMultiuserBridge::serializeWireContent("subject", "") == "subject");
     assert(QueuedMultiuserBridge::serializeWireContent("subject", "body") == "subject body");
     assert(QueuedMultiuserBridge::decodeShockwaveCommand('C', 'D') == 196);
+    assert(QueuedMultiuserBridge::isLegacyPlaintextKeepalive(std::string("@r", 2) + char(1)));
+    assert(!QueuedMultiuserBridge::isLegacyPlaintextKeepalive(std::string("@r", 2)));
+    assert(QueuedMultiuserBridge::isLegacyPlaintextPong("@@BCD"));
+    assert(!QueuedMultiuserBridge::isLegacyPlaintextPong("@@BCE"));
     assert(bridge.getRequest(0) == nullptr);
 
     MultiuserNetBridge::ConnectOptions chatOptions;
@@ -7219,10 +7234,9 @@ void testQueuedMultiuserBridgeFoundation() {
 
     const auto pendingBeforePong = bridge.pendingRequests().size();
     bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforePong + 1);
-    assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
+    assert(bridge.pendingRequests().size() == pendingBeforePong);
     bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforePong + 2);
+    assert(bridge.pendingRequests().size() == pendingBeforePong + 1);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
 
     bridge.deliverMessageBytes(7, {'@', '@', 0x01});
@@ -23488,6 +23502,77 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
     assert(importedRuntime->anchorX() == 9);
     assert(importedRuntime->anchorY() == 11);
+
+#ifdef LIBRESHOCKWAVE_HAVE_ZLIB
+    auto makeImportedPng = [&]() {
+        auto appendPngChunk = [&](std::vector<std::uint8_t>& data,
+                                  const std::string& type,
+                                  const std::vector<std::uint8_t>& payload) {
+            appendI32(data, static_cast<std::uint32_t>(payload.size()));
+            const auto crcOffset = data.size();
+            data.insert(data.end(), type.begin(), type.end());
+            data.insert(data.end(), payload.begin(), payload.end());
+            uLong crc = crc32(0L, Z_NULL, 0);
+            crc = crc32(crc,
+                        reinterpret_cast<const Bytef*>(data.data() + crcOffset),
+                        static_cast<uInt>(data.size() - crcOffset));
+            appendI32(data, static_cast<std::uint32_t>(crc));
+        };
+
+        std::vector<std::uint8_t> ihdr;
+        appendI32(ihdr, 2);
+        appendI32(ihdr, 1);
+        ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
+
+        const std::vector<std::uint8_t> scanlines{
+            0,
+            0x10, 0x20, 0x30, 0xFF,
+            0x40, 0x50, 0x60, 0x80
+        };
+        uLongf compressedLength = compressBound(static_cast<uLong>(scanlines.size()));
+        std::vector<std::uint8_t> compressed(static_cast<std::size_t>(compressedLength));
+        const int status = compress2(compressed.data(),
+                                     &compressedLength,
+                                     scanlines.data(),
+                                     static_cast<uLong>(scanlines.size()),
+                                     Z_BEST_SPEED);
+        assert(status == Z_OK);
+        compressed.resize(static_cast<std::size_t>(compressedLength));
+
+        std::vector<std::uint8_t> png{0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+        appendPngChunk(png, "IHDR", ihdr);
+        appendPngChunk(png, "IDAT", compressed);
+        appendPngChunk(png, "IEND", {});
+        return png;
+    };
+
+    const auto importedPng = makeImportedPng();
+    assert(manager.setMemberProp(1, 2, "media", Datum::media(importedPng)));
+    auto directPngRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(directPngRuntime != nullptr);
+    assert(directPngRuntime->isScriptModified());
+    assert(directPngRuntime->isNativeAlpha());
+    assert(directPngRuntime->width() == 2);
+    assert(directPngRuntime->height() == 1);
+    assert(directPngRuntime->getPixel(0, 0) == 0xFF102030U);
+    assert(directPngRuntime->getPixel(1, 0) == 0x80405060U);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
+
+    manager.cacheExternalData("media/hero.png?cache=1", importedPng);
+    assert(registry.invoke("importFileInto",
+                           context,
+                           {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                            Datum::of(std::string("media/hero.png"))}).boolValue());
+    auto importedPngRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(importedPngRuntime != nullptr);
+    assert(importedPngRuntime->isScriptModified());
+    assert(importedPngRuntime->isNativeAlpha());
+    assert(importedPngRuntime->width() == 2);
+    assert(importedPngRuntime->height() == 1);
+    assert(importedPngRuntime->getPixel(0, 0) == 0xFF102030U);
+    assert(importedPngRuntime->getPixel(1, 0) == 0x80405060U);
+#endif
 
     std::vector<std::uint8_t> directorInfo(32, 0);
     putI16At(directorInfo, 0, 0x8008);

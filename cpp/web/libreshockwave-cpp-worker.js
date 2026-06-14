@@ -39,8 +39,14 @@ function postDebug(level, message) {
 }
 
 function bridgeCall(name, callback, fallback) {
+  const started = performance.now();
   try {
-    return callback();
+    const result = callback();
+    const elapsed = performance.now() - started;
+    if (elapsed >= 1000) {
+      postDebug("warning", `${name} took ${elapsed.toFixed(1)}ms`);
+    }
+    return result;
   } catch (error) {
     const message = `${name}: ${errorMessage(error)}`;
     post("warning", { message });
@@ -323,6 +329,7 @@ function connectSocket(request) {
   ws.addEventListener("open", () => {
     post("socket", { phase: "open", instanceId: request.instanceId, url });
     bridgeCall("socket connected", () => api.socketConnected(handle, request.instanceId));
+    emitDebugMessages();
     flushSocket(request.instanceId);
     void pumpHostQueues().then(sendFrame).catch((error) => post("error", { message: errorMessage(error) }));
   });
@@ -330,6 +337,7 @@ function connectSocket(request) {
     const deliver = (bytes) => {
       post("socket", { phase: "message", instanceId: request.instanceId, byteLength: bytes.byteLength || bytes.length || 0, preview: bytePreview(bytes), url });
       withBytes(bytes, (ptr, length) => bridgeCall("socket message", () => api.socketMessageBytes(handle, request.instanceId, ptr, length)));
+      emitDebugMessages();
       void pumpHostQueues().then(sendFrame).catch((error) => post("error", { message: errorMessage(error) }));
     };
     if (event.data instanceof ArrayBuffer) {
@@ -345,6 +353,7 @@ function connectSocket(request) {
   ws.addEventListener("error", () => {
     post("socket", { phase: "error", instanceId: request.instanceId, url });
     bridgeCall("socket error", () => api.socketError(handle, request.instanceId, -2));
+    emitDebugMessages();
     post("warning", { message: `WebSocket error for ${request.host}:${request.port}` });
   });
   ws.addEventListener("close", (event) => {
@@ -353,6 +362,7 @@ function connectSocket(request) {
     if (event.code && event.code !== 1000) {
       bridgeCall("socket close error", () => api.socketError(handle, request.instanceId, event.code));
     }
+    emitDebugMessages();
     sockets.delete(request.instanceId);
   });
 }

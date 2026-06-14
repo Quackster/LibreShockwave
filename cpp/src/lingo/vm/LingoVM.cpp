@@ -662,6 +662,13 @@ Datum LingoVM::callBuiltin(std::string_view handlerNameValue, const std::vector<
     if (const auto result = builtinRegistry_.invokeIfPresent(handlerNameValue, builtinContext_, args)) {
         return *result;
     }
+    if (!handlerNameValue.empty() &&
+        (builtinContext_.debugPlaybackEnabled || DebugConfig::isDebugPlaybackEnabled())) {
+        const auto normalizedName = normalizeLookupName(handlerNameValue);
+        if (missingBuiltinDebugCache_.insert(normalizedName).second) {
+            emitDebugMessage("Unsupported Lingo global/builtin: " + std::string(handlerNameValue));
+        }
+    }
     return Datum::voidValue();
 }
 
@@ -1242,6 +1249,20 @@ void LingoVM::traceOutput(const std::string& line) const {
         return;
     }
     std::cout << line << '\n';
+}
+
+void LingoVM::emitDebugMessage(std::string_view message) const {
+    if (message.empty()) {
+        return;
+    }
+    if (traceListener_) {
+        traceListener_->onDebugMessage(message);
+    }
+    if (builtinContext_.outputHandler) {
+        builtinContext_.outputHandler("DEBUG", std::string(message));
+        return;
+    }
+    std::cout << "[DEBUG] " << message << '\n';
 }
 
 void LingoVM::emitConsoleHandlerEnter(const TraceListener::HandlerInfo& info) {

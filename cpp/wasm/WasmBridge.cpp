@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <exception>
@@ -46,6 +47,7 @@ using libreshockwave::player::xtra::QueuedMultiuserBridge;
 // Some legacy movies do real work there, including Habbo's sec.cct crypto setup,
 // so the default must be a guardrail rather than a one-frame budget.
 constexpr int DEFAULT_WASM_SCRIPT_DEADLINE_MS = 60000;
+constexpr int SLOW_WASM_OPERATION_WARNING_MS = 1000;
 
 struct WasmPlayerContext {
     std::shared_ptr<DirectorFile> file;
@@ -172,6 +174,23 @@ void queueDebugMessage(WasmPlayerContext& ctx, std::string level, std::string me
         ctx.debugMessages.erase(ctx.debugMessages.begin());
     }
     ctx.debugMessages.emplace_back(std::move(level), std::move(message));
+}
+
+std::int64_t elapsedMs(std::chrono::steady_clock::time_point start) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+}
+
+void queueSlowOperationMessage(WasmPlayerContext& ctx,
+                               std::string_view operation,
+                               std::chrono::steady_clock::time_point start) {
+    const auto elapsed = elapsedMs(start);
+    if (elapsed < SLOW_WASM_OPERATION_WARNING_MS) {
+        return;
+    }
+    queueDebugMessage(ctx,
+                      "warning",
+                      std::string(operation) + " took " + std::to_string(elapsed) + "ms");
 }
 
 std::string debugMessagesJson(const WasmPlayerContext& ctx) {
@@ -484,35 +503,38 @@ void processQueuedInput(WasmPlayerContext& ctx) {
     (void)ctx.player->inputHandler().processInputEvents();
 }
 
-void processHostXtraCallbacks(WasmPlayerContext& ctx) {
-    if (ctx.player == nullptr || ctx.player->isVmRunning()) {
-        return;
-    }
-    ctx.player->xtraManager().tickAll();
-    ctx.player->vm().flushDeferredTasks();
-}
-
 const char* scratch(WasmPlayerContext& ctx, std::string value) {
     ctx.scratch = std::move(value);
     return ctx.scratch.c_str();
 }
 
-class WasmFetchScriptDeadlineGuard {
+class WasmScriptDeadlineGuard {
 public:
-    explicit WasmFetchScriptDeadlineGuard(Player* player)
+    explicit WasmScriptDeadlineGuard(Player* player)
         : player_(player) {
         if (player_ == nullptr) {
             return;
         }
         previousDeadlineMs_ = player_->vm().tickDeadlineMs();
+        previousDeadline_ = player_->vm().tickDeadline();
         if (previousDeadlineMs_ == 0) {
             player_->vm().setTickDeadlineMs(DEFAULT_WASM_SCRIPT_DEADLINE_MS);
-            changed_ = true;
+            changedDeadlineMs_ = true;
+        }
+        if (previousDeadline_ == 0) {
+            player_->vm().armTickDeadline();
+            changedDeadline_ = true;
         }
     }
 
-    ~WasmFetchScriptDeadlineGuard() {
-        if (changed_ && player_ != nullptr) {
+    ~WasmScriptDeadlineGuard() {
+        if (player_ == nullptr) {
+            return;
+        }
+        if (changedDeadline_) {
+            player_->vm().setTickDeadline(previousDeadline_);
+        }
+        if (changedDeadlineMs_) {
             player_->vm().setTickDeadlineMs(previousDeadlineMs_);
         }
     }
@@ -520,8 +542,19 @@ public:
 private:
     Player* player_{nullptr};
     std::int64_t previousDeadlineMs_{0};
-    bool changed_{false};
+    std::int64_t previousDeadline_{0};
+    bool changedDeadlineMs_{false};
+    bool changedDeadline_{false};
 };
+
+void processHostXtraCallbacks(WasmPlayerContext& ctx) {
+    if (ctx.player == nullptr || ctx.player->isVmRunning()) {
+        return;
+    }
+    WasmScriptDeadlineGuard scriptDeadline(ctx.player.get());
+    ctx.player->xtraManager().tickAll();
+    ctx.player->vm().flushDeferredTasks();
+}
 
 std::string operationError(std::string_view operation, std::string_view detail) {
     std::string message(operation);
@@ -534,8 +567,10 @@ std::string operationError(std::string_view operation, std::string_view detail) 
 
 template <typename Callback>
 void guardedVoid(WasmPlayerContext& ctx, std::string_view operation, Callback&& callback) {
+    const auto start = std::chrono::steady_clock::now();
     try {
         callback();
+        queueSlowOperationMessage(ctx, operation, start);
     } catch (const std::exception& error) {
         setError(ctx, operationError(operation, error.what()));
     } catch (...) {
@@ -548,8 +583,11 @@ Result guardedResult(WasmPlayerContext& ctx,
                      std::string_view operation,
                      Result fallback,
                      Callback&& callback) {
+    const auto start = std::chrono::steady_clock::now();
     try {
-        return callback();
+        auto result = callback();
+        queueSlowOperationMessage(ctx, operation, start);
+        return result;
     } catch (const std::exception& error) {
         setError(ctx, operationError(operation, error.what()));
     } catch (...) {
@@ -912,7 +950,7 @@ EMSCRIPTEN_KEEPALIVE void lsw_fetch_complete(int handle,
         return;
     }
     guardedVoid(*ctx, "complete fetch", [&]() {
-        WasmFetchScriptDeadlineGuard scriptDeadline(ctx->player.get());
+        WasmScriptDeadlineGuard scriptDeadline(ctx->player.get());
         ctx->netProvider->onFetchComplete(taskId, std::vector<std::uint8_t>(bytes, bytes + byteCount));
     });
 }

@@ -21,6 +21,17 @@ Datum voidDatum() {
     return Datum::voidValue();
 }
 
+void debugPlaybackMessage(BuiltinContext& context, const std::string& message) {
+    if (!context.debugPlaybackEnabled && !vm::DebugConfig::isDebugPlaybackEnabled()) {
+        return;
+    }
+    if (context.outputHandler) {
+        context.outputHandler("DEBUG", message);
+    } else {
+        std::cout << "[DEBUG] " << message << '\n';
+    }
+}
+
 bool isMovieRef(const Datum& datum) {
     return datum.type() == DatumType::MovieRef;
 }
@@ -2150,6 +2161,7 @@ Datum XtraBuiltins::xtra(BuiltinContext& context, const std::vector<Datum>& args
     }
     const std::string xtraName = toStringLikeJava(args[0]);
     if (!context.xtraRegisteredResolver(xtraName)) {
+        debugPlaybackMessage(context, "Unsupported Xtra: " + xtraName);
         return Datum::voidValue();
     }
     return Datum::xtra(xtraName);
@@ -2159,6 +2171,7 @@ Datum XtraBuiltins::createInstance(BuiltinContext& context,
                                    const Datum::Xtra& xtraRef,
                                    const std::vector<Datum>& args) {
     if (!context.xtraInstanceCreator) {
+        debugPlaybackMessage(context, "Cannot create Xtra instance without an Xtra manager: " + xtraRef.name);
         return Datum::voidValue();
     }
     return context.xtraInstanceCreator(xtraRef.name, args);
@@ -2169,6 +2182,9 @@ Datum XtraBuiltins::callHandler(BuiltinContext& context,
                                 std::string_view handlerName,
                                 const std::vector<Datum>& args) {
     if (!context.xtraHandler) {
+        debugPlaybackMessage(context,
+                             "Cannot call Xtra handler without an Xtra manager: " + instance.xtraName +
+                                 "." + std::string(handlerName));
         return Datum::voidValue();
     }
     return context.xtraHandler(instance, std::string(handlerName), args);
@@ -2192,6 +2208,9 @@ Datum XtraBuiltins::getProperty(BuiltinContext& context,
                                 const Datum::XtraInstance& instance,
                                 std::string_view propertyName) {
     if (!context.xtraPropertyGetter) {
+        debugPlaybackMessage(context,
+                             "Cannot get Xtra property without an Xtra manager: " + instance.xtraName +
+                                 "." + std::string(propertyName));
         return Datum::voidValue();
     }
     return context.xtraPropertyGetter(instance, std::string(propertyName));
@@ -2203,6 +2222,10 @@ void XtraBuiltins::setProperty(BuiltinContext& context,
                                const Datum& value) {
     if (context.xtraPropertySetter) {
         context.xtraPropertySetter(instance, std::string(propertyName), value);
+    } else {
+        debugPlaybackMessage(context,
+                             "Cannot set Xtra property without an Xtra manager: " + instance.xtraName +
+                                 "." + std::string(propertyName));
     }
 }
 

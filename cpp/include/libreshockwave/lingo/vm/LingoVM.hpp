@@ -201,6 +201,7 @@ private:
     void emitConsoleHandlerEnter(const TraceListener::HandlerInfo& info);
     void emitConsoleHandlerExit(const TraceListener::HandlerInfo& info, const Datum& returnValue);
     void emitConsoleInstruction(const TraceListener::InstructionInfo& info);
+    void emitDebugMessage(std::string_view message) const;
     void resetConsoleTraceForHandler(int scriptId);
     [[nodiscard]] bool shouldSuppressConsoleInstruction(int offset);
     [[nodiscard]] CallStackFrame toCallStackFrame(const Scope& scope) const;
@@ -257,6 +258,7 @@ private:
     std::unordered_set<std::string> tracedHandlers_;
     std::unordered_map<std::string, HandlerRef> handlerCache_;
     std::unordered_set<std::string> missingHandlerCache_;
+    std::unordered_set<std::string> missingBuiltinDebugCache_;
     std::unordered_map<HandlerMetadataKey, std::shared_ptr<const HandlerMetadata>, HandlerMetadataKeyHash> handlerMetadataCache_;
     std::function<void()> passCallback_;
     bool eventStopped_{false};

@@ -11,6 +11,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/bitmap/PngDecoder.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/XmedStyledText.hpp"
@@ -368,6 +369,9 @@ std::optional<bitmap::Bitmap> decodeBitmapMedia(const std::vector<std::uint8_t>&
                                                 int defaultCastLib,
                                                 CastLibManager* manager) {
     auto bitmap = decodeImportedImage(data);
+    if (!bitmap.has_value()) {
+        bitmap = bitmap::PngDecoder::decode(data);
+    }
     if (!bitmap.has_value()) {
         bitmap = decodeDirectorBitmapMedia(data, defaultCastLib, manager);
     }
