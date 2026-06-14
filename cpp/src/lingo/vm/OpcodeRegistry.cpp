@@ -5643,6 +5643,84 @@ std::optional<Datum> fastListBuiltinCall(std::string_view handlerName, const std
     return std::nullopt;
 }
 
+std::optional<Datum> fastPrimitiveBuiltinCall(ExecutionContext& context,
+                                              std::string_view handlerName,
+                                              const std::vector<Datum>& args) {
+    if (context.builtins() == nullptr) {
+        return std::nullopt;
+    }
+
+    if (equalsIgnoreCase(handlerName, "bitAnd")) {
+        return args.size() < 2 ? Datum::of(0) : Datum::of(toIntLikeJava(args[0]) & toIntLikeJava(args[1]));
+    }
+    if (equalsIgnoreCase(handlerName, "bitOr")) {
+        return args.size() < 2 ? Datum::of(0) : Datum::of(toIntLikeJava(args[0]) | toIntLikeJava(args[1]));
+    }
+    if (equalsIgnoreCase(handlerName, "bitXor")) {
+        return args.size() < 2 ? Datum::of(0) : Datum::of(toIntLikeJava(args[0]) ^ toIntLikeJava(args[1]));
+    }
+    if (equalsIgnoreCase(handlerName, "bitNot")) {
+        return args.empty() ? Datum::of(0) : Datum::of(~toIntLikeJava(args[0]));
+    }
+    if (equalsIgnoreCase(handlerName, "charToNum")) {
+        if (args.empty()) {
+            return Datum::of(0);
+        }
+        if (const auto* value = args[0].asString()) {
+            return value->value.empty()
+                ? Datum::of(0)
+                : Datum::of(static_cast<int>(static_cast<unsigned char>(value->value.front())));
+        }
+        if (const auto* value = args[0].asFieldText()) {
+            return value->value.empty()
+                ? Datum::of(0)
+                : Datum::of(static_cast<int>(static_cast<unsigned char>(value->value.front())));
+        }
+        if (const auto* value = args[0].asSymbol()) {
+            return value->name.empty()
+                ? Datum::of(0)
+                : Datum::of(static_cast<int>(static_cast<unsigned char>(value->name.front())));
+        }
+        const std::string value = toStringLikeJava(args[0]);
+        return value.empty()
+            ? Datum::of(0)
+            : Datum::of(static_cast<int>(static_cast<unsigned char>(value.front())));
+    }
+    if (equalsIgnoreCase(handlerName, "numToChar")) {
+        if (args.empty()) {
+            return Datum::of(std::string());
+        }
+        const int numericValue = args[0].asInt() != nullptr
+            ? args[0].asInt()->value
+            : toIntLikeJava(args[0]);
+        return Datum::of(std::string(1, static_cast<char>(numericValue)));
+    }
+    if (equalsIgnoreCase(handlerName, "string")) {
+        return Datum::of(args.empty() ? std::string() : toStringLikeJava(args[0]));
+    }
+    if (equalsIgnoreCase(handlerName, "random")) {
+        if (args.empty()) {
+            return Datum::of(1);
+        }
+        const int max = toIntLikeJava(args[0]);
+        if (max <= 0) {
+            return Datum::of(1);
+        }
+        auto* builtinContext = context.builtinContext();
+        if (builtinContext != nullptr && builtinContext->randomIntHandler) {
+            return Datum::of(builtinContext->randomIntHandler(max));
+        }
+        return Datum::of(1);
+    }
+    if (equalsIgnoreCase(handlerName, "add") && args.size() >= 2 && args[0].isList()) {
+        Datum mutableTarget = args[0];
+        mutableTarget.listValue().items().push_back(args[1]);
+        return Datum::voidValue();
+    }
+
+    return std::nullopt;
+}
+
 std::optional<Opcode> setOpcodeForGetOpcode(Opcode opcode) {
     switch (opcode) {
         case Opcode::GET_GLOBAL: return Opcode::SET_GLOBAL;
@@ -6143,6 +6221,8 @@ bool executeExtCallWithArgs(ExecutionContext& context,
         } else {
             result = safeExecuteHandler(context, *handler, args, Datum::voidValue());
         }
+    } else if (const auto fastPrimitiveResult = fastPrimitiveBuiltinCall(context, handlerName, args)) {
+        result = *fastPrimitiveResult;
     } else if (const auto fastBuiltinResult = fastListBuiltinCall(handlerName, args)) {
         result = *fastBuiltinResult;
     } else if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {

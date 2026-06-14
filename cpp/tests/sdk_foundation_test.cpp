@@ -7866,6 +7866,27 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 157) {
             return std::string("getFirst");
         }
+        if (nameId == 158) {
+            return std::string("bitXor");
+        }
+        if (nameId == 159) {
+            return std::string("charToNum");
+        }
+        if (nameId == 160) {
+            return std::string("numToChar");
+        }
+        if (nameId == 161) {
+            return std::string("string");
+        }
+        if (nameId == 162) {
+            return std::string("random");
+        }
+        if (nameId == 163) {
+            return std::string("bitAnd");
+        }
+        if (nameId == 164) {
+            return std::string("add");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -9540,6 +9561,47 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     extCallContext.push(Datum::argList({}));
     assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
     assert(extCallContext.pop().stringValue() == " ");
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 158});
+    extCallContext.push(Datum::argList({Datum::of(0x0F), Datum::of(0x33)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().intValue() == 0x3C);
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 163});
+    extCallContext.push(Datum::argList({Datum::of(std::string("15")), Datum::of(0x33)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().intValue() == 0x03);
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 159});
+    extCallContext.push(Datum::argList({Datum::of(std::string(1, static_cast<char>(0xF2)))}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().intValue() == 0xF2);
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 160});
+    extCallContext.push(Datum::argList({Datum::of(0xF2)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    const std::string extByteString = extCallContext.pop().stringValue();
+    assert(extByteString.size() == 1);
+    assert(static_cast<unsigned char>(extByteString.front()) == 0xF2);
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 161});
+    extCallContext.push(Datum::argList({Datum::symbol("door")}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().stringValue() == "door");
+    int extRandomCalls = 0;
+    builtinContext.randomIntHandler = [&extRandomCalls](int max) {
+        ++extRandomCalls;
+        assert(max == 7);
+        return 4;
+    };
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 162});
+    extCallContext.push(Datum::argList({Datum::of(7)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().intValue() == 4);
+    assert(extRandomCalls == 1);
+    builtinContext.randomIntHandler = {};
+    Datum extAddList = Datum::list({Datum::of(1)});
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 164});
+    extCallContext.push(Datum::argList({extAddList, Datum::of(2)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().isVoid());
+    assert(extAddList.listValue().count() == 2);
+    assert(extAddList.listValue().getAt(2).intValue() == 2);
 
     Scope extNoRetScope(&script, handler, {});
     ExecutionContext extNoRetContext(extNoRetScope,
@@ -9628,6 +9690,51 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     immediateCountContext.push(Datum::list({Datum::of(1), Datum::of(2), Datum::of(3)}));
     assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCountContext));
     assert(immediateCountContext.pop().intValue() == 3);
+
+    auto immediateBitXorHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 2, 158);
+    ScriptChunk immediateBitXorScript(nullptr,
+                                      ChunkId(708),
+                                      ScriptChunkType::MovieScript,
+                                      0,
+                                      {immediateBitXorHandler},
+                                      {},
+                                      {},
+                                      {},
+                                      {});
+    Scope immediateBitXorScope(&immediateBitXorScript, immediateBitXorHandler, {});
+    ExecutionContext immediateBitXorContext(immediateBitXorScope,
+                                            immediateBitXorHandler.instructions[0],
+                                            &registry,
+                                            &builtinContext,
+                                            callbacks);
+    immediateBitXorContext.push(Datum::of(0x0F));
+    immediateBitXorContext.push(Datum::of(0x33));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateBitXorContext));
+    assert(immediateBitXorContext.pop().intValue() == 0x3C);
+
+    Datum immediateAddList = Datum::list({Datum::of(5)});
+    auto immediateAddHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST_NO_RET, 2, 164);
+    ScriptChunk immediateAddScript(nullptr,
+                                   ChunkId(709),
+                                   ScriptChunkType::MovieScript,
+                                   0,
+                                   {immediateAddHandler},
+                                   {},
+                                   {},
+                                   {},
+                                   {});
+    Scope immediateAddScope(&immediateAddScript, immediateAddHandler, {});
+    ExecutionContext immediateAddContext(immediateAddScope,
+                                         immediateAddHandler.instructions[0],
+                                         &registry,
+                                         &builtinContext,
+                                         callbacks);
+    immediateAddContext.push(immediateAddList);
+    immediateAddContext.push(Datum::of(6));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST_NO_RET, immediateAddContext));
+    assert(immediateAddScope.stackSize() == 0);
+    assert(immediateAddList.listValue().count() == 2);
+    assert(immediateAddList.listValue().getAt(2).intValue() == 6);
 
     auto immediateHandlerNoRetHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST_NO_RET, 1, 61);
     ScriptChunk immediateHandlerNoRetScript(nullptr,
