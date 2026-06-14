@@ -6,7 +6,7 @@ LibreShockwave is a C++20 project for parsing Macromedia/Adobe Director and Shoc
 
 It **won't** *just* be an emulator: the goal is to eventually become a full software suite and ecosystem, with a Director player, alongside a replacement for Director MX (2004, 11.5, etc.) as an open source replacement for Macromedia/Adobe Shockwave.
 
-<img width="1210" height="1075" alt="habbo-index-final-current" src="https://github.com/user-attachments/assets/4a0fd991-43c9-4b1d-90b0-6754b02655e5" />
+<img width="1280" height="900" alt="beta-current-1781405065297-90s" src="https://github.com/user-attachments/assets/4708d880-3b5a-4d51-822b-2dabdf409ae7" />
 
 ## Requirements
 
