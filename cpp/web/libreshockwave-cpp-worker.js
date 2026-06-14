@@ -183,6 +183,16 @@ function resolveUrl(candidate, baseUrl = movieUrl) {
   }
 }
 
+function isDirectorMovieUrl(url) {
+  try {
+    const pathname = new URL(url, movieUrl || self.location.href).pathname.toLowerCase();
+    return pathname.endsWith(".dcr") || pathname.endsWith(".dir") || pathname.endsWith(".dxr");
+  } catch {
+    const cleanUrl = String(url || "").split(/[?#]/, 1)[0].toLowerCase();
+    return cleanUrl.endsWith(".dcr") || cleanUrl.endsWith(".dir") || cleanUrl.endsWith(".dxr");
+  }
+}
+
 function fetchCandidates(candidate) {
   const resolved = resolveUrl(candidate);
   return resolved ? [resolved] : [];
@@ -412,8 +422,15 @@ async function pumpHostQueues() {
     const navigations = parseJsonArray(bridgeCall("poll movie navigations", () => api.pollMovieNavigations(handle), "[]"));
     if (navigations.length > 0) {
       for (const nav of navigations) {
+        const url = resolveUrl(nav.url);
         bridgeCall("movie navigation complete", () => api.movieNavigationComplete(handle, nav.taskId));
-        await loadMovie(resolveUrl(nav.url), true);
+        if (!isDirectorMovieUrl(url)) {
+          playing = false;
+          clearTimer();
+          post("navigation", { url });
+          return;
+        }
+        await loadMovie(url, true);
       }
       return;
     }

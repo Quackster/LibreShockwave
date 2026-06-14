@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -22,9 +23,11 @@
 #include "libreshockwave/chunks/RawChunk.hpp"
 #include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
+#include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/cast/FontRegistry.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -124,6 +127,7 @@ int textBoxTypeFromDatum(const lingo::Datum& value) {
         if (name == "adjust" || name == "auto" || name == "autosize") return 0;
         if (name == "fixed") return 1;
         if (name == "scroll" || name == "scrolling") return 2;
+        if (name == "limit") return 3;
         if (!value.isString()) {
             throw lingo::LingoException("Cannot convert symbol to text box type");
         }
@@ -808,6 +812,14 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "scripttext") return stringDatum("");
     if (prop == "media") return lingo::Datum::castMemberRef(castLibId_, id::MemberId(memberNumber));
     if (prop == "mediaready") return lingo::Datum::of(1);
+    if (member->isSound() && prop == "duration") {
+        if (sourceFile_ != nullptr && member->rawChunk()) {
+            if (const auto sound = player::audio::SoundManager::findSoundForMember(*sourceFile_, member->rawChunk())) {
+                return lingo::Datum::of(static_cast<int>(std::lround(sound->durationSeconds() * 1000.0)));
+            }
+        }
+        return lingo::Datum::of(0);
+    }
     if (member->isTextLike()) {
         if (prop == "text") return stringDatum(resolveMemberText(member));
         if (prop == "linecount") {

@@ -1341,6 +1341,18 @@ void testLingoDatumTypes() {
         outOfRangeListCaught = true;
     }
     assert(outOfRangeListCaught);
+    Datum wrappedPropsDatum = Datum::propList();
+    wrappedPropsDatum.propListValue().put(Datum::symbol("volume"), Datum::of(64));
+    Datum wrappedListDatum = Datum::list({wrappedPropsDatum});
+    auto& wrappedList = wrappedListDatum.listValue();
+    assert(ListMethodDispatcher::dispatch(wrappedList, "findPos", {Datum::symbol("volume")}).intValue() == 1);
+    assert(ListMethodDispatcher::dispatch(wrappedList, "getAt", {Datum::symbol("volume")}).intValue() == 64);
+    assert(ListMethodDispatcher::dispatch(wrappedList,
+                                          "setAt",
+                                          {Datum::symbol("member"),
+                                           Datum::castMemberRef(CastLibId(1), MemberId(8))})
+               .isVoid());
+    assert(wrappedList.getAt(1).propListValue().get(Datum::symbol("member")).asCastMemberRef()->memberNum() == 8);
     assert(ListMethodDispatcher::dispatch(dispatcherList, "missing", {}).isVoid());
     Datum dispatcherPropDatum = Datum::propList();
     auto& dispatcherProps = dispatcherPropDatum.propListValue();
@@ -6161,6 +6173,24 @@ void testBuiltinRegistryFoundation() {
     auto builtinQueuedArgs = Datum::propList();
     builtinQueuedArgs.propListValue().put(Datum::symbol("member"), Datum::castMemberRef(CastLibId(1), MemberId(8)));
     builtinQueuedArgs.propListValue().put(Datum::symbol("loopCount"), Datum::of(0));
+    assert(SoundChannelMethodDispatcher::dispatch(&context,
+                                                  *builtinSoundChannel,
+                                                  "setPlaylist",
+                                                  {Datum::list()}).isVoid());
+    Datum wrappedQueuedArgs = Datum::list({builtinQueuedArgs});
+    assert(SoundChannelMethodDispatcher::dispatch(&context,
+                                                  *builtinSoundChannel,
+                                                  "queue",
+                                                  {wrappedQueuedArgs}).isVoid());
+    builtinPlaylist = SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {});
+    assert(builtinPlaylist.listValue().count() == 1);
+    assert(builtinPlaylist.listValue().getAt(1).isPropList());
+    assert(builtinPlaylist.listValue().getAt(1).propListValue().get(Datum::symbol("member")).asCastMemberRef()->memberNum() == 8);
+    const int wrappedPlaylistPlayCount = builtinSoundBackend.playCount;
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "playNext", {}).isVoid());
+    assert(builtinSoundBackend.playCount == wrappedPlaylistPlayCount + 1);
+    assert(builtinSoundBackend.lastLoopCount == 0);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
     assert(SoundChannelMethodDispatcher::dispatch(&context,
                                                   *builtinSoundChannel,
                                                   "setPlaylist",
@@ -21616,7 +21646,7 @@ void testDirectorFileRifxLoader() {
     textData.insert(textData.end(), {'H', 'e', 'l', 'l', 'o'});
     const std::vector<std::uint8_t> scoreData;
     const std::vector<std::uint8_t> bitdData{0, 1};
-    std::vector<std::uint8_t> soundChunkData(66, 0);
+    std::vector<std::uint8_t> soundChunkData(64 + 44100, 0);
     soundChunkData[0x16] = 0x56;
     soundChunkData[0x17] = 0x22;
     soundChunkData[64] = 0x12;
@@ -22770,6 +22800,8 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "scriptText").stringValue().empty());
     assert(manager.getMemberProp(1, 2, "mediaReady").intValue() == 1);
     assert(manager.getMemberProp(1, 2, "type").asSymbol()->name == "bitmap");
+    assert(manager.getMemberProp(1, 4, "type").asSymbol()->name == "sound");
+    assert(manager.getMemberProp(1, 4, "duration").intValue() == 1000);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 8);
@@ -23089,6 +23121,8 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 1);
     assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(std::string("#scroll"))));
     assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 2);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::symbol("limit")));
+    assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 3);
     assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(1)));
     assert(manager.getMemberProp(1, 10001, "width").intValue() == 50);
     assert(manager.getMemberProp(1, 10001, "height").intValue() == 30);

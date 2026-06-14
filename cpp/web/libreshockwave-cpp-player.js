@@ -172,6 +172,12 @@
         options.onSocket(message);
       } else if (message.type === "tempo" && typeof options.onTempo === "function") {
         options.onTempo(message);
+      } else if (message.type === "navigation") {
+        if (typeof options.onNavigation === "function") {
+          options.onNavigation({ url: message.url || "" });
+        } else if (message.url) {
+          global.location.href = message.url;
+        }
       } else if (message.type === "debug" && typeof options.onDebug === "function") {
         options.onDebug({ level: message.level || "debug", message: message.message || "" });
       } else if (message.type === "warning") {

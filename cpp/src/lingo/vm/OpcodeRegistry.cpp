@@ -5989,6 +5989,22 @@ const void* collectionIdentity(const Datum& value) {
     return nullptr;
 }
 
+Datum::PropList* singlePropListWrapper(Datum::List& list) {
+    auto& items = list.items();
+    if (items.size() == 1 && items.front().isPropList()) {
+        return &items.front().propListValue();
+    }
+    return nullptr;
+}
+
+const Datum::PropList* singlePropListWrapper(const Datum::List& list) {
+    const auto& items = list.items();
+    if (items.size() == 1 && items.front().isPropList()) {
+        return &items.front().propListValue();
+    }
+    return nullptr;
+}
+
 std::optional<Datum> indexedCollectionSnapshotGetAt(ExecutionContext& context,
                                                     std::string_view methodName,
                                                     const std::vector<Datum>& args) {
@@ -6041,7 +6057,8 @@ std::optional<Datum> indexedCollectionSnapshotCount(ExecutionContext& context,
                                                                     collection));
 }
 
-std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::vector<Datum>& args) {
+std::optional<Datum> fastListObjectCall(std::string_view methodName,
+                                        const std::vector<Datum>& args) {
     if (args.empty()) {
         return std::nullopt;
     }
@@ -6056,6 +6073,13 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
             if (args.size() < 2) {
                 return Datum::voidValue();
             }
+            if (args[1].isString() || args[1].isSymbol()) {
+                if (const auto* propList = singlePropListWrapper(readList)) {
+                    const int propIndex = propList->findTypedKey(args[1]);
+                    return propIndex >= 0 ? propList->properties()[static_cast<std::size_t>(propIndex)].second
+                                          : Datum::voidValue();
+                }
+            }
             const int index = toIntLikeJava(args[1]);
             if (index < 1 || index > static_cast<int>(readItems.size())) {
                 throw LingoException("getAt: index " + std::to_string(index) +
@@ -6068,16 +6092,20 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
         auto& items = list.items();
         if (equalsIgnoreCase(methodName, "setAt")) {
             if (args.size() >= 3) {
-                const int index = toIntLikeJava(args[1]);
-                if (index >= 1) {
-                    const auto zeroIndex = static_cast<std::size_t>(index - 1);
-                    if (zeroIndex < items.size()) {
-                        items[zeroIndex] = args[2];
-                    } else {
-                        while (items.size() < zeroIndex) {
-                            items.push_back(Datum::voidValue());
+                if ((args[1].isString() || args[1].isSymbol()) && singlePropListWrapper(list) != nullptr) {
+                    singlePropListWrapper(list)->putTyped(args[1], args[2]);
+                } else {
+                    const int index = toIntLikeJava(args[1]);
+                    if (index >= 1) {
+                        const auto zeroIndex = static_cast<std::size_t>(index - 1);
+                        if (zeroIndex < items.size()) {
+                            items[zeroIndex] = args[2];
+                        } else {
+                            while (items.size() < zeroIndex) {
+                                items.push_back(Datum::voidValue());
+                            }
+                            items.push_back(args[2]);
                         }
-                        items.push_back(args[2]);
                     }
                 }
             }
@@ -6284,6 +6312,20 @@ bool tryImmediateFastObjCall(ExecutionContext& context,
                 return true;
             }
 
+            if (indexDatum.isString() || indexDatum.isSymbol()) {
+                if (const auto* propList = singlePropListWrapper(target.listValue())) {
+                    const int propIndex = propList->findTypedKey(indexDatum);
+                    const Datum result = propIndex >= 0
+                        ? propList->properties()[static_cast<std::size_t>(propIndex)].second
+                        : Datum::voidValue();
+                    context.scope().drop(argCount);
+                    if (!noReturn) {
+                        context.push(result);
+                    }
+                    return true;
+                }
+            }
+
             const int index = toIntLikeJava(indexDatum);
             const auto& items = target.listValue().items();
             if (index < 1 || index > static_cast<int>(items.size())) {
@@ -6300,18 +6342,24 @@ bool tryImmediateFastObjCall(ExecutionContext& context,
 
         if (argCount == 3 && equalsIgnoreCase(methodName, "setAt")) {
             Datum value = context.pop();
-            const int index = toIntLikeJava(context.pop());
+            Datum indexDatum = context.pop();
             Datum mutableTarget = context.pop();
-            if (index >= 1) {
-                auto& items = mutableTarget.listValue().items();
-                const auto zeroIndex = static_cast<std::size_t>(index - 1);
-                if (zeroIndex < items.size()) {
-                    items[zeroIndex] = std::move(value);
-                } else {
-                    while (items.size() < zeroIndex) {
-                        items.push_back(Datum::voidValue());
+            if ((indexDatum.isString() || indexDatum.isSymbol()) &&
+                singlePropListWrapper(mutableTarget.listValue()) != nullptr) {
+                singlePropListWrapper(mutableTarget.listValue())->putTyped(std::move(indexDatum), std::move(value));
+            } else {
+                const int index = toIntLikeJava(indexDatum);
+                if (index >= 1) {
+                    auto& items = mutableTarget.listValue().items();
+                    const auto zeroIndex = static_cast<std::size_t>(index - 1);
+                    if (zeroIndex < items.size()) {
+                        items[zeroIndex] = std::move(value);
+                    } else {
+                        while (items.size() < zeroIndex) {
+                            items.push_back(Datum::voidValue());
+                        }
+                        items.push_back(std::move(value));
                     }
-                    items.push_back(std::move(value));
                 }
             }
             if (!noReturn) {

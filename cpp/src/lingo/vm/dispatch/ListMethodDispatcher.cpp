@@ -268,6 +268,22 @@ void listSetAt(Datum::List& list, int index, Datum value) {
     items.push_back(std::move(value));
 }
 
+Datum::PropList* singlePropListWrapper(Datum::List& list) {
+    auto& items = list.items();
+    if (items.size() == 1 && items.front().isPropList()) {
+        return &items.front().propListValue();
+    }
+    return nullptr;
+}
+
+const Datum::PropList* singlePropListWrapper(const Datum::List& list) {
+    const auto& items = list.items();
+    if (items.size() == 1 && items.front().isPropList()) {
+        return &items.front().propListValue();
+    }
+    return nullptr;
+}
+
 } // namespace
 
 Datum ListMethodDispatcher::dispatch(Datum::List& list,
@@ -277,6 +293,14 @@ Datum ListMethodDispatcher::dispatch(Datum::List& list,
     if (equalsIgnoreCase(methodName, "getAt")) {
         if (args.empty()) {
             return Datum::voidValue();
+        }
+        if (args[0].isString() || args[0].isSymbol()) {
+            const auto* propList = singlePropListWrapper(list);
+            if (propList != nullptr) {
+                const int propIndex = propList->findTypedKey(args[0]);
+                return propIndex >= 0 ? propList->properties()[static_cast<std::size_t>(propIndex)].second
+                                      : Datum::voidValue();
+            }
         }
         const int index = toIntLikeJava(args[0]);
         if (index < 1 || index > static_cast<int>(items.size())) {
@@ -288,7 +312,15 @@ Datum ListMethodDispatcher::dispatch(Datum::List& list,
     }
     if (equalsIgnoreCase(methodName, "setAt")) {
         if (args.size() >= 2) {
-            listSetAt(list, toIntLikeJava(args[0]), args[1]);
+            if (args[0].isString() || args[0].isSymbol()) {
+                if (auto* propList = singlePropListWrapper(list)) {
+                    propList->putTyped(args[0], args[1]);
+                } else {
+                    listSetAt(list, toIntLikeJava(args[0]), args[1]);
+                }
+            } else {
+                listSetAt(list, toIntLikeJava(args[0]), args[1]);
+            }
         }
         return Datum::voidValue();
     }
@@ -329,6 +361,12 @@ Datum ListMethodDispatcher::dispatch(Datum::List& list,
         equalsIgnoreCase(methodName, "getPos")) {
         if (args.empty()) {
             return Datum::of(0);
+        }
+        if (equalsIgnoreCase(methodName, "findPos")) {
+            if (const auto* propList = singlePropListWrapper(list)) {
+                const int propIndex = propList->findUntypedKey(args[0]);
+                return propIndex >= 0 ? Datum::of(propIndex + 1) : Datum::voidValue();
+            }
         }
         for (std::size_t index = 0; index < items.size(); ++index) {
             if (lingoEquals(items[index], args[0])) {

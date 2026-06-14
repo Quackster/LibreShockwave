@@ -499,6 +499,22 @@ void putPropSameType(Datum::PropList& propList, const Datum& key, Datum value) {
     propList.putSameType(key, std::move(value));
 }
 
+Datum::PropList* singlePropListWrapper(Datum::List& list) {
+    auto& items = list.items();
+    if (items.size() == 1 && items.front().isPropList()) {
+        return &items.front().propListValue();
+    }
+    return nullptr;
+}
+
+const Datum::PropList* singlePropListWrapper(const Datum::List& list) {
+    const auto& items = list.items();
+    if (items.size() == 1 && items.front().isPropList()) {
+        return &items.front().propListValue();
+    }
+    return nullptr;
+}
+
 void putStringProp(Datum& propList, const std::string& key, Datum value) {
     propList.propListValue().put(Datum::of(key), std::move(value));
 }
@@ -1188,6 +1204,11 @@ Datum ListBuiltins::getAt(BuiltinContext& context, const std::vector<Datum>& arg
         return getCastLibMemberAccessorValue(context, *accessor, keyOrIndex);
     }
     if (container.isList()) {
+        if (keyOrIndex.isString() || keyOrIndex.isSymbol()) {
+            if (const auto* propList = singlePropListWrapper(container.listValue())) {
+                return propListBuiltinGetAtValue(*propList, keyOrIndex);
+            }
+        }
         const int index = toIntLikeJava(keyOrIndex);
         const auto& items = container.listValue().items();
         if (index >= 1 && index <= static_cast<int>(items.size())) {
@@ -1224,6 +1245,12 @@ Datum ListBuiltins::setAt(BuiltinContext&, const std::vector<Datum>& args) {
     const Datum& keyOrIndex = args[1];
     const Datum& value = args[2];
     if (args[0].isList()) {
+        if (keyOrIndex.isString() || keyOrIndex.isSymbol()) {
+            if (auto* propList = singlePropListWrapper(mutableArg(args, 0).listValue())) {
+                putPropTyped(*propList, keyOrIndex, value);
+                return Datum::voidValue();
+            }
+        }
         const int index = toIntLikeJava(keyOrIndex);
         auto& items = mutableArg(args, 0).listValue().items();
         if (index >= 1 && index <= static_cast<int>(items.size())) {
@@ -1367,6 +1394,10 @@ Datum ListBuiltins::findPos(BuiltinContext&, const std::vector<Datum>& args) {
         return Datum::voidValue();
     }
     if (args[0].isList()) {
+        if (const auto* propList = singlePropListWrapper(args[0].listValue())) {
+            const int index = findPropIndexUntyped(*propList, args[1]);
+            return index >= 0 ? Datum::of(index + 1) : Datum::voidValue();
+        }
         const auto& items = args[0].listValue().items();
         for (std::size_t index = 0; index < items.size(); ++index) {
             if (lingoEquals(items[index], args[1])) {

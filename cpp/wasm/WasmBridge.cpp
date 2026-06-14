@@ -665,6 +665,12 @@ EMSCRIPTEN_KEEPALIVE int lsw_load_movie(int handle,
             }
             setError(*ctx, std::move(error));
         });
+        player->movieProperties().setGotoNetPageHandler([ctx](const std::string& url, const std::string& target) {
+            (void)target;
+            if (ctx != nullptr && ctx->netProvider != nullptr) {
+                (void)ctx->netProvider->beginMovieNavigation(url);
+            }
+        });
         player->movieProperties().setGotoNetMovieHandler([ctx](const std::string& url) {
             if (ctx == nullptr || ctx->netProvider == nullptr) {
                 return -1;

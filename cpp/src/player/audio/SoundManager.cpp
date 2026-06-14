@@ -22,6 +22,16 @@ lingo::Datum getProp(const lingo::Datum::PropList& props, std::string_view name)
     return props.get(lingo::Datum::of(std::string(name)));
 }
 
+lingo::Datum normalizePlaylistEntry(const lingo::Datum& entry) {
+    if (entry.isList()) {
+        const auto& items = entry.listValue().items();
+        if (items.size() == 1 && items.front().isPropList()) {
+            return items.front().deepCopy();
+        }
+    }
+    return entry.deepCopy();
+}
+
 } // namespace
 
 SoundManager::SoundManager() {
@@ -131,7 +141,7 @@ void SoundManager::queue(int channelNum, const lingo::Datum& args) {
     if (!isValidChannel(channelNum)) {
         return;
     }
-    playlists_[static_cast<std::size_t>(channelNum)].push_back(args.deepCopy());
+    playlists_[static_cast<std::size_t>(channelNum)].push_back(normalizePlaylistEntry(args));
 }
 
 void SoundManager::playNext(int channelNum) {
@@ -264,11 +274,11 @@ void SoundManager::setPlaylist(int channelNum, const lingo::Datum& playlist) {
     }
     if (playlist.isList()) {
         for (const auto& item : playlist.listValue().items()) {
-            entries.push_back(item.deepCopy());
+            entries.push_back(normalizePlaylistEntry(item));
         }
         return;
     }
-    entries.push_back(playlist.deepCopy());
+    entries.push_back(normalizePlaylistEntry(playlist));
 }
 
 std::vector<lingo::Datum> SoundManager::getPlaylist(int channelNum) const {
