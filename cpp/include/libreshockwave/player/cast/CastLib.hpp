@@ -77,6 +77,8 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> findMemberByName(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> getMember(int memberNumber);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> getMemberByName(const std::string& memberName);
+    [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> getPaletteMemberByName(
+        const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> createDynamicMember(
         const std::string& memberType);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> createDynamicMember(

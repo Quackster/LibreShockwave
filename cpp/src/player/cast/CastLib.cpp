@@ -596,6 +596,42 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLib::getMemberByName(const
     return nullptr;
 }
 
+std::shared_ptr<libreshockwave::cast::CastMember> CastLib::getPaletteMemberByName(
+    const std::string& memberName) {
+    if (!isLoaded()) {
+        load();
+    }
+    if (memberName.empty()) {
+        return nullptr;
+    }
+
+    auto findExact = [this](const std::string& name) -> std::shared_ptr<libreshockwave::cast::CastMember> {
+        for (const auto& [_, member] : members_) {
+            if (member && member->isPalette() && equalsIgnoreCase(member->name(), name)) {
+                return member;
+            }
+        }
+        for (const auto& [number, chunk] : memberChunks_) {
+            if (!chunk || !equalsIgnoreCase(chunk->name(), name)) {
+                continue;
+            }
+            auto member = getMember(number);
+            if (member && member->isPalette()) {
+                return member;
+            }
+        }
+        return nullptr;
+    };
+
+    if (auto direct = findExact(memberName)) {
+        return direct;
+    }
+    if (const auto prefixed = sourcePrefixedLookupName(memberName); prefixed.has_value()) {
+        return findExact(*prefixed);
+    }
+    return nullptr;
+}
+
 std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(const std::string& memberType) {
     if (!isLoaded()) {
         load();

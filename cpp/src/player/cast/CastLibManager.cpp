@@ -57,6 +57,27 @@ struct ResolvedPaletteOverride {
     std::optional<std::string> systemName;
 };
 
+std::optional<ResolvedPaletteOverride> resolvePaletteMemberOverrideByName(CastLibManager& manager,
+                                                                           const std::string& name) {
+    for (const auto& [_, castLib] : manager.castLibs()) {
+        if (!castLib) {
+            continue;
+        }
+        auto member = castLib->getPaletteMemberByName(name);
+        if (!member) {
+            continue;
+        }
+        if (auto palette = manager.resolvePaletteByMember(castLib->number(), member->memberNum())) {
+            return ResolvedPaletteOverride{
+                palette,
+                lingo::Datum::CastMemberRef::of(id::CastLibId(castLib->number()), id::MemberId(member->memberNum())),
+                std::nullopt
+            };
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<ResolvedPaletteOverride> resolvePaletteOverrideDatum(CastLibManager& manager,
                                                                    const lingo::Datum& value,
                                                                    int defaultCastLib) {
@@ -78,18 +99,8 @@ std::optional<ResolvedPaletteOverride> resolvePaletteOverrideDatum(CastLibManage
             return ResolvedPaletteOverride{borrowedPalette(builtIn), std::nullopt, normalized};
         }
 
-        if (const auto* namedRef = manager.getMemberByName(0, name).asCastMemberRef()) {
-            const int castLib = namedRef->castLib > 0 ? namedRef->castLib : defaultCastLib;
-            auto member = manager.resolveMember(castLib, namedRef->memberNum());
-            if (member && member->isPalette()) {
-                if (auto palette = manager.resolvePaletteByMember(castLib, namedRef->memberNum())) {
-                    return ResolvedPaletteOverride{
-                        palette,
-                        lingo::Datum::CastMemberRef::of(id::CastLibId(castLib), id::MemberId(namedRef->memberNum())),
-                        std::nullopt
-                    };
-                }
-            }
+        if (auto namedPalette = resolvePaletteMemberOverrideByName(manager, name)) {
+            return namedPalette;
         }
 
         if (auto palette = manager.resolvePaletteByName(name)) {
