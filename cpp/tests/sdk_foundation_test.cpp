@@ -7887,6 +7887,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 164) {
             return std::string("add");
         }
+        if (nameId == 165) {
+            return std::string("length");
+        }
+        if (nameId == 166) {
+            return std::string("chars");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -9691,6 +9697,48 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCountContext));
     assert(immediateCountContext.pop().intValue() == 3);
 
+    auto immediateLengthHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 165);
+    ScriptChunk immediateLengthScript(nullptr,
+                                      ChunkId(710),
+                                      ScriptChunkType::MovieScript,
+                                      0,
+                                      {immediateLengthHandler},
+                                      {},
+                                      {},
+                                      {},
+                                      {});
+    Scope immediateLengthScope(&immediateLengthScript, immediateLengthHandler, {});
+    ExecutionContext immediateLengthContext(immediateLengthScope,
+                                            immediateLengthHandler.instructions[0],
+                                            &registry,
+                                            &builtinContext,
+                                            callbacks);
+    immediateLengthContext.push(Datum::fieldText("abcdef", 1, 3));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateLengthContext));
+    assert(immediateLengthContext.pop().intValue() == 6);
+
+    auto immediateCharsHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 3, 166);
+    ScriptChunk immediateCharsScript(nullptr,
+                                     ChunkId(711),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {immediateCharsHandler},
+                                     {},
+                                     {},
+                                     {},
+                                     {});
+    Scope immediateCharsScope(&immediateCharsScript, immediateCharsHandler, {});
+    ExecutionContext immediateCharsContext(immediateCharsScope,
+                                           immediateCharsHandler.instructions[0],
+                                           &registry,
+                                           &builtinContext,
+                                           callbacks);
+    immediateCharsContext.push(Datum::fieldText("abcdef", 1, 3));
+    immediateCharsContext.push(Datum::of(2));
+    immediateCharsContext.push(Datum::of(4));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCharsContext));
+    assert(immediateCharsContext.pop().stringValue() == "bcd");
+
     auto immediateBitXorHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 2, 158);
     ScriptChunk immediateBitXorScript(nullptr,
                                       ChunkId(708),
@@ -9735,6 +9783,48 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(immediateAddScope.stackSize() == 0);
     assert(immediateAddList.listValue().count() == 2);
     assert(immediateAddList.listValue().getAt(2).intValue() == 6);
+
+    auto makeImmediateObjHandler = [](Opcode pushOpcode, int argCount, int methodNameId) {
+        std::vector<ScriptChunk::Instruction> instructions{
+            ScriptChunk::Instruction{0, pushOpcode, libreshockwave::lingo::code(pushOpcode), argCount},
+            ScriptChunk::Instruction{1, Opcode::OBJ_CALL, libreshockwave::lingo::code(Opcode::OBJ_CALL), methodNameId}
+        };
+        std::unordered_map<int, int> indexMap{{0, 0}, {1, 1}};
+        return ScriptChunk::Handler{201,
+                                    0,
+                                    static_cast<int>(instructions.size()),
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    {},
+                                    {},
+                                    std::move(instructions),
+                                    std::move(indexMap)};
+    };
+
+    auto immediateStringGetPropHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 3, 67);
+    ScriptChunk immediateStringGetPropScript(nullptr,
+                                             ChunkId(712),
+                                             ScriptChunkType::MovieScript,
+                                             0,
+                                             {immediateStringGetPropHandler},
+                                             {},
+                                             {},
+                                             {},
+                                             {});
+    Scope immediateStringGetPropScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
+    ExecutionContext immediateStringGetPropContext(immediateStringGetPropScope,
+                                                   immediateStringGetPropHandler.instructions[0],
+                                                   &registry,
+                                                   &builtinContext,
+                                                   callbacks);
+    immediateStringGetPropContext.push(Datum::of(std::string("abcd")));
+    immediateStringGetPropContext.push(Datum::symbol("char"));
+    immediateStringGetPropContext.push(Datum::of(3));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateStringGetPropContext));
+    assert(immediateStringGetPropContext.pop().stringValue() == "c");
 
     auto immediateHandlerNoRetHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST_NO_RET, 1, 61);
     ScriptChunk immediateHandlerNoRetScript(nullptr,
@@ -11666,6 +11756,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runGetChunk(Datum::of(std::string("abcd")), 2, 0, 0, 0, 0, 0, 0, 0).stringValue() == "b");
     assert(runGetChunk(Datum::of(std::string("abcd")), 2, 3, 0, 0, 0, 0, 0, 0).stringValue() == "bc");
     assert(runGetChunk(Datum::of(std::string("abcd")), -1, 0, 0, 0, 0, 0, 0, 0).stringValue() == "d");
+    assert(runGetChunk(Datum::fieldText("wxyz", 1, 7), 3, 0, 0, 0, 0, 0, 0, 0).stringValue() == "y");
+    assert(runGetChunk(Datum::fieldText("wxyz", 1, 7), 2, 4, 0, 0, 0, 0, 0, 0).stringValue() == "xyz");
     assert(runGetChunk(Datum::of(std::string("one  two\tthree")), 0, 0, 2, 3, 0, 0, 0, 0).stringValue() == "two three");
     assert(runGetChunk(Datum::of(std::string("red,green,blue")), 0, 0, 0, 0, 2, 0, 0, 0).stringValue() == "green");
     assert(runGetChunk(Datum::of(std::string("red,green,blue")), 0, 0, 0, 0, 2, 3, 0, 0).stringValue() == "green,blue");

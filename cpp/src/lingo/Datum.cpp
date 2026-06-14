@@ -72,6 +72,9 @@ bool equalsIgnoreCase(const std::string& lhs, const std::string& rhs) {
     if (lhs.size() != rhs.size()) {
         return false;
     }
+    if (lhs == rhs) {
+        return true;
+    }
     for (std::size_t index = 0; index < lhs.size(); ++index) {
         if (std::tolower(static_cast<unsigned char>(lhs[index])) !=
             std::tolower(static_cast<unsigned char>(rhs[index]))) {

@@ -98,6 +98,10 @@ Datum ExecutionContext::peek(int depth) const {
     return scope_->peek(depth);
 }
 
+const Datum& ExecutionContext::peekRef(int depth) const {
+    return scope_->peekRef(depth);
+}
+
 void ExecutionContext::swap() {
     scope_->swap();
 }

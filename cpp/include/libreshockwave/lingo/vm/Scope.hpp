@@ -56,6 +56,7 @@ public:
     [[nodiscard]] Datum pop();
     [[nodiscard]] Datum peek() const;
     [[nodiscard]] Datum peek(int depth) const;
+    [[nodiscard]] const Datum& peekRef(int depth = 0) const;
     [[nodiscard]] int stackSize() const;
     void swap();
     void replaceTop(Datum value);

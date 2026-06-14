@@ -145,6 +145,15 @@ Datum Scope::peek(int depth) const {
     return stack_[static_cast<std::size_t>(index)];
 }
 
+const Datum& Scope::peekRef(int depth) const {
+    static const Datum empty = Datum::voidValue();
+    const int index = static_cast<int>(stack_.size()) - 1 - depth;
+    if (index < 0 || index >= static_cast<int>(stack_.size())) {
+        return empty;
+    }
+    return stack_[static_cast<std::size_t>(index)];
+}
+
 int Scope::stackSize() const {
     return static_cast<int>(stack_.size());
 }

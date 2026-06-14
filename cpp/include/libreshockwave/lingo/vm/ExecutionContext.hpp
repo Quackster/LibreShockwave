@@ -115,6 +115,7 @@ public:
     [[nodiscard]] Datum pop();
     [[nodiscard]] Datum peek() const;
     [[nodiscard]] Datum peek(int depth) const;
+    [[nodiscard]] const Datum& peekRef(int depth = 0) const;
     void swap();
     [[nodiscard]] std::vector<Datum> popArgs(int count);
 

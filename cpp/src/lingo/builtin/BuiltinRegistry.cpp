@@ -396,6 +396,9 @@ bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
     if (lhs.size() != rhs.size()) {
         return false;
     }
+    if (lhs == rhs) {
+        return true;
+    }
     for (std::size_t index = 0; index < lhs.size(); ++index) {
         const auto left = static_cast<unsigned char>(lhs[index]);
         const auto right = static_cast<unsigned char>(rhs[index]);

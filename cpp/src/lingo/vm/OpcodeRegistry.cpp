@@ -79,6 +79,9 @@ bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
     if (lhs.size() != rhs.size()) {
         return false;
     }
+    if (lhs == rhs) {
+        return true;
+    }
     for (std::size_t index = 0; index < lhs.size(); ++index) {
         const auto left = static_cast<unsigned char>(lhs[index]);
         const auto right = static_cast<unsigned char>(rhs[index]);
@@ -132,6 +135,33 @@ std::optional<double> parseDoubleStrict(std::string_view value) {
 }
 
 std::string toStringLikeJava(const Datum& datum);
+
+std::optional<std::string_view> directStringViewLikeJava(const Datum& datum) {
+    if (datum.isVoid() || datum.isNull()) {
+        return std::string_view();
+    }
+    if (const auto* value = datum.asString()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asFieldText()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asSymbol()) {
+        return value->name;
+    }
+    if (const auto* value = datum.asTimeoutRef()) {
+        return value->name;
+    }
+    return std::nullopt;
+}
+
+std::string_view stringViewLikeJava(const Datum& datum, std::string& storage) {
+    if (const auto directValue = directStringViewLikeJava(datum)) {
+        return *directValue;
+    }
+    storage = toStringLikeJava(datum);
+    return storage;
+}
 
 std::string datumReprLikeJava(const Datum& datum) {
     if (datum.isVoid()) {
@@ -1573,8 +1603,9 @@ Datum scriptInstanceCountValue(const Datum& value) {
 Datum scriptInstanceNestedProperty(const Datum& container, const Datum& subKey) {
     if (container.isList()) {
         const int index = toIntLikeJava(subKey);
-        if (index >= 1 && index <= container.listValue().count()) {
-            return container.listValue().getAt(index);
+        const auto& items = container.listValue().items();
+        if (index >= 1 && index <= static_cast<int>(items.size())) {
+            return items[static_cast<std::size_t>(index - 1)];
         }
         return Datum::voidValue();
     }
@@ -4826,14 +4857,16 @@ bool logicalNot(ExecutionContext& context) {
 bool joinStr(ExecutionContext& context) {
     Datum b = context.pop();
     Datum a = context.pop();
-    const std::string aString = toStringLikeJava(a);
-    const std::string bString = toStringLikeJava(b);
+    std::string aStorage;
+    std::string bStorage;
+    const std::string_view aString = stringViewLikeJava(a, aStorage);
+    const std::string_view bString = stringViewLikeJava(b, bStorage);
     if (aString.empty()) {
-        context.push(b.asString() != nullptr ? b : Datum::of(bString));
+        context.push(b.asString() != nullptr ? b : Datum::of(std::string(bString)));
         return true;
     }
     if (bString.empty()) {
-        context.push(a.asString() != nullptr ? a : Datum::of(aString));
+        context.push(a.asString() != nullptr ? a : Datum::of(std::string(aString)));
         return true;
     }
     std::string result;
@@ -4847,14 +4880,16 @@ bool joinStr(ExecutionContext& context) {
 bool joinPadStr(ExecutionContext& context) {
     Datum b = context.pop();
     Datum a = context.pop();
-    const std::string aString = toStringLikeJava(a);
-    const std::string bString = toStringLikeJava(b);
+    std::string aStorage;
+    std::string bStorage;
+    const std::string_view aString = stringViewLikeJava(a, aStorage);
+    const std::string_view bString = stringViewLikeJava(b, bStorage);
     if (aString.empty()) {
-        context.push(b.asString() != nullptr ? b : Datum::of(bString));
+        context.push(b.asString() != nullptr ? b : Datum::of(std::string(bString)));
         return true;
     }
     if (bString.empty()) {
-        context.push(a.asString() != nullptr ? a : Datum::of(aString));
+        context.push(a.asString() != nullptr ? a : Datum::of(std::string(aString)));
         return true;
     }
     std::string result;
@@ -4895,7 +4930,8 @@ bool getChunk(ExecutionContext& context) {
     const int lastChar = toIntLikeJava(context.pop());
     const int firstChar = toIntLikeJava(context.pop());
 
-    const std::string value = toStringLikeJava(stringDatum);
+    std::string valueStorage;
+    const std::string_view value = stringViewLikeJava(stringDatum, valueStorage);
     if (firstChar != 0 && lastChar == 0 &&
         firstWord == 0 && lastWord == 0 &&
         firstItem == 0 && lastItem == 0 &&
@@ -4903,7 +4939,7 @@ bool getChunk(ExecutionContext& context) {
         const int resolvedChar = firstChar < 0 ? static_cast<int>(value.size()) : firstChar;
         const int index = resolvedChar - 1;
         if (index >= 0 && index < static_cast<int>(value.size())) {
-            context.push(Datum::of(value.substr(static_cast<std::size_t>(index), 1)));
+            context.push(Datum::of(std::string(1, value[static_cast<std::size_t>(index)])));
         } else {
             context.push(Datum::of(std::string()));
         }
@@ -4919,8 +4955,8 @@ bool getChunk(ExecutionContext& context) {
         const int start = resolvedFirst - 1;
         const int end = std::min(resolvedLast, static_cast<int>(value.size()));
         if (start >= 0 && start < static_cast<int>(value.size()) && end > start) {
-            context.push(Datum::of(value.substr(static_cast<std::size_t>(start),
-                                                static_cast<std::size_t>(end - start))));
+            context.push(Datum::of(std::string(value.substr(static_cast<std::size_t>(start),
+                                                           static_cast<std::size_t>(end - start)))));
         } else {
             context.push(Datum::of(std::string()));
         }
@@ -4928,20 +4964,25 @@ bool getChunk(ExecutionContext& context) {
     }
 
     const char itemDelimiter = currentItemDelimiter(context);
-    std::string result = value;
+    std::string resultStorage;
+    std::string_view result = value;
     if (firstLine != 0 || lastLine != 0) {
-        result = resolveChunkRange(result, StringChunkType::Line, firstLine, lastLine, itemDelimiter);
+        resultStorage = resolveChunkRange(result, StringChunkType::Line, firstLine, lastLine, itemDelimiter);
+        result = resultStorage;
     }
     if (firstItem != 0 || lastItem != 0) {
-        result = resolveChunkRange(result, StringChunkType::Item, firstItem, lastItem, itemDelimiter);
+        resultStorage = resolveChunkRange(result, StringChunkType::Item, firstItem, lastItem, itemDelimiter);
+        result = resultStorage;
     }
     if (firstWord != 0 || lastWord != 0) {
-        result = resolveChunkRange(result, StringChunkType::Word, firstWord, lastWord, itemDelimiter);
+        resultStorage = resolveChunkRange(result, StringChunkType::Word, firstWord, lastWord, itemDelimiter);
+        result = resultStorage;
     }
     if (firstChar != 0 || lastChar != 0) {
-        result = resolveChunkRange(result, StringChunkType::Char, firstChar, lastChar, itemDelimiter);
+        resultStorage = resolveChunkRange(result, StringChunkType::Char, firstChar, lastChar, itemDelimiter);
+        result = resultStorage;
     }
-    context.push(Datum::of(std::move(result)));
+    context.push(Datum::of(std::string(result)));
     return true;
 }
 
@@ -5650,6 +5691,41 @@ std::optional<Datum> fastPrimitiveBuiltinCall(ExecutionContext& context,
         return std::nullopt;
     }
 
+    if (equalsIgnoreCase(handlerName, "length")) {
+        if (args.empty()) {
+            return Datum::of(0);
+        }
+        if (args[0].isList()) {
+            return Datum::of(args[0].listValue().count());
+        }
+        if (args[0].isPropList()) {
+            return Datum::of(args[0].propListValue().count());
+        }
+        if (const auto directValue = directStringViewLikeJava(args[0])) {
+            return Datum::of(static_cast<int>(directValue->size()));
+        }
+        return Datum::of(static_cast<int>(toStringLikeJava(args[0]).size()));
+    }
+    if (equalsIgnoreCase(handlerName, "chars")) {
+        if (args.size() < 3) {
+            return Datum::of(std::string());
+        }
+        std::string valueStorage;
+        const std::string_view value = stringViewLikeJava(args[0], valueStorage);
+        int start = toIntLikeJava(args[1]) - 1;
+        int end = toIntLikeJava(args[2]);
+        if (start < 0) {
+            start = 0;
+        }
+        if (end > static_cast<int>(value.size())) {
+            end = static_cast<int>(value.size());
+        }
+        if (start >= end) {
+            return Datum::of(std::string());
+        }
+        return Datum::of(std::string(value.substr(static_cast<std::size_t>(start),
+                                                  static_cast<std::size_t>(end - start))));
+    }
     if (equalsIgnoreCase(handlerName, "bitAnd")) {
         return args.size() < 2 ? Datum::of(0) : Datum::of(toIntLikeJava(args[0]) & toIntLikeJava(args[1]));
     }
@@ -5918,6 +5994,25 @@ std::optional<Datum> indexedCollectionSnapshotGetAt(ExecutionContext& context,
                                                           toIntLikeJava(args[1]));
 }
 
+std::optional<Datum> indexedCollectionSnapshotGetAtDirect(ExecutionContext& context,
+                                                          std::string_view methodName,
+                                                          const Datum& collection,
+                                                          const Datum& index) {
+    if (!equalsIgnoreCase(methodName, "getAt") ||
+        (!collection.isList() && !collection.isPropList()) ||
+        index.isString() || index.isSymbol()) {
+        return std::nullopt;
+    }
+    const auto loopHeader = indexedCollectionLoopHeader(context);
+    if (!loopHeader.has_value()) {
+        return std::nullopt;
+    }
+    return context.scope().indexedCollectionSnapshotValue(*loopHeader,
+                                                          collectionIdentity(collection),
+                                                          collection,
+                                                          toIntLikeJava(index));
+}
+
 std::optional<Datum> indexedCollectionSnapshotCount(ExecutionContext& context,
                                                     std::string_view propName,
                                                     const Datum& collection) {
@@ -5939,23 +6034,25 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
     }
     const Datum& target = args[0];
     if (target.isList()) {
-        Datum mutableTarget = target;
-        auto& list = mutableTarget.listValue();
-        auto& items = list.items();
+        const auto& readList = target.listValue();
+        const auto& readItems = readList.items();
         if (equalsIgnoreCase(methodName, "count")) {
-            return Datum::of(static_cast<int>(items.size()));
+            return Datum::of(static_cast<int>(readItems.size()));
         }
         if (equalsIgnoreCase(methodName, "getAt")) {
             if (args.size() < 2) {
                 return Datum::voidValue();
             }
             const int index = toIntLikeJava(args[1]);
-            if (index < 1 || index > static_cast<int>(items.size())) {
+            if (index < 1 || index > static_cast<int>(readItems.size())) {
                 throw LingoException("getAt: index " + std::to_string(index) +
-                                     " out of range (list size: " + std::to_string(items.size()) + ")");
+                                     " out of range (list size: " + std::to_string(readItems.size()) + ")");
             }
-            return items[static_cast<std::size_t>(index - 1)];
+            return readItems[static_cast<std::size_t>(index - 1)];
         }
+        Datum mutableTarget = target;
+        auto& list = mutableTarget.listValue();
+        auto& items = list.items();
         if (equalsIgnoreCase(methodName, "setAt")) {
             if (args.size() >= 3) {
                 const int index = toIntLikeJava(args[1]);
@@ -6172,6 +6269,102 @@ bool executeObjCallWithArgs(ExecutionContext& context,
     return true;
 }
 
+bool tryImmediateFastObjCall(ExecutionContext& context,
+                             std::string_view methodName,
+                             int argCount,
+                             bool noReturn) {
+    if (argCount <= 0 || context.scope().stackSize() < argCount) {
+        return false;
+    }
+
+    const Datum& target = context.peekRef(argCount - 1);
+    if (target.isList()) {
+        if (argCount == 2 && equalsIgnoreCase(methodName, "getAt")) {
+            const Datum& indexDatum = context.peekRef(0);
+            if (const auto snapshotResult =
+                    indexedCollectionSnapshotGetAtDirect(context, methodName, target, indexDatum)) {
+                context.scope().drop(argCount);
+                if (!noReturn) {
+                    context.push(*snapshotResult);
+                }
+                return true;
+            }
+
+            const int index = toIntLikeJava(indexDatum);
+            const auto& items = target.listValue().items();
+            if (index < 1 || index > static_cast<int>(items.size())) {
+                throw LingoException("getAt: index " + std::to_string(index) +
+                                     " out of range (list size: " + std::to_string(items.size()) + ")");
+            }
+            const Datum result = items[static_cast<std::size_t>(index - 1)];
+            context.scope().drop(argCount);
+            if (!noReturn) {
+                context.push(result);
+            }
+            return true;
+        }
+
+        if (argCount == 3 && equalsIgnoreCase(methodName, "setAt")) {
+            Datum value = context.pop();
+            const int index = toIntLikeJava(context.pop());
+            Datum mutableTarget = context.pop();
+            if (index >= 1) {
+                auto& items = mutableTarget.listValue().items();
+                const auto zeroIndex = static_cast<std::size_t>(index - 1);
+                if (zeroIndex < items.size()) {
+                    items[zeroIndex] = std::move(value);
+                } else {
+                    while (items.size() < zeroIndex) {
+                        items.push_back(Datum::voidValue());
+                    }
+                    items.push_back(std::move(value));
+                }
+            }
+            if (!noReturn) {
+                context.push(Datum::voidValue());
+            }
+            return true;
+        }
+
+        if (argCount == 2 && (equalsIgnoreCase(methodName, "append") || equalsIgnoreCase(methodName, "add"))) {
+            Datum value = context.pop();
+            Datum mutableTarget = context.pop();
+            mutableTarget.listValue().items().push_back(std::move(value));
+            if (!noReturn) {
+                context.push(Datum::voidValue());
+            }
+            return true;
+        }
+    }
+
+    if (target.isString() &&
+        (argCount == 3 || argCount == 4) &&
+        (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef"))) {
+        const bool getPropRef = equalsIgnoreCase(methodName, "getPropRef");
+        std::string chunkNameStorage;
+        const std::string_view chunkName = keyNameLikeJavaView(context.peekRef(argCount - 2), chunkNameStorage);
+        StringChunkType chunkType = StringChunkType::Char;
+        try {
+            chunkType = stringChunkTypeFromName(chunkName);
+        } catch (const std::invalid_argument&) {
+            return false;
+        }
+
+        std::string valueStorage;
+        const std::string_view value = stringViewLikeJava(target, valueStorage);
+        const int start = toIntLikeJava(context.peekRef(argCount - 3));
+        const int end = !getPropRef && argCount >= 4 ? toIntLikeJava(context.peekRef(argCount - 4)) : start;
+        Datum result = Datum::of(util::getChunkRange(value, chunkType, start, end, currentItemDelimiter(context)));
+        context.scope().drop(argCount);
+        if (!noReturn) {
+            context.push(std::move(result));
+        }
+        return true;
+    }
+
+    return false;
+}
+
 bool tryImmediateObjCall(ExecutionContext& context, bool noReturn) {
     if (context.instructionTraceEnabled()) {
         return false;
@@ -6190,10 +6383,15 @@ bool tryImmediateObjCall(ExecutionContext& context, bool noReturn) {
         return false;
     }
 
-    std::vector<Datum> args = context.popArgs(context.argument());
+    const int argCount = context.argument();
     scope.setBytecodeIndex(nextIndex);
     context.setInstruction(next);
-    return executeObjCallWithArgs(context, context.resolveNameRef(next.argument), args, noReturn);
+    const std::string& methodName = context.resolveNameRef(next.argument);
+    if (tryImmediateFastObjCall(context, methodName, argCount, noReturn)) {
+        return true;
+    }
+    std::vector<Datum> args = context.popArgs(argCount);
+    return executeObjCallWithArgs(context, methodName, args, noReturn);
 }
 
 bool executeExtCallWithArgs(ExecutionContext& context,
