@@ -604,13 +604,12 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
 
     if (globalHandlerFinder_) {
         if (auto handler = globalHandlerFinder_(handlerNameValue); handler && handler->script != nullptr) {
+            handlerCache_[cacheKey] = *handler;
             return handler;
         }
     }
 
-    if (!globalHandlerFinder_) {
-        missingHandlerCache_.insert(cacheKey);
-    }
+    missingHandlerCache_.insert(cacheKey);
     return std::nullopt;
 }
 

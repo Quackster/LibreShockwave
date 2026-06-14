@@ -12056,8 +12056,18 @@ void testLingoVmRuntimeFoundation() {
     });
     assert(vm.callHandler("externalStart").intValue() == 42);
     assert(externalGlobalLookups == 1);
+    assert(vm.callHandler("externalStart").intValue() == 42);
+    assert(externalGlobalLookups == 1);
+    vm.invalidateHandlerCache();
     assert(vm.callHandler("externalStart").intValue() == 77);
     assert(externalGlobalLookups == 2);
+    assert(vm.callHandler("missingExternal").isVoid());
+    assert(externalGlobalLookups == 3);
+    assert(vm.callHandler("missingExternal").isVoid());
+    assert(externalGlobalLookups == 3);
+    vm.invalidateHandlerCache();
+    assert(vm.callHandler("missingExternal").isVoid());
+    assert(externalGlobalLookups == 4);
     vm.setGlobalHandlerFinder(nullptr);
     assert(vm.callHandler("externalStart").isVoid());
 
