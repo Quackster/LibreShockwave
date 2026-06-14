@@ -385,37 +385,24 @@ The generated browser player is assembled under:
 cmake-build-wasm/cpp/wasm-dist/
 ```
 
-Serve that directory with cross-origin isolation headers when loading it manually:
+When testing in a browser, serve that output directory over HTTP instead of opening files directly from disk:
+
+```bash
+cd cmake-build-wasm/cpp/wasm-dist
+python3 -m http.server 8098 --bind 127.0.0.1
+```
+
+```text
+http://127.0.0.1:8098/
+```
+
+If you use another web server, serve the files from the same directory. Use these headers when your browser requires cross-origin isolation:
 
 ```http
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 Cross-Origin-Resource-Policy: same-origin
 ```
-
-The included browser fixture checker starts an isolated local server, serves the WASM player plus the fixture root, loads a requested movie, waits for nonblank rendering, and runs generic WebSocket and SMUS bridge self-tests:
-
-```bash
-npm --prefix cpp/tools install
-node cpp/tools/browser_fixture_check.js --movie /dcr0910/loader.dcr --screenshot cmake-build-wasm/browser-smoke.png
-```
-
-The same checker can batch movies while reusing one browser/server setup:
-
-```bash
-node cpp/tools/browser_fixture_check.js --discover-root dcr0910
-node cpp/tools/browser_fixture_check.js --fixtures /opt/git/v1_assets/projectorrays_lingo --discover-root .
-```
-
-Use `--movies /a.dcr,/b.dcr`, `--movie-list movies.txt`, `--limit N`, `--summary-only`, and `--screenshot-dir path` for smaller targeted runs.
-
-The browser index checker tests the generated `index.html` page itself. It serves `cmake-build-wasm/cpp/wasm-dist/` on an isolated local port, loads the default movie with `?autoload=1`, waits for the Habbo login screen, verifies frame/sprite and pixel-color thresholds, and checks that the stage display size was resized from the loaded movie dimensions. It stops at the login screen and does not click Login or Register:
-
-```bash
-npm --prefix cpp/tools run browser-index-check -- --timeoutMs 300000 --screenshot cmake-build-wasm/habbo-index-login-check.png
-```
-
-Pass `--dist path/to/wasm-dist` to test a non-default build output directory.
 
 ### Embedding
 

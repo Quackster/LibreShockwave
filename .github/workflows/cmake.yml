@@ -1,9 +1,10 @@
 name: CMake
 
 on:
-  push:
-    branches: [ main, cplusplus/port ]
-  pull_request:
+  schedule:
+    # Run every day at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 jobs:
   build-test:
