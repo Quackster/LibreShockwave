@@ -9568,6 +9568,125 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!builtinContext.aborted);
     assert(builtinContext.returnValue.isVoid());
 
+    auto makeImmediateExtHandler = [](Opcode pushOpcode, int argCount, int handlerNameId) {
+        std::vector<ScriptChunk::Instruction> instructions{
+            ScriptChunk::Instruction{0, pushOpcode, libreshockwave::lingo::code(pushOpcode), argCount},
+            ScriptChunk::Instruction{1, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), handlerNameId}
+        };
+        std::unordered_map<int, int> indexMap{{0, 0}, {1, 1}};
+        return ScriptChunk::Handler{200,
+                                    0,
+                                    static_cast<int>(instructions.size()),
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    {},
+                                    {},
+                                    std::move(instructions),
+                                    std::move(indexMap)};
+    };
+
+    auto immediateBuiltinHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 62);
+    ScriptChunk immediateBuiltinScript(nullptr,
+                                       ChunkId(704),
+                                       ScriptChunkType::MovieScript,
+                                       0,
+                                       {immediateBuiltinHandler},
+                                       {},
+                                       {},
+                                       {},
+                                       {});
+    Scope immediateBuiltinScope(&immediateBuiltinScript, immediateBuiltinHandler, {});
+    ExecutionContext immediateBuiltinContext(immediateBuiltinScope,
+                                             immediateBuiltinHandler.instructions[0],
+                                             &registry,
+                                             &builtinContext,
+                                             callbacks);
+    immediateBuiltinContext.push(Datum::of(-9));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateBuiltinContext));
+    assert(immediateBuiltinScope.bytecodeIndex() == 1);
+    assert(immediateBuiltinContext.pop().intValue() == 9);
+
+    auto immediateCountHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 70);
+    ScriptChunk immediateCountScript(nullptr,
+                                     ChunkId(705),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {immediateCountHandler},
+                                     {},
+                                     {},
+                                     {},
+                                     {});
+    Scope immediateCountScope(&immediateCountScript, immediateCountHandler, {});
+    ExecutionContext immediateCountContext(immediateCountScope,
+                                           immediateCountHandler.instructions[0],
+                                           &registry,
+                                           &builtinContext,
+                                           callbacks);
+    immediateCountContext.push(Datum::list({Datum::of(1), Datum::of(2), Datum::of(3)}));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCountContext));
+    assert(immediateCountContext.pop().intValue() == 3);
+
+    auto immediateHandlerNoRetHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST_NO_RET, 1, 61);
+    ScriptChunk immediateHandlerNoRetScript(nullptr,
+                                            ChunkId(706),
+                                            ScriptChunkType::MovieScript,
+                                            0,
+                                            {immediateHandlerNoRetHandler},
+                                            {},
+                                            {},
+                                            {},
+                                            {});
+    Scope immediateHandlerNoRetScope(&immediateHandlerNoRetScript, immediateHandlerNoRetHandler, {});
+    ExecutionContext immediateHandlerNoRetContext(immediateHandlerNoRetScope,
+                                                  immediateHandlerNoRetHandler.instructions[0],
+                                                  &registry,
+                                                  &builtinContext,
+                                                  callbacks);
+    immediateHandlerNoRetContext.push(Datum::of(5));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST_NO_RET, immediateHandlerNoRetContext));
+    assert(immediateHandlerNoRetScope.stackSize() == 0);
+
+    auto immediateReturnHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST_NO_RET, 1, 155);
+    ScriptChunk immediateReturnScript(nullptr,
+                                      ChunkId(707),
+                                      ScriptChunkType::MovieScript,
+                                      0,
+                                      {immediateReturnHandler},
+                                      {},
+                                      {},
+                                      {},
+                                      {});
+    Scope immediateReturnScope(&immediateReturnScript, immediateReturnHandler, {});
+    ExecutionContext immediateReturnContext(immediateReturnScope,
+                                            immediateReturnHandler.instructions[0],
+                                            &registry,
+                                            &builtinContext,
+                                            callbacks);
+    immediateReturnContext.push(Datum::of(std::string("immediate returned")));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST_NO_RET, immediateReturnContext));
+    assert(immediateReturnScope.stackSize() == 0);
+    assert(immediateReturnScope.returned());
+    assert(immediateReturnScope.returnValue().stringValue() == "immediate returned");
+
+    Scope tracedImmediateScope(&immediateBuiltinScript, immediateBuiltinHandler, {});
+    ExecutionContext tracedImmediateContext(tracedImmediateScope,
+                                            immediateBuiltinHandler.instructions[0],
+                                            &registry,
+                                            &builtinContext,
+                                            callbacks,
+                                            1,
+                                            true);
+    tracedImmediateContext.push(Datum::of(-4));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, tracedImmediateContext));
+    assert(tracedImmediateScope.bytecodeIndex() == 0);
+    assert(tracedImmediateContext.peek().type() == DatumType::ArgList);
+    tracedImmediateContext.setInstruction(immediateBuiltinHandler.instructions[1]);
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, tracedImmediateContext));
+    assert(tracedImmediateContext.pop().intValue() == 4);
+
     errorState = false;
     extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 61});
     extCallContext.push(Datum::argList({Datum::of(std::string("throw"))}));

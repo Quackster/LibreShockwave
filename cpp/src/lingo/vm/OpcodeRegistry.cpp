@@ -5270,9 +5270,13 @@ bool pushPropList(ExecutionContext& context) {
 }
 
 bool tryImmediateObjCall(ExecutionContext& context, bool noReturn);
+bool tryImmediateExtCall(ExecutionContext& context, bool noReturn);
 
 bool pushArgList(ExecutionContext& context) {
     if (tryImmediateObjCall(context, false)) {
+        return true;
+    }
+    if (tryImmediateExtCall(context, false)) {
         return true;
     }
     context.push(Datum::argList(context.popArgs(context.argument())));
@@ -5281,6 +5285,9 @@ bool pushArgList(ExecutionContext& context) {
 
 bool pushArgListNoRet(ExecutionContext& context) {
     if (tryImmediateObjCall(context, true)) {
+        return true;
+    }
+    if (tryImmediateExtCall(context, true)) {
         return true;
     }
     context.push(Datum::argListNoRet(context.popArgs(context.argument())));
@@ -6111,13 +6118,10 @@ bool tryImmediateObjCall(ExecutionContext& context, bool noReturn) {
     return executeObjCallWithArgs(context, context.resolveNameRef(next.argument), args, noReturn);
 }
 
-bool extCall(ExecutionContext& context) {
-    const std::string& handlerName = context.resolveNameRef(context.argument());
-    const Datum argListDatum = context.pop();
-    const bool noReturn = isNoReturnArgList(argListDatum);
-    std::vector<Datum> argStorage;
-    const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
-
+bool executeExtCallWithArgs(ExecutionContext& context,
+                            std::string_view handlerName,
+                            const std::vector<Datum>& args,
+                            bool noReturn) {
     Datum result = Datum::voidValue();
     if (equalsIgnoreCase(handlerName, "return")) {
         context.setReturnValue(args.empty() ? Datum::voidValue() : args[0]);
@@ -6155,6 +6159,39 @@ bool extCall(ExecutionContext& context) {
         context.push(result);
     }
     return true;
+}
+
+bool tryImmediateExtCall(ExecutionContext& context, bool noReturn) {
+    if (context.instructionTraceEnabled()) {
+        return false;
+    }
+
+    auto& scope = context.scope();
+    const int currentIndex = scope.bytecodeIndex();
+    const int nextIndex = currentIndex + 1;
+    const auto& instructions = scope.handler().instructions;
+    if (nextIndex < 0 || nextIndex >= static_cast<int>(instructions.size())) {
+        return false;
+    }
+
+    const auto& next = instructions[static_cast<std::size_t>(nextIndex)];
+    if (next.opcode != Opcode::EXT_CALL) {
+        return false;
+    }
+
+    std::vector<Datum> args = context.popArgs(context.argument());
+    scope.setBytecodeIndex(nextIndex);
+    context.setInstruction(next);
+    return executeExtCallWithArgs(context, context.resolveNameRef(next.argument), args, noReturn);
+}
+
+bool extCall(ExecutionContext& context) {
+    const std::string& handlerName = context.resolveNameRef(context.argument());
+    const Datum argListDatum = context.pop();
+    const bool noReturn = isNoReturnArgList(argListDatum);
+    std::vector<Datum> argStorage;
+    const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
+    return executeExtCallWithArgs(context, handlerName, args, noReturn);
 }
 
 bool objCall(ExecutionContext& context) {
