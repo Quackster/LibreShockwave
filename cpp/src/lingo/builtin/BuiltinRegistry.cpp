@@ -464,7 +464,7 @@ int findPropIndexUntyped(const Datum::PropList& propList, const Datum& key) {
     return propList.findUntypedKey(key);
 }
 
-Datum propListGetAtValue(const Datum::PropList& propList, const Datum& keyOrIndex) {
+Datum propListBuiltinGetAtValue(const Datum::PropList& propList, const Datum& keyOrIndex) {
     int index = -1;
     if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
         index = findPropIndexTyped(propList, keyOrIndex);
@@ -476,27 +476,6 @@ Datum propListGetAtValue(const Datum::PropList& propList, const Datum& keyOrInde
     }
     if (index >= 0) {
         return propList.properties()[static_cast<std::size_t>(index)].second;
-    }
-    if (keyOrIndex.isInt()) {
-        index = findPropIndexTyped(propList, Datum::of(std::to_string(toIntLikeJava(keyOrIndex))));
-        if (index >= 0) {
-            return propList.properties()[static_cast<std::size_t>(index)].second;
-        }
-    }
-    return Datum::voidValue();
-}
-
-Datum nestedGetAtValue(const Datum& value, const Datum& keyOrIndex) {
-    if (value.isList()) {
-        const int index = toIntLikeJava(keyOrIndex);
-        const auto& items = value.listValue().items();
-        if (index >= 1 && index <= static_cast<int>(items.size())) {
-            return items[static_cast<std::size_t>(index - 1)];
-        }
-        return Datum::voidValue();
-    }
-    if (value.isPropList()) {
-        return propListGetAtValue(value.propListValue(), keyOrIndex);
     }
     return Datum::voidValue();
 }
@@ -1206,11 +1185,7 @@ Datum ListBuiltins::getAt(BuiltinContext& context, const std::vector<Datum>& arg
         return Datum::voidValue();
     }
     if (container.isPropList()) {
-        Datum value = propListGetAtValue(container.propListValue(), keyOrIndex);
-        if (args.size() >= 3) {
-            return nestedGetAtValue(value, args[2]);
-        }
-        return value;
+        return propListBuiltinGetAtValue(container.propListValue(), keyOrIndex);
     }
     if (const auto* point = container.asIntPoint()) {
         switch (toIntLikeJava(keyOrIndex)) {

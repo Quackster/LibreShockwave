@@ -266,37 +266,6 @@ Datum stringKeyFromInt(const Datum& key) {
     return Datum::of(std::to_string(toIntLikeJava(key)));
 }
 
-Datum nestedGetAtValue(const Datum& value, const Datum& keyOrIndex) {
-    if (value.isList()) {
-        const int index = toIntLikeJava(keyOrIndex);
-        if (index >= 1 && index <= value.listValue().count()) {
-            return value.listValue().getAt(index);
-        }
-        return Datum::voidValue();
-    }
-
-    if (value.isPropList()) {
-        const auto& propList = value.propListValue();
-        int index = -1;
-        if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
-            index = propList.findTypedKey(keyOrIndex);
-        } else {
-            const int position = toIntLikeJava(keyOrIndex);
-            if (position >= 1 && position <= propList.count()) {
-                index = position - 1;
-            }
-        }
-        if (index >= 0) {
-            return propList.properties()[static_cast<std::size_t>(index)].second;
-        }
-        if (keyOrIndex.isInt()) {
-            return getPropListTypedKey(propList, stringKeyFromInt(keyOrIndex));
-        }
-    }
-
-    return Datum::voidValue();
-}
-
 void putPropListTypedKey(Datum::PropList& propList, const Datum& key, Datum value) {
     propList.putTyped(key, std::move(value));
 }
@@ -348,27 +317,15 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
             return Datum::voidValue();
         }
         if (args[0].isString() || args[0].isSymbol()) {
-            Datum value = getPropListTypedKey(propList, args[0]);
-            if (args.size() >= 2) {
-                return nestedGetAtValue(value, args[1]);
-            }
-            return value;
+            return getPropListTypedKey(propList, args[0]);
         }
         const int index = toIntLikeJava(args[0]) - 1;
         const auto& properties = std::as_const(propList).properties();
         if (index >= 0 && index < static_cast<int>(properties.size())) {
-            Datum value = properties[static_cast<std::size_t>(index)].second;
-            if (args.size() >= 2) {
-                return nestedGetAtValue(value, args[1]);
-            }
-            return value;
+            return properties[static_cast<std::size_t>(index)].second;
         }
         if (args[0].isInt()) {
-            Datum value = getPropListTypedKey(propList, stringKeyFromInt(args[0]));
-            if (args.size() >= 2) {
-                return nestedGetAtValue(value, args[1]);
-            }
-            return value;
+            return getPropListTypedKey(propList, stringKeyFromInt(args[0]));
         }
         return Datum::voidValue();
     }

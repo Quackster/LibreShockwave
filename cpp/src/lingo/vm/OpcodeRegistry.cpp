@@ -5641,7 +5641,7 @@ bool localCall(ExecutionContext& context) {
     return true;
 }
 
-Datum propListGetAtValue(const Datum::PropList& propList, const Datum& keyOrIndex) {
+Datum propListBuiltinGetAtValue(const Datum::PropList& propList, const Datum& keyOrIndex) {
     int index = -1;
     if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
         index = propList.findTypedKey(keyOrIndex);
@@ -5654,40 +5654,17 @@ Datum propListGetAtValue(const Datum::PropList& propList, const Datum& keyOrInde
     if (index >= 0) {
         return propList.properties()[static_cast<std::size_t>(index)].second;
     }
-    if (keyOrIndex.isInt()) {
-        const Datum stringKey = Datum::of(std::to_string(toIntLikeJava(keyOrIndex)));
-        index = propList.findTypedKey(stringKey);
-        if (index >= 0) {
-            return propList.properties()[static_cast<std::size_t>(index)].second;
-        }
-    }
     return Datum::voidValue();
 }
 
-Datum nestedCollectionGetAtValue(const Datum& value, const Datum& keyOrIndex) {
-    if (value.isList()) {
-        const int index = toIntLikeJava(keyOrIndex);
-        const auto& items = value.listValue().items();
-        if (index >= 1 && index <= static_cast<int>(items.size())) {
-            return items[static_cast<std::size_t>(index - 1)];
-        }
-        return Datum::voidValue();
+Datum propListObjectGetAtValue(const Datum::PropList& propList, const Datum& keyOrIndex) {
+    Datum value = propListBuiltinGetAtValue(propList, keyOrIndex);
+    if (!value.isVoid() || !keyOrIndex.isInt()) {
+        return value;
     }
-    if (value.isPropList()) {
-        return propListGetAtValue(value.propListValue(), keyOrIndex);
-    }
-    return Datum::voidValue();
-}
-
-Datum propListGetAtValue(const Datum::PropList& propList, const std::vector<Datum>& args, std::size_t keyIndex) {
-    if (keyIndex >= args.size()) {
-        return Datum::voidValue();
-    }
-    Datum value = propListGetAtValue(propList, args[keyIndex]);
-    if (keyIndex + 1 < args.size()) {
-        return nestedCollectionGetAtValue(value, args[keyIndex + 1]);
-    }
-    return value;
+    const Datum stringKey = Datum::of(std::to_string(toIntLikeJava(keyOrIndex)));
+    const int index = propList.findTypedKey(stringKey);
+    return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second : Datum::voidValue();
 }
 
 std::optional<Datum> fastListBuiltinCall(std::string_view handlerName, const std::vector<Datum>& args) {
@@ -5715,7 +5692,7 @@ std::optional<Datum> fastListBuiltinCall(std::string_view handlerName, const std
         return Datum::voidValue();
     }
     if (args[0].isPropList()) {
-        return propListGetAtValue(args[0].propListValue(), args, 1);
+        return propListBuiltinGetAtValue(args[0].propListValue(), args[1]);
     }
     return std::nullopt;
 }
@@ -6159,7 +6136,7 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName, const std::
         if (args.size() < 2) {
             return Datum::voidValue();
         }
-        return propListGetAtValue(propList, args, 1);
+        return propListObjectGetAtValue(propList, args[1]);
     }
     if (equalsIgnoreCase(methodName, "getAProp") || equalsIgnoreCase(methodName, "getProp") ||
         equalsIgnoreCase(methodName, "getProperty") || equalsIgnoreCase(methodName, "getPropRef")) {
