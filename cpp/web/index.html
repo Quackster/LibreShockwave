@@ -262,6 +262,7 @@
     const habboUrl = "http://127.0.0.1/dcr/14.1_b8/habbo.dcr";
     const loaderUrl = "http://127.0.0.1/dcr0910/loader.dcr";
     const betaClientMovieUrl = "http://127.0.0.1/dcr/r31_20090312_0433_13751_b40895fb6101dbe96dc7b9d6477eeeb4/habbo.dcr?";
+    const betaClientSsoPlaceholder = "SSO_TICKET";
     const betaClientParams = {
       "venus.websocket.mode": "ws",
       "sw1": "client.allow.cross.domain=1;client.notify.cross.domain=0",
@@ -271,7 +272,7 @@
       "sw5": "client.reload.url=http://127.0.0.1/client/beta?x=reauthenticate;client.fatal.error.url=http://127.0.0.1/clientutils?key=error",
       "sw6": "client.connection.failed.url=http://127.0.0.1/clientutils?key=connection_failed;external.variables.txt=http://127.0.0.1/gamedata/external_variables.txt?",
       "sw7": "external.texts.txt=http://127.0.0.1/gamedata/external_texts.txt?",
-      "sw8": "use.sso.ticket=1;sso.ticket=SSO_TICKET"
+      "sw8": `use.sso.ticket=1;sso.ticket=${betaClientSsoPlaceholder}`
     };
     const paramsBox = document.getElementById("params");
     const socketProxyBox = document.getElementById("socket-proxy");
@@ -321,6 +322,41 @@
 
     function paramsToText(params) {
       return Object.entries(params).map(([key, value]) => `${key}=${value}`).join("\n");
+    }
+
+    function promptForSsoTicket() {
+      const ticket = window.prompt("Enter SSO ticket");
+      if (ticket === null) return null;
+      const trimmed = ticket.trim();
+      return trimmed ? trimmed : null;
+    }
+
+    function replaceBetaClientSsoPlaceholder(paramsText, ticket) {
+      return paramsText.replaceAll(betaClientSsoPlaceholder, ticket);
+    }
+
+    function setBetaClientPreset() {
+      movieUrl.value = betaClientMovieUrl;
+      const paramsText = paramsToText(betaClientParams);
+      const ticket = promptForSsoTicket();
+      paramsBox.value = ticket
+        ? replaceBetaClientSsoPlaceholder(paramsText, ticket)
+        : paramsText;
+    }
+
+    function ensureBetaClientSsoTicket() {
+      if (!paramsBox.value.includes(betaClientSsoPlaceholder)) {
+        return true;
+      }
+      const ticket = promptForSsoTicket();
+      if (!ticket) {
+        status.textContent = "SSO ticket required";
+        loadButton.disabled = false;
+        setPlaybackButtonsEnabled(false);
+        return false;
+      }
+      paramsBox.value = replaceBetaClientSsoPlaceholder(paramsBox.value, ticket);
+      return true;
     }
 
     function textToParams(text) {
@@ -446,6 +482,9 @@
       status.textContent = "Loading";
       loadButton.disabled = true;
       setPlaybackButtonsEnabled(false);
+      if (!ensureBetaClientSsoTicket()) {
+        return;
+      }
       const socketProxy = textToSocketProxy(socketProxyBox.value);
       player.setSocketProxy(socketProxy);
       player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: false, debugPlaybackEnabled })
@@ -479,8 +518,7 @@
       paramsBox.value = "";
     });
     document.getElementById("preset-beta-client").addEventListener("click", () => {
-      movieUrl.value = betaClientMovieUrl;
-      paramsBox.value = paramsToText(betaClientParams);
+      setBetaClientPreset();
     });
     document.getElementById("preset-proxy").addEventListener("click", () => {
       socketProxyBox.value = socketProxyToText(LibreShockwaveCppPlayer.defaultHabboSocketProxy);
