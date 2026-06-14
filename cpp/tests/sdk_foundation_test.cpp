@@ -1357,6 +1357,8 @@ void testLingoDatumTypes() {
                .intValue() == 8);
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("name")}).stringValue() ==
            "first");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("items"), Datum::of(2)})
+               .intValue() == 8);
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::of(std::string("name"))})
                .stringValue() == "string-first");
     assert(PropListMethodDispatcher::dispatch(dispatcherProps, "setAt", {Datum::of(9), Datum::of(90)}).isVoid());
@@ -5718,6 +5720,16 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("getaProp", context, {builtinProps, Datum::symbol("NAME")}).stringValue() == "Ada");
     assert(registry.invoke("getAt", context, {builtinProps, Datum::of(1)}).stringValue() == "Ada");
     assert(registry.invoke("getAt", context, {builtinProps, Datum::of(std::string("name"))}).stringValue() == "Ada");
+    auto builtinNestedAccessProps = Datum::propList();
+    auto builtinNestedRoomData = Datum::propList();
+    builtinNestedRoomData.propListValue().putTyped(Datum::symbol("offsetx"), Datum::of(14));
+    builtinNestedAccessProps.propListValue().putTyped(
+        Datum::symbol("roomdata"),
+        Datum::list({builtinNestedRoomData}));
+    assert(registry.invoke("getAt", context, {builtinNestedAccessProps, Datum::symbol("roomdata"), Datum::of(1)})
+               .propListValue()
+               .get(Datum::symbol("offsetx"))
+               .intValue() == 14);
     assert(registry.invoke("getPropAt", context, {builtinProps, Datum::of(1)}).asSymbol()->name == "name");
     assert(registry.invoke("findPos", context, {builtinProps, Datum::of(std::string("NAME"))}).intValue() == 1);
     assert(registry.invoke("findPos", context, {builtinProps, Datum::of(std::string("missing"))}).isVoid());
@@ -9825,6 +9837,37 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     immediateStringGetPropContext.push(Datum::of(3));
     assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateStringGetPropContext));
     assert(immediateStringGetPropContext.pop().stringValue() == "c");
+
+    auto immediatePropListNestedGetAtHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 3, 64);
+    ScriptChunk immediatePropListNestedGetAtScript(nullptr,
+                                                   ChunkId(713),
+                                                   ScriptChunkType::MovieScript,
+                                                   0,
+                                                   {immediatePropListNestedGetAtHandler},
+                                                   {},
+                                                   {},
+                                                   {},
+                                                   {});
+    Scope immediatePropListNestedGetAtScope(&immediatePropListNestedGetAtScript,
+                                            immediatePropListNestedGetAtHandler,
+                                            {});
+    ExecutionContext immediatePropListNestedGetAtContext(immediatePropListNestedGetAtScope,
+                                                         immediatePropListNestedGetAtHandler.instructions[0],
+                                                         &registry,
+                                                         &builtinContext,
+                                                         callbacks);
+    auto nestedRoomData = Datum::propList();
+    nestedRoomData.propListValue().putTyped(Datum::symbol("offsetx"), Datum::of(37));
+    auto roomLayout = Datum::propList();
+    roomLayout.propListValue().putTyped(Datum::symbol("roomdata"), Datum::list({nestedRoomData}));
+    immediatePropListNestedGetAtContext.push(roomLayout);
+    immediatePropListNestedGetAtContext.push(Datum::symbol("roomdata"));
+    immediatePropListNestedGetAtContext.push(Datum::of(1));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediatePropListNestedGetAtContext));
+    assert(immediatePropListNestedGetAtContext.pop()
+               .propListValue()
+               .get(Datum::symbol("offsetx"))
+               .intValue() == 37);
 
     auto immediateHandlerNoRetHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST_NO_RET, 1, 61);
     ScriptChunk immediateHandlerNoRetScript(nullptr,

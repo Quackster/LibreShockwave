@@ -464,6 +464,43 @@ int findPropIndexUntyped(const Datum::PropList& propList, const Datum& key) {
     return propList.findUntypedKey(key);
 }
 
+Datum propListGetAtValue(const Datum::PropList& propList, const Datum& keyOrIndex) {
+    int index = -1;
+    if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
+        index = findPropIndexTyped(propList, keyOrIndex);
+    } else {
+        const int position = toIntLikeJava(keyOrIndex);
+        if (position >= 1 && position <= propList.count()) {
+            index = position - 1;
+        }
+    }
+    if (index >= 0) {
+        return propList.properties()[static_cast<std::size_t>(index)].second;
+    }
+    if (keyOrIndex.isInt()) {
+        index = findPropIndexTyped(propList, Datum::of(std::to_string(toIntLikeJava(keyOrIndex))));
+        if (index >= 0) {
+            return propList.properties()[static_cast<std::size_t>(index)].second;
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum nestedGetAtValue(const Datum& value, const Datum& keyOrIndex) {
+    if (value.isList()) {
+        const int index = toIntLikeJava(keyOrIndex);
+        const auto& items = value.listValue().items();
+        if (index >= 1 && index <= static_cast<int>(items.size())) {
+            return items[static_cast<std::size_t>(index - 1)];
+        }
+        return Datum::voidValue();
+    }
+    if (value.isPropList()) {
+        return propListGetAtValue(value.propListValue(), keyOrIndex);
+    }
+    return Datum::voidValue();
+}
+
 void putPropTyped(Datum::PropList& propList, const Datum& key, Datum value) {
     propList.putTyped(key, std::move(value));
 }
@@ -1169,20 +1206,11 @@ Datum ListBuiltins::getAt(BuiltinContext& context, const std::vector<Datum>& arg
         return Datum::voidValue();
     }
     if (container.isPropList()) {
-        const auto& propList = container.propListValue();
-        int index = -1;
-        if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
-            index = findPropIndexTyped(propList, keyOrIndex);
-        } else {
-            const int position = toIntLikeJava(keyOrIndex);
-            if (position >= 1 && position <= propList.count()) {
-                index = position - 1;
-            }
+        Datum value = propListGetAtValue(container.propListValue(), keyOrIndex);
+        if (args.size() >= 3) {
+            return nestedGetAtValue(value, args[2]);
         }
-        if (index >= 0) {
-            return propList.properties()[static_cast<std::size_t>(index)].second;
-        }
-        return Datum::voidValue();
+        return value;
     }
     if (const auto* point = container.asIntPoint()) {
         switch (toIntLikeJava(keyOrIndex)) {
