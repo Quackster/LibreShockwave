@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -64,6 +65,8 @@ public:
 
     [[nodiscard]] static std::string serializeWireContent(std::string_view subject, std::string_view content);
     [[nodiscard]] static int decodeShockwaveCommand(char high, char low);
+    [[nodiscard]] static bool isLegacyPlaintextKeepalive(std::string_view content);
+    [[nodiscard]] static bool isLegacyPlaintextPong(std::string_view content);
 
 private:
     struct SmusFrame {
@@ -99,6 +102,7 @@ private:
     std::map<int, std::vector<NetMessage>> messageQueues_;
     std::map<int, int> modes_;
     std::map<int, std::string> senderIDs_;
+    std::set<int> pendingLegacyPlaintextPongSuppressions_;
 };
 
 } // namespace libreshockwave::player::xtra

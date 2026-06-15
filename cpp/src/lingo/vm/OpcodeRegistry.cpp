@@ -485,7 +485,11 @@ bool lingoEquals(const Datum& a, const Datum& b) {
         return toDoubleLikeJava(a) == toDoubleLikeJava(b);
     }
     if ((a.isString() || a.isSymbol()) && (b.isString() || b.isSymbol())) {
-        return equalsIgnoreCase(a.stringValue(), b.stringValue());
+        const auto lhs = a.stringValue();
+        const auto rhs = b.stringValue();
+        return equalsIgnoreCase(lhs, rhs) ||
+               ((equalsIgnoreCase(lhs, "field") && equalsIgnoreCase(rhs, "text")) ||
+                (equalsIgnoreCase(lhs, "text") && equalsIgnoreCase(rhs, "field")));
     }
     return a == b;
 }

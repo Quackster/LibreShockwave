@@ -701,7 +701,9 @@ void SpriteBaker::registerDefaultSteps() {
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeBitmap(const RenderSprite& sprite) {
     if (liveBitmapProvider_) {
         auto live = liveBitmapProvider_(sprite);
-        if (live != nullptr && live->isScriptModified()) {
+        const bool hasRuntimeDynamicImage =
+            sprite.dynamicMember() != nullptr && live != nullptr && (live->width() > 1 || live->height() > 1);
+        if (live != nullptr && (live->isScriptModified() || hasRuntimeDynamicImage)) {
             return std::make_shared<bitmap::Bitmap>(processLiveBitmap(*live, sprite));
         }
     }
@@ -727,6 +729,13 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeBitmap(const RenderSprite
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeText(const RenderSprite& sprite) {
+    if (liveBitmapProvider_) {
+        auto live = liveBitmapProvider_(sprite);
+        if (live != nullptr) {
+            return std::make_shared<bitmap::Bitmap>(processLiveBitmap(*live, sprite));
+        }
+    }
+
     if (textBakeProvider_) {
         if (auto baked = textBakeProvider_(sprite)) {
             return baked;

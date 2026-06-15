@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
@@ -1182,6 +1183,29 @@ void Player::wireComponents() {
         return std::nullopt;
     };
 
+    auto canonicalScriptRefCandidates = [this](int castLib, int memberNum)
+        -> std::vector<std::pair<int, int>> {
+        castLib = castLib > 0 ? castLib : 1;
+        std::vector<std::pair<int, int>> candidates;
+        if (memberNum <= 0) {
+            return candidates;
+        }
+
+        const auto memberName = castLibManager_.getMemberProp(castLib, memberNum, "name").stringValue();
+        if (!memberName.empty() && memberName != "VOID") {
+            if (const auto* canonical = castLibManager_.getMemberByName(0, memberName).asCastMemberRef()) {
+                const int canonicalCastLib = canonical->castLib > 0 ? canonical->castLib : 1;
+                const int canonicalMember = canonical->memberNum();
+                if (canonicalMember > 0 && (canonicalCastLib != castLib || canonicalMember != memberNum)) {
+                    candidates.emplace_back(canonicalCastLib, canonicalMember);
+                }
+            }
+        }
+
+        candidates.emplace_back(castLib, memberNum);
+        return candidates;
+    };
+
     auto resolveScriptInstance = [resolveScriptRef, scriptInstanceTargetCache](
         const lingo::Datum::ScriptInstanceRef& instance)
         -> std::optional<ResolvedScriptTarget> {
@@ -1200,7 +1224,7 @@ void Player::wireComponents() {
         return resolved;
     };
 
-    auto findEventHandler = [this, findHandlerInScript, resolveScriptInstance](
+    auto findEventHandler = [this, findHandlerInScript, resolveScriptRef, resolveScriptInstance, canonicalScriptRefCandidates](
         const event::EventTarget& target,
         std::string_view handlerName)
         -> std::optional<lingo::vm::HandlerRef> {
@@ -1218,7 +1242,20 @@ void Player::wireComponents() {
 
         const auto* current = &target.scriptInstance->scriptInstanceValue();
         for (int depth = 0; current != nullptr && depth < lingo::vm::util::MAX_ANCESTOR_DEPTH; ++depth) {
-            if (auto resolved = resolveScriptInstance(*current)) {
+            if (const auto& scriptRef = current->scriptRef(); scriptRef.has_value()) {
+                for (const auto& [candidateCastLib, candidateMember] :
+                     canonicalScriptRefCandidates(scriptRef->castLib, scriptRef->memberNum())) {
+                    if (auto resolved = resolveScriptRef(candidateCastLib, candidateMember)) {
+                        if (auto handler = findHandlerInScript(resolved->script,
+                                                               resolved->scriptNames,
+                                                               resolved->scriptOwner,
+                                                               resolved->scriptType,
+                                                               handlerName)) {
+                            return handler;
+                        }
+                    }
+                }
+            } else if (auto resolved = resolveScriptInstance(*current)) {
                 if (auto handler = findHandlerInScript(resolved->script,
                                                        resolved->scriptNames,
                                                        resolved->scriptOwner,
@@ -1235,31 +1272,34 @@ void Player::wireComponents() {
         return std::nullopt;
     };
 
-    context.scriptHandlerFinder = [findHandlerInScript, resolveScriptRef](
+    context.scriptHandlerFinder = [findHandlerInScript, resolveScriptRef, canonicalScriptRefCandidates](
         int castLib,
         int memberNum,
         const std::string& handlerName)
         -> std::optional<lingo::builtin::BuiltinContext::ScriptHandlerLocation> {
-        const auto resolved = resolveScriptRef(castLib, memberNum);
-        if (!resolved.has_value()) {
-            return std::nullopt;
+        for (const auto& [candidateCastLib, candidateMember] : canonicalScriptRefCandidates(castLib, memberNum)) {
+            const auto resolved = resolveScriptRef(candidateCastLib, candidateMember);
+            if (!resolved.has_value()) {
+                continue;
+            }
+            const auto handler = findHandlerInScript(resolved->script,
+                                                     resolved->scriptNames,
+                                                     resolved->scriptOwner,
+                                                     resolved->scriptType,
+                                                     handlerName);
+            if (!handler || handler->script == nullptr || handler->handler == nullptr) {
+                continue;
+            }
+            return lingo::builtin::BuiltinContext::ScriptHandlerLocation{
+                handler->script,
+                handler->handler,
+                handler->scriptOwner,
+                handler->fileOwner,
+                handler->scriptNamesOwner,
+                handler->scriptType
+            };
         }
-        const auto handler = findHandlerInScript(resolved->script,
-                                                 resolved->scriptNames,
-                                                 resolved->scriptOwner,
-                                                 resolved->scriptType,
-                                                 handlerName);
-        if (!handler || handler->script == nullptr || handler->handler == nullptr) {
-            return std::nullopt;
-        }
-        return lingo::builtin::BuiltinContext::ScriptHandlerLocation{
-            handler->script,
-            handler->handler,
-            handler->scriptOwner,
-            handler->fileOwner,
-            handler->scriptNamesOwner,
-            handler->scriptType
-        };
+        return std::nullopt;
     };
 
     auto executeTarget = [this, findEventHandler](const event::EventTarget& target,

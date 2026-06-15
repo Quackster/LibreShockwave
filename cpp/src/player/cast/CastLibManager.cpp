@@ -38,6 +38,46 @@ bool equalsIgnoreCase(const std::string& lhs, const std::string& rhs) {
     return lower(lhs) == lower(rhs);
 }
 
+std::optional<std::string> normalizeUnderscoreNumericTokens(std::string_view value) {
+    std::string normalized;
+    normalized.reserve(value.size());
+    bool changed = false;
+    std::size_t offset = 0;
+    while (offset <= value.size()) {
+        const auto next = value.find('_', offset);
+        const auto token = value.substr(offset, next == std::string_view::npos ? std::string_view::npos : next - offset);
+        if (offset > 0) {
+            normalized.push_back('_');
+        }
+
+        const bool numeric = !token.empty() &&
+                             std::all_of(token.begin(), token.end(), [](unsigned char ch) {
+                                 return std::isdigit(ch) != 0;
+                             });
+        if (numeric && token.size() > 1) {
+            std::size_t firstNonZero = 0;
+            while (firstNonZero + 1 < token.size() && token[firstNonZero] == '0') {
+                ++firstNonZero;
+            }
+            if (firstNonZero > 0) {
+                changed = true;
+            }
+            normalized.append(token.substr(firstNonZero));
+        } else {
+            normalized.append(token);
+        }
+
+        if (next == std::string_view::npos) {
+            break;
+        }
+        offset = next + 1;
+    }
+    if (!changed) {
+        return std::nullopt;
+    }
+    return normalized;
+}
+
 std::string keyNameLikeJava(const lingo::Datum& value) {
     if (const auto* symbol = value.asSymbol()) {
         return symbol->name;
@@ -1560,14 +1600,24 @@ lingo::Datum CastLibManager::getMemberByNameInCast(const std::shared_ptr<CastLib
     if (!castLib || memberName.empty()) {
         return lingo::Datum::voidValue();
     }
-    if (auto member = castLib->findMemberByName(memberName)) {
-        const int memberNumber = castLib->getMemberNumber(member);
-        if (memberNumber >= 0) {
-            return lingo::Datum::castMemberRef(id::CastLibId(castLib->number()), id::MemberId(memberNumber));
+    auto findByName = [&](const std::string& name) -> lingo::Datum {
+        if (auto member = castLib->findMemberByName(name)) {
+            const int memberNumber = castLib->getMemberNumber(member);
+            if (memberNumber >= 0) {
+                return lingo::Datum::castMemberRef(id::CastLibId(castLib->number()), id::MemberId(memberNumber));
+            }
         }
+        if (auto member = castLib->getMemberByName(name)) {
+            return lingo::Datum::castMemberRef(id::CastLibId(castLib->number()), id::MemberId(member->memberNum()));
+        }
+        return lingo::Datum::voidValue();
+    };
+    auto found = findByName(memberName);
+    if (!found.isVoid()) {
+        return found;
     }
-    if (auto member = castLib->getMemberByName(memberName)) {
-        return lingo::Datum::castMemberRef(id::CastLibId(castLib->number()), id::MemberId(member->memberNum()));
+    if (const auto normalized = normalizeUnderscoreNumericTokens(memberName)) {
+        return findByName(*normalized);
     }
     return lingo::Datum::voidValue();
 }

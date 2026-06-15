@@ -7262,11 +7262,23 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(messages[0].subject == "keepalive");
     assert(messages[0].content.stringValue() == std::string("@r", 2) + char(1));
 
-    const auto pendingBeforePong = bridge.pendingRequests().size();
+    const auto pendingBeforeSuppressedPong = bridge.pendingRequests().size();
     bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforePong);
+    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong);
     bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforePong + 1);
+    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong + 1);
+    assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
+
+    bridge.requestConnect(8, "challenge.example", 30100, 1, chatOptions);
+    bridge.notifyConnected(8);
+    (void)bridge.pollMessages(8);
+    bridge.deliverMessageBytes(8, {'D', 'U', '1', '2', '3', '4'});
+    messages = bridge.pollMessages(8);
+    assert(messages.size() == 1);
+    assert(messages[0].content.stringValue() == "DU1234");
+    const auto pendingBeforeChallengePong = bridge.pendingRequests().size();
+    bridge.requestSend(8, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
+    assert(bridge.pendingRequests().size() == pendingBeforeChallengePong + 1);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
 
     bridge.deliverMessageBytes(7, {'@', '@', 0x01});
@@ -11943,6 +11955,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runBinary(Opcode::GT_EQ, Datum::of(5.0F), Datum::of(5)).boolValue());
     assert(runBinary(Opcode::EQ, Datum::of(5), Datum::of(5.0F)).boolValue());
     assert(runBinary(Opcode::EQ, Datum::of(std::string("Door")), Datum::symbol("door")).boolValue());
+    assert(runBinary(Opcode::EQ, Datum::symbol("field"), Datum::symbol("text")).boolValue());
+    assert(runBinary(Opcode::EQ, Datum::of(std::string("field")), Datum::symbol("text")).boolValue());
+    assert(!runBinary(Opcode::NT_EQ, Datum::symbol("field"), Datum::symbol("text")).boolValue());
     assert(runBinary(Opcode::NT_EQ, Datum::intPoint(1, 2), Datum::intPoint(1, 3)).boolValue());
     SpriteRegistry opcodeSpriteRegistry;
     SpriteProperties opcodeSpriteProps(&opcodeSpriteRegistry);
@@ -16708,6 +16723,23 @@ void testSpriteBakerFoundation() {
     assert(bakedFileText.height() == 3);
     assert(bakedFileText.bakedBitmap()->getPixel(6, 2) == 0xFFABCDEFU);
 
+    RecordingSpriteBakerTextRenderer fileTextRuntimeImageRenderer;
+    SpriteBaker fileTextRuntimeImageBaker;
+    fileTextRuntimeImageBaker.setTextRenderer(&fileTextRuntimeImageRenderer);
+    auto fileTextRuntimeImage = std::make_shared<Bitmap>(3, 2, 32);
+    fileTextRuntimeImage->fill(0xFF102030U);
+    fileTextRuntimeImage->setPixel(2, 1, 0xFF405060U);
+    fileTextRuntimeImageBaker.setLiveBitmapProvider(
+        [&](const RenderSprite& sprite) -> std::shared_ptr<const Bitmap> {
+            return sprite.castMember() == fileTextMember ? fileTextRuntimeImage : nullptr;
+        });
+    auto bakedFileTextRuntimeImage = fileTextRuntimeImageBaker.bake(fileTextSprite);
+    assert(fileTextRuntimeImageRenderer.lastText.empty());
+    assert(bakedFileTextRuntimeImage.bakedBitmap() != nullptr);
+    assert(bakedFileTextRuntimeImage.bakedBitmap()->width() == 3);
+    assert(bakedFileTextRuntimeImage.bakedBitmap()->height() == 2);
+    assert(bakedFileTextRuntimeImage.bakedBitmap()->getPixel(2, 1) == 0xFF405060U);
+
     auto makeTextRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunkList) {
         const int localMmapLen = 24 + static_cast<int>(chunkList.size()) * 20;
         int localDataStart = mmapOffset + 8 + localMmapLen;
@@ -16871,6 +16903,64 @@ void testSpriteBakerFoundation() {
     assert(bakedDynamicText.height() == 4);
     assert(bakedDynamicText.bakedBitmap()->isNativeAlpha());
     assert(bakedDynamicText.bakedBitmap()->getPixel(8, 3) == 0xFFABCDEFU);
+
+    RecordingSpriteBakerTextRenderer dynamicTextRuntimeImageRenderer;
+    SpriteBaker dynamicTextRuntimeImageBaker;
+    dynamicTextRuntimeImageBaker.setTextRenderer(&dynamicTextRuntimeImageRenderer);
+    auto dynamicTextRuntimeImage = std::make_shared<Bitmap>(2, 2, 32);
+    dynamicTextRuntimeImage->fill(0xFF010203U);
+    dynamicTextRuntimeImage->setPixel(1, 1, 0xFF0A0B0CU);
+    dynamicTextRuntimeImageBaker.setLiveBitmapProvider(
+        [&](const RenderSprite& sprite) -> std::shared_ptr<const Bitmap> {
+            return sprite.dynamicMember() == dynamicTextMember ? dynamicTextRuntimeImage : nullptr;
+        });
+    auto bakedDynamicTextRuntimeImage = dynamicTextRuntimeImageBaker.bake(dynamicTextSprite);
+    assert(dynamicTextRuntimeImageRenderer.lastText.empty());
+    assert(bakedDynamicTextRuntimeImage.bakedBitmap() != nullptr);
+    assert(bakedDynamicTextRuntimeImage.bakedBitmap()->width() == 2);
+    assert(bakedDynamicTextRuntimeImage.bakedBitmap()->height() == 2);
+    assert(bakedDynamicTextRuntimeImage.bakedBitmap()->getPixel(1, 1) == 0xFF0A0B0CU);
+
+    SpriteBaker dynamicBitmapRuntimeImageBaker;
+    auto dynamicBitmapMember = std::make_shared<CastMember>(1, 10051, MemberType::Bitmap);
+    auto dynamicBitmapRuntimeImage = std::make_shared<Bitmap>(
+        3,
+        2,
+        32,
+        std::vector<std::uint32_t>{
+            0xFF001122U, 0xFF334455U, 0xFF667788U,
+            0xFF99AABBU, 0xFFCCDDEEU, 0xFF123456U
+        });
+    assert(!dynamicBitmapRuntimeImage->isScriptModified());
+    dynamicBitmapRuntimeImageBaker.setLiveBitmapProvider(
+        [&](const RenderSprite& sprite) -> std::shared_ptr<const Bitmap> {
+            return sprite.dynamicMember() == dynamicBitmapMember ? dynamicBitmapRuntimeImage : nullptr;
+        });
+    RenderSprite dynamicBitmapSprite(15,
+                                     0,
+                                     0,
+                                     3,
+                                     2,
+                                     0,
+                                     true,
+                                     SpriteType::Bitmap,
+                                     nullptr,
+                                     dynamicBitmapMember,
+                                     0x445566,
+                                     0x112233,
+                                     true,
+                                     true,
+                                     0,
+                                     100,
+                                     false,
+                                     false,
+                                     nullptr,
+                                     false);
+    auto bakedDynamicBitmapRuntimeImage = dynamicBitmapRuntimeImageBaker.bake(dynamicBitmapSprite);
+    assert(bakedDynamicBitmapRuntimeImage.bakedBitmap() != nullptr);
+    assert(bakedDynamicBitmapRuntimeImage.bakedBitmap()->width() == 3);
+    assert(bakedDynamicBitmapRuntimeImage.bakedBitmap()->height() == 2);
+    assert(bakedDynamicBitmapRuntimeImage.bakedBitmap()->getPixel(2, 1) == 0xFF123456U);
 
     std::vector<std::uint8_t> xmedSpecificData(56, 0);
     xmedSpecificData[4] = 't';
@@ -22989,6 +23079,9 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
     assert(assignedMediaRuntime->anchorX() == 9);
     assert(assignedMediaRuntime->anchorY() == 11);
+    assert(manager.setMemberProp(1, 10000, "name", Datum::of(std::string("h_std_hd_1_3_0"))));
+    assert(manager.getMemberByName(0, "h_std_hd_001_003_0").asCastMemberRef()->memberNum() == 10000);
+    assert(manager.getMemberByName(1, "h_std_hd_001_003_0").asCastMemberRef()->memberNum() == 10000);
 
     BuiltinContext context;
     manager.installBuiltinCallbacks(context);
@@ -23042,6 +23135,18 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "media").asCastMemberRef()->memberNum() == 10001);
     assert(manager.getFieldValue(Datum::of(std::string("Runtime Field")), 0).stringValue() == "Hello\nField");
     assert(context.fieldResolver(Datum::of(std::string("Runtime Field")), 0).stringValue() == "Hello\nField");
+
+    const auto earlierDuplicateName = manager.createMember(1, "script");
+    const auto* earlierDuplicateRef = earlierDuplicateName.asCastMemberRef();
+    assert(earlierDuplicateRef != nullptr);
+    assert(manager.setMemberProp(1, earlierDuplicateRef->memberNum(), "name", Datum::of(std::string("Shared Class"))));
+    const auto laterDuplicateName = manager.createMember(2, "script");
+    const auto* laterDuplicateRef = laterDuplicateName.asCastMemberRef();
+    assert(laterDuplicateRef != nullptr);
+    assert(manager.setMemberProp(2, laterDuplicateRef->memberNum(), "name", Datum::of(std::string("Shared Class"))));
+    assert(manager.getMemberByName(1, "Shared Class").asCastMemberRef()->castLib == 1);
+    assert(manager.getMemberByName(2, "Shared Class").asCastMemberRef()->castLib == 2);
+    assert(manager.getMemberByName(0, "Shared Class").asCastMemberRef()->castLib == 1);
     assert(registry.invoke("field", context, {Datum::of(std::string("Runtime Field"))}).stringValue() == "Hello\nField");
     context.fieldSetter(Datum::of(std::string("Runtime Field")), 0, "Updated Field");
     assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Updated Field");
