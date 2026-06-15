@@ -2,6 +2,9 @@
 
 Date: 2026-06-15
 
+Status: Complete. The Habbo head renders next to `Quackster` in the
+bottom-left identity panel in the normal no-debug harness.
+
 Goal: when `http://localhost:3000/venus-quackster-harness` reaches the logged-in
 hotel exterior, the bottom-left identity panel must render the Habbo head next
 to:
@@ -16,11 +19,23 @@ Native reference:
 
 ```text
 /opt/git/v31_room_load/v31_native.png
+/home/alex/Pictures/Screenshots/Screenshot_20260615_215344.png
 ```
 
-In the native v31 screenshot, a small Habbo head appears at the far left of the
-bottom bar, immediately before the `Quackster` text block. The current C++/WASM
-render reaches login but leaves that image area blank.
+In the native v31 screenshots, including the cropped bottom-left reference, a
+small Habbo head appears at the far left of the bottom bar, immediately before
+the `Quackster` text block. The previous C++/WASM render reached login but
+left that image area blank; the verified fix now renders the head there.
+
+The final result must look like the provided references: a small circular Habbo
+head icon with face and hair is visible inside the black bottom-left identity
+panel, aligned left of the `Quackster` name. The text block starts to the right
+of the head and includes `Quackster`, `Hello Habbo!`, and
+`Update My Habbo ID >>`. A screenshot that only shows the logged-in exterior or
+the Navigator illustration is not sufficient unless this head icon is visible in
+that exact bottom-left position. The final screenshot should match the provided
+references closely enough that the face/hair icon is visibly present next to
+`Quackster`.
 
 ## Asset And Lingo Lead
 
@@ -83,16 +98,86 @@ Do not use `?debug=1` for the final confirmation screenshot.
 
 ## Current Diagnosis
 
-The login flow reaches the hotel exterior, but `Figure_System.parseData` leaves
-`pSetList` empty. The root XML object is loaded correctly, but Lingo loops such
-as `repeat with i = 1 to tParserObject.child.count` depend on chained `.count`
-property access on lists. The C++ VM only handled numeric chained access on
-lists, so `child.count` returned void and the figure data loops never populated
-sets or colors.
+Update 2026-06-15: the chained collection property fix was useful for figure
+data parsing, but it did not complete this goal. A later review found the
+required head is still missing beside `Quackster`; do not use the previous
+normal-harness screenshot as acceptance evidence for this item.
 
-The fix should remain generic: chained `count`/`length` on lists and prop lists
-must resolve through the same runtime property helpers used elsewhere. Do not
-special-case Habbo figure data, `figuredata.xml`, or the harness.
+Update 2026-06-15 after the XML/prop-list property-call fix: the normal
+harness was rebuilt and run without `?debug=1` for 90 seconds. Screenshot
+`/tmp/venus-head-proplist-fix-bottom-left-no-overlay.png` still shows no Habbo
+head beside `Quackster`, while `/tmp/venus-head-proplist-fix-stage-no-overlay.png`
+shows the hotel exterior and Navigator Public Spaces illustration. The goal is
+still not finished.
+
+Update 2026-06-15 after adding untyped case-insensitive XML property lookup:
+the normal harness was rebuilt and run without `?debug=1` for 180 seconds.
+That run reached the hotel exterior but ended on the `Problems Connecting`
+modal with the socket closed, so `/tmp/venus-head-after-xml-fix-bottom-left.png`
+does not show the logged-in `Quackster` identity panel and is not valid
+acceptance evidence. The goal remains not finished until a no-debug harness run
+reaches login and visibly shows the head beside `Quackster`.
+
+Update 2026-06-15 five-minute no-debug harness run: the normal harness reached
+the logged-in hotel exterior and Navigator after waiting 300 seconds. Screenshot
+`/tmp/venus-head-5min-stage.png` shows the hotel and Navigator, but
+`/tmp/venus-head-5min-bottom-left.png` still shows only the `Quackster`,
+`Hello Habbo!`, and `Update My Habbo ID >>` text block with no Habbo head
+beside it. This is a valid failure capture, and the goal is still not finished.
+
+Update 2026-06-15 debug run after the five-minute failure: the missing head is
+not caused by the harness failing to reach login. With `?debug=1`, targeted
+figure diagnostics showed:
+
+```text
+Figure Data Class.parseData result=int
+pColorList=propList(0)
+pSetList=propList(0)
+pSetTypeList=propList(0)
+
+Figure System Class.parseNewTypeFigure result=propList(0)
+Figure Preview Class.getHumanPartImg result=image(1x1)
+Figure Preview Class.feedHumanPreview arg2=image(1x1)
+```
+
+This means the user identity panel is receiving an effectively empty 1x1
+preview image because figure XML parsing is still not populating the generic
+figure data tables. The next debugging boundary is the XML Xtra/property
+traversal used by Lingo expressions such as `tParserObject.child.count`,
+`tParserObject.child[i].name`, `tElement.attributeName[j]`, and
+`tElement.attributeValue[j]`. Do not fix this with client shims or hardcoded
+Habbo Lingo behavior; the fix should remain in generic Director-compatible C++
+property/Xtra semantics.
+
+Update 2026-06-15 after fixing the VM fast prop-list object-call path: the
+normal harness was rebuilt and run without `?debug=1` for 300 seconds at:
+
+```text
+http://localhost:3000/venus-quackster-harness
+```
+
+The logged-in hotel exterior and Navigator rendered, and the bottom-left
+identity panel now shows the small Habbo face/hair head icon beside
+`Quackster`, matching the native reference placement. Acceptance screenshots:
+
+```text
+/tmp/venus-head-fast-proplist-stage.png
+/tmp/venus-head-fast-proplist-bottom-left.png
+```
+
+Root cause: compiled Lingo calls such as `tElement.child[j]` can reach the VM
+fast prop-list object-call path before the full prop-list dispatcher. That fast
+path returned the `child` list for `getPropRef(#child, j)` and ignored the
+third index argument, so `tElement.name` became void and figure XML parsing
+never populated `pColorList`, `pSetList`, or `pSetTypeList`. The generic fix is
+to make fast prop-list `count(key)` and `getProp`/`getPropRef(key, index)`
+mirror the dispatcher behavior for nested list properties.
+
+The fix remains generic: chained `count`/`length` on lists and prop lists,
+property-name calls on XML node prop lists, XML Xtra property access, and the
+VM fast prop-list object-call path now resolve through Director-compatible
+collection semantics. The solution does not special-case Habbo figure data,
+`figuredata.xml`, or the harness.
 
 ## Acceptance Criteria
 

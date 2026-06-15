@@ -321,8 +321,16 @@ Datum XmlParserXtra::callHandler(int instanceId,
     if (method == "count") {
         return count(state.root, args);
     }
-    if (method == "getprop" || method == "getpropref" || method == "getaprop" || method == "getproperty") {
+    if (method == "getprop" || method == "getpropref" || method == "getaprop" || method == "getproperty" ||
+        method == "getat") {
         return getProp(state.root, args);
+    }
+    if (method == "name" || method == "child" || method == "attributename" || method == "attributevalue") {
+        std::vector<Datum> propertyArgs;
+        propertyArgs.reserve(args.size() + 1);
+        propertyArgs.push_back(Datum::symbol(std::string(method)));
+        propertyArgs.insert(propertyArgs.end(), args.begin(), args.end());
+        return getProp(state.root, propertyArgs);
     }
     return Datum::voidValue();
 }
@@ -365,10 +373,9 @@ Datum XmlParserXtra::getProp(const Datum& root, const std::vector<Datum>& args) 
     }
 
     Datum value = Datum::voidValue();
-    const auto target = keyName(args[0]);
-    const bool symbolKey = keyIsSymbol(args[0]);
+    const auto target = lowerAscii(keyName(args[0]));
     for (const auto& entry : root.propListValue().properties()) {
-        if (keyName(entry.first) == target && keyIsSymbol(entry.first) == symbolKey) {
+        if (lowerAscii(keyName(entry.first)) == target) {
             value = entry.second;
             break;
         }

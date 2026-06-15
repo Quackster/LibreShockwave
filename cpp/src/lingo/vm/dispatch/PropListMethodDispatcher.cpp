@@ -407,6 +407,17 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
         copy.propListValue().properties() = properties;
         return copy.deepCopy();
     }
+    Datum value = getPropListKey(propList, methodName);
+    if (!value.isVoid()) {
+        if (!args.empty() && value.isList()) {
+            const int index = toIntLikeJava(args[0]);
+            if (index >= 1 && index <= value.listValue().count()) {
+                return value.listValue().getAt(index);
+            }
+            return Datum::voidValue();
+        }
+        return value;
+    }
     return Datum::voidValue();
 }
 

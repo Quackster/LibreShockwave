@@ -6163,6 +6163,20 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName,
 
     const auto& propList = target.propListValue();
     if (equalsIgnoreCase(methodName, "count")) {
+        if (args.size() >= 2) {
+            const int index = propList.findUntypedKey(Datum::of(keyNameLikeJava(args[1])));
+            if (index < 0) {
+                return Datum::of(0);
+            }
+            const Datum& value = propList.properties()[static_cast<std::size_t>(index)].second;
+            if (value.isList()) {
+                return Datum::of(value.listValue().count());
+            }
+            if (value.isPropList()) {
+                return Datum::of(value.propListValue().count());
+            }
+            return Datum::of(0);
+        }
         return Datum::of(propList.count());
     }
     if (equalsIgnoreCase(methodName, "getAt")) {
@@ -6177,8 +6191,18 @@ std::optional<Datum> fastListObjectCall(std::string_view methodName,
             return Datum::voidValue();
         }
         const int index = propList.findUntypedKey(Datum::of(keyNameLikeJava(args[1])));
-        return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second
-                          : Datum::voidValue();
+        if (index < 0) {
+            return Datum::voidValue();
+        }
+        const Datum& value = propList.properties()[static_cast<std::size_t>(index)].second;
+        if (args.size() >= 3 && value.isList()) {
+            const int itemIndex = toIntLikeJava(args[2]);
+            if (itemIndex >= 1 && itemIndex <= value.listValue().count()) {
+                return value.listValue().getAt(itemIndex);
+            }
+            return Datum::voidValue();
+        }
+        return value;
     }
     if (equalsIgnoreCase(methodName, "setAt")) {
         if (args.size() >= 3) {

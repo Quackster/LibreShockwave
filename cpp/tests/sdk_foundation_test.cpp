@@ -6762,13 +6762,24 @@ void testXmlParserXtraFoundation() {
     assert(xtra.callHandler(id, "getError").isVoid());
     assert(xtra.callHandler(id, "count", {Datum::symbol("child")}).intValue() == 1);
 
-    const auto root = xtra.callHandler(id, "getPropRef", {Datum::symbol("child"), Datum::of(1)});
+    auto root = xtra.callHandler(id, "getPropRef", {Datum::symbol("child"), Datum::of(1)});
     assert(root.isPropList());
     assert(root.propListValue().get(Datum::symbol("name")).stringValue() == "partSets");
     assert(xtra.getProperty(id, "name").stringValue() == "#document");
+    const auto rootViaPropertyCall = xtra.callHandler(id, "child", {Datum::of(1)});
+    assert(rootViaPropertyCall.isPropList());
+    assert(rootViaPropertyCall.propListValue().get(Datum::symbol("name")).stringValue() == "partSets");
+    const auto rootViaIndexedPropertyCall = xtra.callHandler(id, "getAt", {Datum::symbol("child"), Datum::of(1)});
+    assert(rootViaIndexedPropertyCall.isPropList());
+    assert(rootViaIndexedPropertyCall.propListValue().get(Datum::symbol("name")).stringValue() == "partSets");
+    const auto rootViaStringKey = xtra.callHandler(id, "getPropRef", {Datum::of("Child"), Datum::of(1)});
+    assert(rootViaStringKey.isPropList());
+    assert(rootViaStringKey.propListValue().get(Datum::symbol("name")).stringValue() == "partSets");
 
     const auto partSetChildren = root.propListValue().get(Datum::symbol("child"));
     assert(partSetChildren.isList());
+    assert(PropListMethodDispatcher::dispatch(root.propListValue(), "child", {}).listValue().count() == 1);
+    assert(PropListMethodDispatcher::dispatch(root.propListValue(), "child", {Datum::of(1)}).isPropList());
     const auto partSet = partSetChildren.listValue().getAt(1);
     assert(partSet.isPropList());
     assert(partSet.propListValue().get(Datum::symbol("name")).stringValue() == "partSet");
@@ -6779,6 +6790,7 @@ void testXmlParserXtraFoundation() {
     assert(attrValues.isList());
     assert(attrNames.listValue().getAt(1).stringValue() == "id");
     assert(attrValues.listValue().getAt(1).stringValue() == "h");
+    assert(xtra.callHandler(id, "child", {}).listValue().count() == 1);
 
     const auto label = partSet.propListValue().get(Datum::symbol("child")).listValue().getAt(1);
     assert(label.isPropList());
@@ -9936,6 +9948,57 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(immediatePropListExtraArgGetAtContext.pop()
                .listValue()
                .getAt(1)
+               .propListValue()
+               .get(Datum::symbol("offsetx"))
+               .intValue() == 37);
+
+    auto immediatePropListCountKeyHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 2, 70);
+    ScriptChunk immediatePropListCountKeyScript(nullptr,
+                                                ChunkId(714),
+                                                ScriptChunkType::MovieScript,
+                                                0,
+                                                {immediatePropListCountKeyHandler},
+                                                {},
+                                                {},
+                                                {},
+                                                {});
+    Scope immediatePropListCountKeyScope(&immediatePropListCountKeyScript,
+                                         immediatePropListCountKeyHandler,
+                                         {});
+    ExecutionContext immediatePropListCountKeyContext(immediatePropListCountKeyScope,
+                                                      immediatePropListCountKeyHandler.instructions[0],
+                                                      &registry,
+                                                      &builtinContext,
+                                                      callbacks);
+    immediatePropListCountKeyContext.push(roomLayout);
+    immediatePropListCountKeyContext.push(Datum::symbol("roomdata"));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediatePropListCountKeyContext));
+    assert(immediatePropListCountKeyContext.pop().intValue() == 1);
+
+    auto immediatePropListGetPropRefIndexedHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 3, 92);
+    ScriptChunk immediatePropListGetPropRefIndexedScript(nullptr,
+                                                         ChunkId(715),
+                                                         ScriptChunkType::MovieScript,
+                                                         0,
+                                                         {immediatePropListGetPropRefIndexedHandler},
+                                                         {},
+                                                         {},
+                                                         {},
+                                                         {});
+    Scope immediatePropListGetPropRefIndexedScope(&immediatePropListGetPropRefIndexedScript,
+                                                  immediatePropListGetPropRefIndexedHandler,
+                                                  {});
+    ExecutionContext immediatePropListGetPropRefIndexedContext(
+        immediatePropListGetPropRefIndexedScope,
+        immediatePropListGetPropRefIndexedHandler.instructions[0],
+        &registry,
+        &builtinContext,
+        callbacks);
+    immediatePropListGetPropRefIndexedContext.push(roomLayout);
+    immediatePropListGetPropRefIndexedContext.push(Datum::symbol("roomdata"));
+    immediatePropListGetPropRefIndexedContext.push(Datum::of(1));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediatePropListGetPropRefIndexedContext));
+    assert(immediatePropListGetPropRefIndexedContext.pop()
                .propListValue()
                .get(Datum::symbol("offsetx"))
                .intValue() == 37);
