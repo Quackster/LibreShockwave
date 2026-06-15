@@ -64,6 +64,18 @@ std::string trimCopy(const std::string& value) {
     return std::string(begin, end);
 }
 
+std::string_view trimView(std::string_view value) {
+    std::size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+    std::size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
 std::optional<long long> parseLongStrict(const std::string& value, int base) {
     const std::string trimmed = trimCopy(value);
     if (trimmed.empty()) {
@@ -151,15 +163,35 @@ Datum scriptRefFromCastMemberDatum(const Datum& memberRef) {
     return Datum::voidValue();
 }
 
+std::uint64_t scriptPropertyCacheKey(int castLib, int memberNum) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(castLib)) << 32U) |
+           static_cast<std::uint32_t>(memberNum);
+}
+
+const std::vector<std::string>& declaredScriptPropertyNames(BuiltinContext& context,
+                                                            const Datum::CastMemberRef& memberRef) {
+    const auto key = scriptPropertyCacheKey(memberRef.castLib, memberRef.memberNum());
+    if (const auto found = context.scriptPropertyNamesCache.find(key);
+        found != context.scriptPropertyNamesCache.end()) {
+        return found->second;
+    }
+    auto propertyNames = context.scriptPropertyNamesResolver
+        ? context.scriptPropertyNamesResolver(memberRef.castLib, memberRef.memberNum())
+        : std::vector<std::string>{};
+    auto [inserted, _] = context.scriptPropertyNamesCache.emplace(key, std::move(propertyNames));
+    return inserted->second;
+}
+
 Datum createScriptInstanceFromRef(BuiltinContext& context,
                                   const Datum::CastMemberRef& memberRef,
                                   const std::vector<Datum>& constructorArgs = {}) {
     Datum instance = Datum::scriptInstance("script", memberRef);
     if (context.scriptPropertyNamesResolver) {
-        for (const auto& propertyName : context.scriptPropertyNamesResolver(memberRef.castLib, memberRef.memberNum())) {
-            if (!instance.scriptInstanceValue().hasProperty(propertyName)) {
-                instance.scriptInstanceValue().setProperty(propertyName, Datum::voidValue());
-            }
+        const auto& propertyNames = declaredScriptPropertyNames(context, memberRef);
+        auto& scriptInstance = instance.scriptInstanceValue();
+        scriptInstance.reserveLocalProperties(propertyNames.size());
+        for (const auto& propertyName : propertyNames) {
+            scriptInstance.appendLocalProperty(propertyName, Datum::voidValue());
         }
     }
     if (context.callTargetHandler) {
@@ -203,6 +235,30 @@ int javaRoundToInt(double value) {
 std::string toStringLikeJava(const Datum& datum);
 std::string datumReprLikeJava(const Datum& datum);
 std::string keyName(const Datum& datum);
+
+std::optional<std::string_view> directStringViewLikeJava(const Datum& datum) {
+    if (const auto* value = datum.asString()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asFieldText()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asStringChunk()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asSymbol()) {
+        return value->name;
+    }
+    return std::nullopt;
+}
+
+std::string_view stringViewLikeJava(const Datum& datum, std::string& storage) {
+    if (const auto directValue = directStringViewLikeJava(datum)) {
+        return *directValue;
+    }
+    storage = toStringLikeJava(datum);
+    return storage;
+}
 
 std::string listStringLikeJava(const Datum::List& list) {
     std::ostringstream out;
@@ -389,7 +445,7 @@ Datum parseDirectorPropertyText(std::string_view text, std::string_view delimite
     return result;
 }
 
-bool regionMatchesIgnoreCase(const std::string& value, std::size_t offset, const std::string& pattern) {
+bool regionMatchesIgnoreCase(std::string_view value, std::size_t offset, std::string_view pattern) {
     if (offset + pattern.size() > value.size()) {
         return false;
     }
@@ -1023,6 +1079,11 @@ Datum StringBuiltins::charToNum(BuiltinContext&, const std::vector<Datum>& args)
             ? Datum::of(0)
             : Datum::of(static_cast<int>(static_cast<unsigned char>(value->value.front())));
     }
+    if (const auto* value = args[0].asStringChunk()) {
+        return value->value.empty()
+            ? Datum::of(0)
+            : Datum::of(static_cast<int>(static_cast<unsigned char>(value->value.front())));
+    }
     if (const auto* value = args[0].asSymbol()) {
         return value->name.empty()
             ? Datum::of(0)
@@ -1050,8 +1111,10 @@ Datum StringBuiltins::offset(BuiltinContext&, const std::vector<Datum>& args) {
     if (args.size() < 2) {
         return Datum::of(0);
     }
-    const std::string needle = toStringLikeJava(args[0]);
-    const std::string haystack = toStringLikeJava(args[1]);
+    std::string needleStorage;
+    std::string haystackStorage;
+    const std::string_view needle = stringViewLikeJava(args[0], needleStorage);
+    const std::string_view haystack = stringViewLikeJava(args[1], haystackStorage);
     if (needle.empty()) {
         return Datum::of(0);
     }
@@ -1324,10 +1387,7 @@ Datum ListBuiltins::deleteAt(BuiltinContext&, const std::vector<Datum>& args) {
         return Datum::voidValue();
     }
     if (args[0].isPropList()) {
-        auto& properties = mutableArg(args, 0).propListValue().properties();
-        if (position >= 1 && position <= static_cast<int>(properties.size())) {
-            properties.erase(properties.begin() + (position - 1));
-        }
+        (void)mutableArg(args, 0).propListValue().erasePropertyAt(position - 1);
     }
     return Datum::voidValue();
 }
@@ -1361,7 +1421,7 @@ Datum ListBuiltins::addProp(BuiltinContext&, const std::vector<Datum>& args) {
     if (args.size() < 3 || !args[0].isPropList()) {
         return Datum::voidValue();
     }
-    mutableArg(args, 0).propListValue().properties().emplace_back(args[1], args[2]);
+    mutableArg(args, 0).propListValue().appendProperty(args[1], args[2]);
     return Datum::voidValue();
 }
 
@@ -1371,8 +1431,7 @@ Datum ListBuiltins::deleteProp(BuiltinContext&, const std::vector<Datum>& args) 
     }
     const int index = findPropIndexTyped(args[0].propListValue(), args[1]);
     if (index >= 0) {
-        auto& properties = mutableArg(args, 0).propListValue().properties();
-        properties.erase(properties.begin() + index);
+        (void)mutableArg(args, 0).propListValue().erasePropertyAt(index);
     }
     return Datum::voidValue();
 }
@@ -2155,6 +2214,8 @@ Datum CastLibBuiltins::createMember(BuiltinContext& context, const std::vector<D
     }
     const std::string memberName = toStringLikeJava(args[0]);
     const std::string memberType = args[1].asSymbol() != nullptr ? args[1].asSymbol()->name : toStringLikeJava(args[1]);
+    context.scriptResolutionCache.clear();
+    context.registryMemberSlotCache.clear();
     return context.namedCastMemberCreator(memberName, memberType);
 }
 
@@ -2516,6 +2577,8 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
     if (const auto* typeSymbol = target.asSymbol();
         typeSymbol != nullptr && !constructorArgs.empty() && constructorArgs.front().asCastLibRef() != nullptr) {
         if (context.castMemberCreator) {
+            context.scriptResolutionCache.clear();
+            context.registryMemberSlotCache.clear();
             return context.castMemberCreator(constructorArgs.front().asCastLibRef()->castLib, typeSymbol->name);
         }
         return Datum::voidValue();
@@ -2523,6 +2586,8 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
     if (const auto* typeSymbol = target.asSymbol();
         typeSymbol != nullptr && !constructorArgs.empty() && constructorArgs.front().isVoid()) {
         if (context.castMemberCreator) {
+            context.scriptResolutionCache.clear();
+            context.registryMemberSlotCache.clear();
             return context.castMemberCreator(1, typeSymbol->name);
         }
         return Datum::voidValue();
@@ -2576,7 +2641,7 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
     };
     if (const auto* fieldText = args[0].asFieldText()) {
         if (context.fieldParsedValueResolver) {
-            Datum parsed = context.fieldParsedValueResolver(fieldText->castLib, fieldText->memberNum);
+            Datum parsed = context.fieldParsedValueResolver(fieldText->castLib, fieldText->memberNum, fieldText->revision);
             if (!parsed.isVoid()) {
                 return parsed;
             }
@@ -2586,7 +2651,9 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
     if (!args[0].isString()) {
         return args[0];
     }
-    const std::string raw = args[0].stringValue();
+
+    std::string rawStorage;
+    const std::string_view raw = stringViewLikeJava(args[0], rawStorage);
     if (const auto parsedLiteral = LingoValueParser::parseComplete(raw, identifierResolver);
         parsedLiteral.has_value() && !parsedLiteral->isVoid()) {
         return *parsedLiteral;
@@ -2602,11 +2669,11 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
         return parsed;
     }
 
-    const std::string trimmed = trimCopy(raw);
+    const std::string_view trimmed = trimView(raw);
     if (trimmed.find(' ') != std::string::npos && context.castMemberNameResolver) {
-        const Datum memberRef = context.castMemberNameResolver(0, trimmed);
+        const Datum memberRef = context.castMemberNameResolver(0, std::string(trimmed));
         if (memberRef.asCastMemberRef() != nullptr) {
-            return Datum::of(trimmed);
+            return Datum::of(std::string(trimmed));
         }
     }
     return parsed;
@@ -2628,10 +2695,17 @@ Datum TypeBuiltins::script(BuiltinContext& context, const std::vector<Datum>& ar
         return Datum::scriptRef(*member);
     }
     if (identifier.isString() || identifier.isSymbol()) {
+        const std::string scriptName = keyName(identifier);
+        const std::string cacheKey = std::to_string(scopedCastLib) + ":" + BuiltinRegistry::normalizeName(scriptName);
+        if (const auto cached = context.scriptResolutionCache.find(cacheKey);
+            cached != context.scriptResolutionCache.end()) {
+            return cached->second;
+        }
         if (context.castMemberNameResolver) {
-            const Datum memberRef = context.castMemberNameResolver(scopedCastLib, keyName(identifier));
+            const Datum memberRef = context.castMemberNameResolver(scopedCastLib, scriptName);
             const Datum resolved = scriptRefFromCastMemberDatum(memberRef);
             if (!resolved.isVoid()) {
+                context.scriptResolutionCache.emplace(cacheKey, resolved);
                 return resolved;
             }
         }

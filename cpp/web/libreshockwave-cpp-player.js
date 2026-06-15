@@ -260,6 +260,9 @@
       tempoOverride: options.tempoOverride || 0,
       preloadCasts: options.preloadCasts !== false,
       debugPlaybackEnabled: Boolean(options.debugPlaybackEnabled),
+      slowHandlerWarningMs: Number.isFinite(Number(options.slowHandlerWarningMs))
+        ? Math.max(0, Number(options.slowHandlerWarningMs))
+        : 1000,
       socketProxy: options.socketProxy || [],
       websocketPath: options.websocketPath || "",
       websocketSsl: typeof options.websocketSsl === "boolean" ? options.websocketSsl : null
@@ -274,6 +277,9 @@
           debugPlaybackEnabled: typeof loadOptions.debugPlaybackEnabled === "boolean"
             ? loadOptions.debugPlaybackEnabled
             : Boolean(options.debugPlaybackEnabled),
+          slowHandlerWarningMs: Number.isFinite(Number(loadOptions.slowHandlerWarningMs))
+            ? Math.max(0, Number(loadOptions.slowHandlerWarningMs))
+            : (Number.isFinite(Number(options.slowHandlerWarningMs)) ? Math.max(0, Number(options.slowHandlerWarningMs)) : 1000),
           socketProxy: loadOptions.socketProxy || options.socketProxy || []
         });
       },
@@ -282,6 +288,7 @@
       stop() { send("stop"); },
       setTempoOverride(tempo) { send("tempo", { tempo: Number(tempo || 0) }); },
       setDebugPlaybackEnabled(enabled) { send("debugPlayback", { enabled: Boolean(enabled) }); },
+      setSlowHandlerWarningMs(milliseconds) { send("slowHandlerWarningMs", { milliseconds: Math.max(0, Number(milliseconds || 0)) }); },
       setParams(params) { send("params", { params }); },
       setSocketProxy(socketProxy, socketOptions = {}) {
         send("socketProxy", {

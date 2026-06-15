@@ -704,7 +704,7 @@ lingo::Datum CastLibManager::getRegistryMemberByName(int castLibNumber, const st
 
 bool CastLibManager::memberExists(int castLibNumber, int memberNumber) {
     auto castLib = getCastLib(castLibNumber);
-    return castLib && castLib->getMember(memberNumber) != nullptr;
+    return castLib && castLib->hasMemberNumber(memberNumber);
 }
 
 bool CastLibManager::isRegistryVisibleMember(int castLibNumber, int memberNumber) {
@@ -727,28 +727,44 @@ lingo::Datum CastLibManager::getMemberProp(int castLibNumber, int memberNumber, 
     }
 
     const auto prop = lower(propName);
-    if (auto member = castLib->getMember(memberNumber); member && member->isTextLike()) {
-        if (prop == "image") {
-            auto rendered = renderTextMemberImage(*castLib, member, textRenderer_);
-            return rendered
-                ? lingo::Datum::imageRef(std::move(rendered))
-                : castLib->getMemberProp(memberNumber, propName);
-        }
-        if ((prop == "height" || prop == "rect") && member->textBoxType() == 0 && textRenderer_ != nullptr) {
-            auto rendered = renderTextMemberImage(*castLib, member, textRenderer_);
-            if (rendered) {
-                const int rectHeight = member->textRectBottom() - member->textRectTop();
-                if (prop == "height") {
-                    if (member->isRuntimeDynamic() && rectHeight >= 256) {
-                        return lingo::Datum::of(rendered->height());
+    if (auto member = castLib->getMember(memberNumber)) {
+        if (!member->isTextLike()) {
+            if (prop == "width") {
+                return lingo::Datum::of(member->width());
+            }
+            if (prop == "height") {
+                return lingo::Datum::of(member->height());
+            }
+            if (prop == "rect") {
+                return lingo::Datum::intRect(0, 0, member->width(), member->height());
+            }
+        } else {
+            if (prop == "text") {
+                const auto value = castLib->getMemberProp(memberNumber, propName);
+                return lingo::Datum::fieldText(value.stringValue(), member->castLib(), member->memberNum(), member->textRevision() + 1);
+            }
+            if (prop == "image") {
+                auto rendered = renderTextMemberImage(*castLib, member, textRenderer_);
+                return rendered
+                    ? lingo::Datum::imageRef(std::move(rendered))
+                    : castLib->getMemberProp(memberNumber, propName);
+            }
+            if ((prop == "height" || prop == "rect") && member->textBoxType() == 0 && textRenderer_ != nullptr) {
+                auto rendered = renderTextMemberImage(*castLib, member, textRenderer_);
+                if (rendered) {
+                    const int rectHeight = member->textRectBottom() - member->textRectTop();
+                    if (prop == "height") {
+                        if (member->isRuntimeDynamic() && rectHeight >= 256) {
+                            return lingo::Datum::of(rendered->height());
+                        }
+                        return lingo::Datum::of(std::max(rendered->height(), rectHeight));
                     }
-                    return lingo::Datum::of(std::max(rendered->height(), rectHeight));
-                }
-                if (rendered->height() > rectHeight) {
-                    return lingo::Datum::intRect(member->textRectLeft(),
-                                                 member->textRectTop(),
-                                                 member->textRectRight(),
-                                                 member->textRectTop() + rendered->height());
+                    if (rendered->height() > rectHeight) {
+                        return lingo::Datum::intRect(member->textRectLeft(),
+                                                     member->textRectTop(),
+                                                     member->textRectRight(),
+                                                     member->textRectTop() + rendered->height());
+                    }
                 }
             }
         }
@@ -826,24 +842,31 @@ lingo::Datum CastLibManager::getFieldDatum(const lingo::Datum& identifier, int c
         return lingo::Datum::of(std::string());
     }
     lingo::Datum text = getFieldValue(identifier, castLibNumber);
-    return lingo::Datum::fieldText(text.stringValue(), member->castLib(), member->memberNum());
+    return lingo::Datum::fieldText(text.stringValue(), member->castLib(), member->memberNum(), member->textRevision() + 1);
 }
 
-lingo::Datum CastLibManager::getParsedFieldValue(int castLibNumber, int memberNumber) {
+lingo::Datum CastLibManager::getParsedFieldValue(int castLibNumber, int memberNumber, std::uint64_t revision) {
+    const auto key = std::make_pair(castLibNumber, memberNumber);
+    if (revision != 0) {
+        if (const auto found = parsedFieldCache_.find(key);
+            found != parsedFieldCache_.end() && found->second.revision == revision) {
+            return found->second.value;
+        }
+    }
+
     auto member = resolveMember(castLibNumber, memberNumber);
     if (!member || !member->isTextLike()) {
         return lingo::Datum::voidValue();
     }
 
     const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
-    const auto key = std::make_pair(member->castLib(), member->memberNum());
     if (const auto found = parsedFieldCache_.find(key);
-        found != parsedFieldCache_.end() && found->second.first == text) {
-        return found->second.second;
+        found != parsedFieldCache_.end() && found->second.text == text) {
+        return found->second.value;
     }
 
     lingo::Datum parsed = lingo::LingoValueParser::parseWithPartial(text);
-    parsedFieldCache_[key] = std::make_pair(text, parsed);
+    parsedFieldCache_[key] = ParsedFieldCacheEntry{revision, text, parsed};
     return parsed;
 }
 
@@ -1395,8 +1418,8 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     context.fieldResolver = [this](const lingo::Datum& identifier, int castLib) {
         return getFieldDatum(identifier, castLib);
     };
-    context.fieldParsedValueResolver = [this](int castLib, int memberNum) {
-        return getParsedFieldValue(castLib, memberNum);
+    context.fieldParsedValueResolver = [this](int castLib, int memberNum, std::uint64_t revision) {
+        return getParsedFieldValue(castLib, memberNum, revision);
     };
     context.fieldSetter = [this](const lingo::Datum& identifier, int castLib, const std::string& value) {
         setFieldValue(identifier, castLib, value);

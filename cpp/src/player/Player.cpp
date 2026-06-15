@@ -415,6 +415,10 @@ void Player::setDebugEnabled(bool enabled) {
     }
 }
 
+void Player::setSlowHandlerWarningThresholdMs(std::int64_t milliseconds) {
+    vm_.setSlowHandlerWarningThresholdMs(milliseconds);
+}
+
 void Player::setDebugController(std::shared_ptr<debug::DebugControllerApi> controller) {
     debugController_ = std::move(controller);
 }

@@ -1,5 +1,6 @@
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <string>
 #include <utility>
@@ -111,10 +112,11 @@ std::vector<Datum> ExecutionContext::popArgs(int count) {
     if (count <= 0) {
         return args;
     }
-    args.resize(static_cast<std::size_t>(count));
-    for (int index = count - 1; index >= 0; --index) {
-        args[static_cast<std::size_t>(index)] = pop();
+    args.reserve(static_cast<std::size_t>(count));
+    for (int index = 0; index < count; ++index) {
+        args.push_back(pop());
     }
+    std::reverse(args.begin(), args.end());
     return args;
 }
 

@@ -896,16 +896,18 @@ lingo::Datum* SpriteProperties::primaryBroker(int spriteNum) {
 }
 
 lingo::Datum::PropList& SpriteProperties::ensureProcList(lingo::Datum& broker) {
-    auto& properties = broker.scriptInstanceValue().properties();
-    for (auto& entry : properties) {
-        if (lowerProp(entry.first) == "pproclist") {
-            if (!entry.second.isPropList()) {
-                entry.second = createProcListTemplate();
-            }
-            return entry.second.propListValue();
+    auto& instance = broker.scriptInstanceValue();
+    const int procListIndex = instance.findCaseInsensitivePropertyIndex("pProcList");
+    if (procListIndex >= 0) {
+        auto& properties = instance.properties();
+        auto& value = properties[static_cast<std::size_t>(procListIndex)].second;
+        if (!value.isPropList()) {
+            value = createProcListTemplate();
         }
+        return value.propListValue();
     }
 
+    auto& properties = instance.properties();
     properties.emplace_back("pProcList", createProcListTemplate());
     return properties.back().second.propListValue();
 }

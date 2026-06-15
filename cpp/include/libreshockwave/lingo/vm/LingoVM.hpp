@@ -76,6 +76,8 @@ public:
     [[nodiscard]] std::int64_t tickDeadline() const;
     void setHandlerTimeoutMs(std::int64_t milliseconds);
     [[nodiscard]] std::int64_t handlerTimeoutMs() const;
+    void setSlowHandlerWarningThresholdMs(std::int64_t milliseconds);
+    [[nodiscard]] std::int64_t slowHandlerWarningThresholdMs() const;
     void armTickDeadline();
     void setTimeProvider(std::function<std::int64_t()> provider);
     static void setGcCallback(std::function<void()> callback);
@@ -241,6 +243,7 @@ private:
         std::string name;
         std::string normalizedName;
         bool firstParamDeclaredMe{false};
+        mutable int disabledTraceScriptPrologueLength{-1};
     };
 
     DirectorFile* file_{nullptr};
@@ -256,8 +259,13 @@ private:
     TraceOutputHandler traceOutputHandler_;
     GlobalHandlerFinder globalHandlerFinder_;
     std::unordered_set<std::string> tracedHandlers_;
-    std::unordered_map<std::string, HandlerRef> handlerCache_;
-    std::unordered_set<std::string> missingHandlerCache_;
+    std::unordered_map<std::string,
+                       HandlerRef,
+                       TransparentCaseInsensitiveStringHash,
+                       TransparentCaseInsensitiveStringEqual> handlerCache_;
+    std::unordered_set<std::string,
+                       TransparentCaseInsensitiveStringHash,
+                       TransparentCaseInsensitiveStringEqual> missingHandlerCache_;
     std::unordered_set<std::string> missingBuiltinDebugCache_;
     std::unordered_map<HandlerMetadataKey, std::shared_ptr<const HandlerMetadata>, HandlerMetadataKeyHash> handlerMetadataCache_;
     std::function<void()> passCallback_;
@@ -274,6 +282,7 @@ private:
     std::int64_t tickDeadlineMs_{0};
     std::int64_t tickDeadline_{0};
     std::int64_t handlerTimeoutMs_{0};
+    std::int64_t slowHandlerWarningThresholdMs_{1000};
     int randomSeed_{0};
     std::int64_t randomState_{0};
     std::function<std::int64_t()> timeProvider_;

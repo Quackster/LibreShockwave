@@ -225,7 +225,10 @@ std::string CastMember::textContent() const {
 
 void CastMember::setDynamicText(std::string text) {
     dynamicText_ = std::move(text);
+    ++textRevision_;
 }
+
+std::uint64_t CastMember::textRevision() const { return textRevision_; }
 
 const std::string& CastMember::textFont() const { return textFont_; }
 void CastMember::setTextFont(std::string font) { textFont_ = std::move(font); }
@@ -453,6 +456,7 @@ void CastMember::resetRuntimePayload() {
     bitmapAlphaThreshold_ = 0;
     regPointPinnedToMember_ = false;
     dynamicText_.reset();
+    ++textRevision_;
     resetTextProperties();
 }
 

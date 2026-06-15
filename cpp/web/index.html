@@ -410,6 +410,9 @@
 
     const searchParams = new URLSearchParams(location.search);
     let debugPlaybackEnabled = searchParams.get("debugPlayback") === "1";
+    const slowHandlerWarningMs = Number.isFinite(Number(searchParams.get("slowHandlerWarningMs")))
+      ? Math.max(0, Number(searchParams.get("slowHandlerWarningMs")))
+      : 1000;
     movieUrl.value = searchParams.get("movie") || habboUrl;
     paramsBox.value = paramsToText(LibreShockwaveCppPlayer.defaultHabboParams);
     socketProxyBox.value = initialSocketProxyText(searchParams);
@@ -432,6 +435,7 @@
       autoload: searchParams.get("autoload") === "1",
       autoplay: true,
       debugPlaybackEnabled,
+      slowHandlerWarningMs,
       socketProxy: textToSocketProxy(socketProxyBox.value),
       onReady() {
         status.textContent = "Ready";
@@ -487,7 +491,7 @@
       }
       const socketProxy = textToSocketProxy(socketProxyBox.value);
       player.setSocketProxy(socketProxy);
-      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: false, debugPlaybackEnabled })
+      player.load(movieUrl.value, { params: textToParams(paramsBox.value), socketProxy, autoplay: false, debugPlaybackEnabled, slowHandlerWarningMs })
         .then(() => player.play())
         .catch(() => {
           loadButton.disabled = false;

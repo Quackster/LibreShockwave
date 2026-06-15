@@ -121,6 +121,7 @@ public:
     void setErrorListener(ErrorListener listener);
     void addExternalCastLoadHandler(ExternalCastLoadHandler* handler);
     void setDebugEnabled(bool enabled);
+    void setSlowHandlerWarningThresholdMs(std::int64_t milliseconds);
     void setDebugController(std::shared_ptr<debug::DebugControllerApi> controller);
     [[nodiscard]] std::shared_ptr<debug::DebugControllerApi> getDebugController() const;
     void setNetProvider(net::NetProvider* provider);

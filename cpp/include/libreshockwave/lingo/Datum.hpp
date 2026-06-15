@@ -30,6 +30,55 @@ public:
     [[nodiscard]] static LingoException indexOutOfBounds(int index, int size);
 };
 
+struct TransparentStringHash {
+    using is_transparent = void;
+
+    [[nodiscard]] std::size_t operator()(std::string_view value) const noexcept {
+        return std::hash<std::string_view>{}(value);
+    }
+
+    [[nodiscard]] std::size_t operator()(const std::string& value) const noexcept {
+        return std::hash<std::string_view>{}(value);
+    }
+
+    [[nodiscard]] std::size_t operator()(const char* value) const noexcept {
+        return std::hash<std::string_view>{}(value);
+    }
+};
+
+struct TransparentCaseInsensitiveStringHash {
+    using is_transparent = void;
+
+    [[nodiscard]] std::size_t operator()(std::string_view value) const noexcept;
+    [[nodiscard]] std::size_t operator()(const std::string& value) const noexcept {
+        return (*this)(std::string_view(value));
+    }
+    [[nodiscard]] std::size_t operator()(const char* value) const noexcept {
+        return (*this)(std::string_view(value));
+    }
+};
+
+struct TransparentCaseInsensitiveStringEqual {
+    using is_transparent = void;
+
+    [[nodiscard]] bool operator()(std::string_view lhs, std::string_view rhs) const noexcept;
+    [[nodiscard]] bool operator()(const std::string& lhs, std::string_view rhs) const noexcept {
+        return (*this)(std::string_view(lhs), rhs);
+    }
+    [[nodiscard]] bool operator()(std::string_view lhs, const std::string& rhs) const noexcept {
+        return (*this)(lhs, std::string_view(rhs));
+    }
+    [[nodiscard]] bool operator()(const std::string& lhs, const std::string& rhs) const noexcept {
+        return (*this)(std::string_view(lhs), std::string_view(rhs));
+    }
+    [[nodiscard]] bool operator()(const char* lhs, std::string_view rhs) const noexcept {
+        return (*this)(std::string_view(lhs), rhs);
+    }
+    [[nodiscard]] bool operator()(std::string_view lhs, const char* rhs) const noexcept {
+        return (*this)(lhs, std::string_view(rhs));
+    }
+};
+
 enum class DatumType {
     Null,
     Void,
@@ -123,6 +172,7 @@ public:
         std::string value;
         int castLib;
         int memberNum;
+        std::uint64_t revision = 0;
         friend bool operator==(const FieldText&, const FieldText&) = default;
     };
 
@@ -334,7 +384,7 @@ public:
     [[nodiscard]] static Datum of(float value);
     [[nodiscard]] static Datum of(double value);
     [[nodiscard]] static Datum of(std::string value);
-    [[nodiscard]] static Datum fieldText(std::string value, int castLib, int memberNum);
+    [[nodiscard]] static Datum fieldText(std::string value, int castLib, int memberNum, std::uint64_t revision = 0);
     [[nodiscard]] static Datum symbol(std::string name);
     [[nodiscard]] static Datum list(std::vector<Datum> items = {}, bool sorted = false);
     [[nodiscard]] static Datum propList(bool sorted = false);
@@ -391,6 +441,7 @@ public:
     [[nodiscard]] const DFloat* asFloat() const;
     [[nodiscard]] const Str* asString() const;
     [[nodiscard]] const FieldText* asFieldText() const;
+    [[nodiscard]] const StringChunk* asStringChunk() const;
     [[nodiscard]] const Symbol* asSymbol() const;
     [[nodiscard]] const CastLibRef* asCastLibRef() const;
     [[nodiscard]] const CastLibMemberAccessor* asCastLibMemberAccessor() const;
@@ -518,10 +569,13 @@ public:
     [[nodiscard]] int findSameTypeKey(const Datum& key) const;
     [[nodiscard]] int findTypedKey(const Datum& key) const;
     [[nodiscard]] int findUntypedKey(const Datum& key) const;
+    [[nodiscard]] int findUntypedKeyName(std::string_view keyName) const;
     [[nodiscard]] int count() const;
     [[nodiscard]] bool sorted() const;
     [[nodiscard]] const std::vector<std::pair<Datum, Datum>>& properties() const;
     [[nodiscard]] std::vector<std::pair<Datum, Datum>>& properties();
+    void appendProperty(Datum key, Datum value);
+    bool erasePropertyAt(int zeroBasedIndex);
 
     friend bool operator==(const PropList& lhs, const PropList& rhs);
 
@@ -534,7 +588,11 @@ private:
     bool sorted_;
     mutable bool indexDirty_{true};
     mutable std::unordered_map<std::string, int> firstSameTypeKeyIndex_;
-    mutable std::unordered_map<std::string, int> firstUntypedKeyIndex_;
+    mutable std::unordered_map<std::string,
+                               int,
+                               TransparentCaseInsensitiveStringHash,
+                               TransparentCaseInsensitiveStringEqual>
+        firstUntypedKeyIndex_;
     mutable std::unordered_map<std::string, int> firstCaseSensitiveKeyIndex_;
 };
 
@@ -551,15 +609,33 @@ public:
     [[nodiscard]] Datum getProperty(const std::string& name) const;
     void setProperty(const std::string& name, Datum value);
     [[nodiscard]] bool hasProperty(const std::string& name) const;
+    [[nodiscard]] int findExactPropertyIndex(std::string_view name) const;
+    [[nodiscard]] int findCaseInsensitivePropertyIndex(std::string_view name) const;
+    [[nodiscard]] int findPropertyIndex(std::string_view name) const;
     [[nodiscard]] const std::vector<std::pair<std::string, Datum>>& properties() const;
     [[nodiscard]] std::vector<std::pair<std::string, Datum>>& properties();
+    void reserveLocalProperties(std::size_t additionalCount);
+    void appendLocalProperty(std::string name, Datum value);
+    void putLocalPropertyExact(std::string name, Datum value);
+    bool eraseLocalPropertyExact(std::string_view name);
 
 private:
+    void invalidatePropertyIndex() const;
+    void indexPropertyEntry(std::size_t index) const;
+    void rebuildPropertyIndex() const;
+
     std::string scriptName_;
     std::optional<CastMemberRef> scriptRef_;
     std::uint64_t identityId_;
     std::vector<std::pair<std::string, Datum>> properties_;
     std::shared_ptr<ScriptInstanceRef> ancestor_;
+    mutable bool propertyIndexDirty_{false};
+    mutable std::unordered_map<std::string, int, TransparentStringHash, std::equal_to<>> firstExactPropertyIndex_;
+    mutable std::unordered_map<std::string,
+                               int,
+                               TransparentCaseInsensitiveStringHash,
+                               TransparentCaseInsensitiveStringEqual>
+        firstCaseInsensitivePropertyIndex_;
 };
 
 class Datum::ArgList {

@@ -70,7 +70,7 @@ public:
     bool setMemberProp(int castLibNumber, int memberNumber, const std::string& propName, const lingo::Datum& value);
     [[nodiscard]] lingo::Datum getFieldValue(const lingo::Datum& identifier, int castLibNumber);
     [[nodiscard]] lingo::Datum getFieldDatum(const lingo::Datum& identifier, int castLibNumber);
-    [[nodiscard]] lingo::Datum getParsedFieldValue(int castLibNumber, int memberNumber);
+    [[nodiscard]] lingo::Datum getParsedFieldValue(int castLibNumber, int memberNumber, std::uint64_t revision = 0);
     [[nodiscard]] std::vector<int> charPosToLoc(int castLibNumber, int memberNumber, int charIndex, int fieldWidth);
     [[nodiscard]] int locToCharPos(int castLibNumber, int memberNumber, int x, int y, int fieldWidth);
     [[nodiscard]] int textLineHeight(int castLibNumber, int memberNumber);
@@ -134,7 +134,13 @@ private:
     CastDataRequestCallback castDataRequestCallback_;
     MemberSlotRetiredCallback memberSlotRetiredCallback_;
     render::output::TextRenderer* textRenderer_{nullptr};
-    std::map<std::pair<int, int>, std::pair<std::string, lingo::Datum>> parsedFieldCache_;
+    struct ParsedFieldCacheEntry {
+        std::uint64_t revision{0};
+        std::string text;
+        lingo::Datum value{lingo::Datum::voidValue()};
+    };
+
+    std::map<std::pair<int, int>, ParsedFieldCacheEntry> parsedFieldCache_;
     bool initialized_ = false;
 };
 

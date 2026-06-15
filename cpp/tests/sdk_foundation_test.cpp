@@ -258,6 +258,7 @@ using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lingo::builtin::BuiltinContext;
 using libreshockwave::lingo::builtin::BuiltinRegistry;
+using libreshockwave::lingo::builtin::StringBuiltins;
 using libreshockwave::lingo::vm::AlertHookHandler;
 using libreshockwave::lingo::vm::DebugConfig;
 using libreshockwave::lingo::vm::ExecutionContext;
@@ -1308,6 +1309,17 @@ void testLingoDatumTypes() {
                .stringValue()
                .empty());
     assert(StringMethodDispatcher::dispatch("alpha", "missing", {}).isVoid());
+    BuiltinContext stringBuiltinContext;
+    assert(StringBuiltins::offset(stringBuiltinContext, {Datum::of(std::string("\001")),
+                                                         Datum::of(std::string("abc\001def"))}).intValue() == 4);
+    assert(StringBuiltins::offset(stringBuiltinContext, {Datum::of(std::string("B")),
+                                                         Datum::of(std::string("abc"))}).intValue() == 2);
+    assert(StringBuiltins::offset(stringBuiltinContext,
+                                  {Datum::of(std::string("E")),
+                                   Datum::stringChunk(Datum::of("hello"), StringChunkType::Char, 2, 2, ',', "e")})
+               .intValue() == 1);
+    assert(StringBuiltins::offset(stringBuiltinContext, {Datum::of(std::string("z")),
+                                                         Datum::of(std::string("abc"))}).intValue() == 0);
     Datum dispatcherListDatum = Datum::list({Datum::of(3), Datum::of(1)});
     auto& dispatcherList = dispatcherListDatum.listValue();
     assert(ListMethodDispatcher::dispatch(dispatcherList, "count", {}).intValue() == 2);
@@ -1493,6 +1505,8 @@ void testLingoDatumTypes() {
     const auto chunk = Datum::stringChunk(Datum::of("hello"), StringChunkType::Char, 2, 2, ',', "e");
     assert(chunk.isString());
     assert(chunk.stringValue() == "e");
+    assert(chunk.asStringChunk() != nullptr);
+    assert(chunk.asStringChunk()->value == "e");
     assert(libreshockwave::lingo::vm::datum::format(Datum::of(std::string("abcdef")), 5) == "\"ab...\"");
     assert(libreshockwave::lingo::vm::datum::format(static_cast<const Datum*>(nullptr)) == "<null>");
     assert(libreshockwave::lingo::vm::datum::formatWithType(Datum::symbol("mouseUp")) == "symbol: #mouseUp");
@@ -1562,6 +1576,17 @@ void testLingoDatumTypes() {
     instance.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
     assert(instance.scriptInstanceValue().getProperty("ancestor").isVoid());
     assert(instance.scriptInstanceValue().getProperty("baseValue").isVoid());
+    instance.scriptInstanceValue().putLocalPropertyExact("ExactLocal", Datum::of(11));
+    assert(instance.scriptInstanceValue().findExactPropertyIndex("ExactLocal") >= 0);
+    assert(instance.scriptInstanceValue().findCaseInsensitivePropertyIndex("exactlocal") >= 0);
+    assert(instance.scriptInstanceValue().getProperty("ExactLocal").intValue() == 11);
+    assert(instance.scriptInstanceValue().getProperty("exactlocal").intValue() == 11);
+    instance.scriptInstanceValue().putLocalPropertyExact("ExactLocal", Datum::of(12));
+    assert(instance.scriptInstanceValue().getProperty("ExactLocal").intValue() == 12);
+    assert(instance.scriptInstanceValue().findExactPropertyIndex("exactlocal") < 0);
+    assert(instance.scriptInstanceValue().eraseLocalPropertyExact("ExactLocal"));
+    assert(!instance.scriptInstanceValue().eraseLocalPropertyExact("ExactLocal"));
+    assert(instance.scriptInstanceValue().getProperty("ExactLocal").isVoid());
     auto cyclicInstance = Datum::scriptInstance("cyclic");
     cyclicInstance.scriptInstanceValue().setProperty("ancestor", cyclicInstance);
     assert(cyclicInstance.scriptInstanceValue().getProperty("missingCycleProperty").isVoid());
@@ -5780,17 +5805,25 @@ void testBuiltinRegistryFoundation() {
     cachedPropList.putTyped(Datum::of(63), Datum::of(777));
     const auto& cachedPropListConst = cachedPropList;
     assert(cachedPropListConst.properties()[63].second.intValue() == 777);
-    cachedPropList.properties().emplace_back(Datum::symbol("external"), Datum::of(5));
+    cachedPropList.appendProperty(Datum::symbol("external"), Datum::of(5));
     assert(cachedPropList.findTypedKey(Datum::symbol("EXTERNAL")) == 64);
+    assert(cachedPropList.findUntypedKeyName("EXTERNAL") == 64);
+    assert(cachedPropList.findUntypedKeyName(std::string_view("external")) == 64);
+    assert(cachedPropList.erasePropertyAt(64));
+    assert(cachedPropList.count() == 64);
+    assert(cachedPropList.findUntypedKeyName("external") < 0);
+    assert(!cachedPropList.erasePropertyAt(999));
     auto fallbackProps = Datum::propList();
     auto& fallbackPropList = fallbackProps.propListValue();
-    fallbackPropList.properties().emplace_back(Datum::symbol("bridge"), Datum::of(1));
+    fallbackPropList.appendProperty(Datum::symbol("bridge"), Datum::of(1));
     fallbackPropList.putTyped(Datum::of(std::string("bridge")), Datum::of(2));
     assert(fallbackPropList.count() == 1);
     const auto& fallbackPropListConst = fallbackPropList;
     assert(fallbackPropListConst.properties()[0].first.asSymbol() != nullptr);
+    assert(fallbackPropList.findUntypedKeyName("BRIDGE") == 0);
     fallbackPropList.putTyped(Datum::of(std::string("BRIDGE")), Datum::of(3));
     assert(fallbackPropList.count() == 2);
+    assert(fallbackPropList.findUntypedKeyName("bridge") == 0);
     auto nestedBuiltinProps = Datum::propList();
     nestedBuiltinProps.propListValue().put(Datum::symbol("items"), Datum::list({Datum::of(1)}));
     const auto nestedBuiltinPropsCopy = registry.invoke("duplicate", context, {nestedBuiltinProps});
@@ -6405,6 +6438,7 @@ void testBuiltinRegistryFoundation() {
     assert(directNewScript.scriptInstanceValue().scriptRef()->memberNum() == 9);
     assert(directNewScript.scriptInstanceValue().getProperty("pDeclared").isVoid());
     assert(directNewScript.scriptInstanceValue().getProperty("pOther").isVoid());
+    assert(directNewScript.scriptInstanceValue().findExactPropertyIndex("pDeclared") >= 0);
     auto ancestorWithId = Datum::scriptInstance("ancestorWithId");
     ancestorWithId.scriptInstanceValue().setProperty("id", Datum::symbol("ancestor"));
     auto childWithDeclaredId = directNewScript;
@@ -6413,6 +6447,13 @@ void testBuiltinRegistryFoundation() {
     childWithDeclaredId.scriptInstanceValue().setProperty("id", Datum::symbol("child"));
     assert(childWithDeclaredId.scriptInstanceValue().getProperty("id").asSymbol()->name == "child");
     assert(ancestorWithId.scriptInstanceValue().getProperty("id").asSymbol()->name == "ancestor");
+    const auto secondDirectNewScript = registry.invoke("new",
+                                                       context,
+                                                       {Datum::scriptRef(Datum::CastMemberRef{5, 9}), Datum::of(321)});
+    assert(directNewPropertyLookups == 1);
+    assert(secondDirectNewScript.scriptInstanceValue().getProperty("pDeclared").isVoid());
+    assert(secondDirectNewScript.scriptInstanceValue().getProperty("pOther").isVoid());
+    assert(secondDirectNewScript.scriptInstanceValue().findExactPropertyIndex("pOther") >= 0);
 
     int builtinScriptNewHandlerCalls = 0;
     context.callTargetHandler = [&builtinScriptNewHandlerCalls](const Datum& target,
@@ -6471,7 +6512,7 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("value", context, {fallbackFieldText}).propListValue().get(Datum::symbol("fallback")).intValue() == 7);
     int parsedFieldCast = 0;
     int parsedFieldMember = 0;
-    context.fieldParsedValueResolver = [&parsedFieldCast, &parsedFieldMember](int castLib, int memberNum) {
+    context.fieldParsedValueResolver = [&parsedFieldCast, &parsedFieldMember](int castLib, int memberNum, std::uint64_t) {
         parsedFieldCast = castLib;
         parsedFieldMember = memberNum;
         return Datum::list({Datum::of(8), Datum::of(9)});
@@ -7978,6 +8019,27 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 166) {
             return std::string("chars");
         }
+        if (nameId == 167) {
+            return std::string("bitOr");
+        }
+        if (nameId == 168) {
+            return std::string("integer");
+        }
+        if (nameId == 169) {
+            return std::string("min");
+        }
+        if (nameId == 170) {
+            return std::string("max");
+        }
+        if (nameId == 171) {
+            return std::string("listp");
+        }
+        if (nameId == 172) {
+            return std::string("voidp");
+        }
+        if (nameId == 173) {
+            return std::string("abs");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -7991,12 +8053,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     bool exposeGetMemNumHandler = false;
     bool exposeReadAliasHandler = false;
     bool exposeSpriteSetCursorHandler = false;
+    bool exposeAuthoredCharToNumHandler = false;
     callbacks.handlerFinder = [&script,
                                &otherHandler,
                                &exposeGetMemNumHandler,
                                &exposeReadAliasHandler,
-                               &exposeSpriteSetCursorHandler](std::string_view name) -> std::optional<HandlerRef> {
+                               &exposeSpriteSetCursorHandler,
+                               &exposeAuthoredCharToNumHandler](std::string_view name) -> std::optional<HandlerRef> {
         if (name == "known") {
+            return HandlerRef{&script, otherHandler};
+        }
+        if (exposeAuthoredCharToNumHandler && name == "charToNum") {
             return HandlerRef{&script, otherHandler};
         }
         if (exposeGetMemNumHandler && name == "getmemnum") {
@@ -9770,6 +9837,291 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(immediateBuiltinScope.bytecodeIndex() == 1);
     assert(immediateBuiltinContext.pop().intValue() == 9);
 
+    auto immediateCharToNumHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 159);
+    ScriptChunk immediateCharToNumScript(nullptr,
+                                         ChunkId(724),
+                                         ScriptChunkType::MovieScript,
+                                         0,
+                                         {immediateCharToNumHandler},
+                                         {},
+                                         {},
+                                         {},
+                                         {});
+    Scope immediateCharToNumScope(&immediateCharToNumScript, immediateCharToNumHandler, {});
+    ExecutionContext immediateCharToNumContext(immediateCharToNumScope,
+                                               immediateCharToNumHandler.instructions[0],
+                                               &registry,
+                                               &builtinContext,
+                                               callbacks);
+    immediateCharToNumContext.push(Datum::of(std::string("A")));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCharToNumContext));
+    assert(immediateCharToNumScope.bytecodeIndex() == 1);
+    assert(immediateCharToNumContext.pop().intValue() == 65);
+
+    auto immediateNumToCharHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 160);
+    ScriptChunk immediateNumToCharScript(nullptr,
+                                         ChunkId(725),
+                                         ScriptChunkType::MovieScript,
+                                         0,
+                                         {immediateNumToCharHandler},
+                                         {},
+                                         {},
+                                         {},
+                                         {});
+    Scope immediateNumToCharScope(&immediateNumToCharScript, immediateNumToCharHandler, {});
+    ExecutionContext immediateNumToCharContext(immediateNumToCharScope,
+                                               immediateNumToCharHandler.instructions[0],
+                                               &registry,
+                                               &builtinContext,
+                                               callbacks);
+    immediateNumToCharContext.push(Datum::of(66));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateNumToCharContext));
+    assert(immediateNumToCharScope.bytecodeIndex() == 1);
+    assert(immediateNumToCharContext.pop().stringValue() == "B");
+
+    auto immediateBitAndHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 2, 163);
+    ScriptChunk immediateBitAndScript(nullptr,
+                                      ChunkId(726),
+                                      ScriptChunkType::MovieScript,
+                                      0,
+                                      {immediateBitAndHandler},
+                                      {},
+                                      {},
+                                      {},
+                                      {});
+    Scope immediateBitAndScope(&immediateBitAndScript, immediateBitAndHandler, {});
+    ExecutionContext immediateBitAndContext(immediateBitAndScope,
+                                            immediateBitAndHandler.instructions[0],
+                                            &registry,
+                                            &builtinContext,
+                                            callbacks);
+    immediateBitAndContext.push(Datum::of(0x0F));
+    immediateBitAndContext.push(Datum::of(0x33));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateBitAndContext));
+    assert(immediateBitAndScope.bytecodeIndex() == 1);
+    assert(immediateBitAndContext.pop().intValue() == 0x03);
+
+    exposeAuthoredCharToNumHandler = true;
+    Scope authoredCharToNumScope(&immediateCharToNumScript, immediateCharToNumHandler, {});
+    ExecutionContext authoredCharToNumContext(authoredCharToNumScope,
+                                              immediateCharToNumHandler.instructions[0],
+                                              &registry,
+                                              &builtinContext,
+                                              callbacks);
+    authoredCharToNumContext.push(Datum::of(std::string("A")));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, authoredCharToNumContext));
+    assert(authoredCharToNumScope.bytecodeIndex() == 1);
+    assert(authoredCharToNumContext.pop().stringValue() == "exec:99:1");
+    exposeAuthoredCharToNumHandler = false;
+
+    auto immediateBitOrHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 2, 167);
+    ScriptChunk immediateBitOrScript(nullptr,
+                                     ChunkId(727),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {immediateBitOrHandler},
+                                     {},
+                                     {},
+                                     {},
+                                     {});
+    Scope immediateBitOrScope(&immediateBitOrScript, immediateBitOrHandler, {});
+    ExecutionContext immediateBitOrContext(immediateBitOrScope,
+                                           immediateBitOrHandler.instructions[0],
+                                           &registry,
+                                           &builtinContext,
+                                           callbacks);
+    immediateBitOrContext.push(Datum::of(0x0F));
+    immediateBitOrContext.push(Datum::of(0x30));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateBitOrContext));
+    assert(immediateBitOrScope.bytecodeIndex() == 1);
+    assert(immediateBitOrContext.pop().intValue() == 0x3F);
+
+    auto immediateIntegerHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 168);
+    ScriptChunk immediateIntegerScript(nullptr,
+                                       ChunkId(728),
+                                       ScriptChunkType::MovieScript,
+                                       0,
+                                       {immediateIntegerHandler},
+                                       {},
+                                       {},
+                                       {},
+                                       {});
+    Scope immediateIntegerScope(&immediateIntegerScript, immediateIntegerHandler, {});
+    ExecutionContext immediateIntegerContext(immediateIntegerScope,
+                                             immediateIntegerHandler.instructions[0],
+                                             &registry,
+                                             &builtinContext,
+                                             callbacks);
+    immediateIntegerContext.push(Datum::of(std::string("*FF")));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateIntegerContext));
+    assert(immediateIntegerScope.bytecodeIndex() == 1);
+    assert(immediateIntegerContext.pop().intValue() == 255);
+
+    auto immediateMinHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 2, 169);
+    ScriptChunk immediateMinScript(nullptr,
+                                   ChunkId(729),
+                                   ScriptChunkType::MovieScript,
+                                   0,
+                                   {immediateMinHandler},
+                                   {},
+                                   {},
+                                   {},
+                                   {});
+    Scope immediateMinScope(&immediateMinScript, immediateMinHandler, {});
+    ExecutionContext immediateMinContext(immediateMinScope,
+                                         immediateMinHandler.instructions[0],
+                                         &registry,
+                                         &builtinContext,
+                                         callbacks);
+    immediateMinContext.push(Datum::of(7));
+    immediateMinContext.push(Datum::of(2.5F));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateMinContext));
+    assert(immediateMinScope.bytecodeIndex() == 1);
+    assert(std::fabs(immediateMinContext.pop().floatValue() - 2.5F) < 0.0001F);
+
+    auto immediateMaxHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 170);
+    ScriptChunk immediateMaxScript(nullptr,
+                                   ChunkId(730),
+                                   ScriptChunkType::MovieScript,
+                                   0,
+                                   {immediateMaxHandler},
+                                   {},
+                                   {},
+                                   {},
+                                   {});
+    Scope immediateMaxScope(&immediateMaxScript, immediateMaxHandler, {});
+    ExecutionContext immediateMaxContext(immediateMaxScope,
+                                         immediateMaxHandler.instructions[0],
+                                         &registry,
+                                         &builtinContext,
+                                         callbacks);
+    immediateMaxContext.push(Datum::list({Datum::of(7), Datum::of(2), Datum::of(9)}));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateMaxContext));
+    assert(immediateMaxScope.bytecodeIndex() == 1);
+    assert(immediateMaxContext.pop().intValue() == 9);
+
+    auto immediateListpHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 171);
+    ScriptChunk immediateListpScript(nullptr,
+                                     ChunkId(734),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {immediateListpHandler},
+                                     {},
+                                     {},
+                                     {},
+                                     {});
+    Scope immediateListpScope(&immediateListpScript, immediateListpHandler, {});
+    ExecutionContext immediateListpContext(immediateListpScope,
+                                           immediateListpHandler.instructions[0],
+                                           &registry,
+                                           &builtinContext,
+                                           callbacks);
+    immediateListpContext.push(Datum::propList());
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateListpContext));
+    assert(immediateListpScope.bytecodeIndex() == 1);
+    assert(immediateListpContext.pop().boolValue());
+
+    auto immediateVoidpHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 172);
+    ScriptChunk immediateVoidpScript(nullptr,
+                                     ChunkId(735),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {immediateVoidpHandler},
+                                     {},
+                                     {},
+                                     {},
+                                     {});
+    Scope immediateVoidpScope(&immediateVoidpScript, immediateVoidpHandler, {});
+    ExecutionContext immediateVoidpContext(immediateVoidpScope,
+                                           immediateVoidpHandler.instructions[0],
+                                           &registry,
+                                           &builtinContext,
+                                           callbacks);
+    immediateVoidpContext.push(Datum::voidValue());
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateVoidpContext));
+    assert(immediateVoidpScope.bytecodeIndex() == 1);
+    assert(immediateVoidpContext.pop().boolValue());
+
+    auto immediateAbsHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 173);
+    ScriptChunk immediateAbsScript(nullptr,
+                                   ChunkId(736),
+                                   ScriptChunkType::MovieScript,
+                                   0,
+                                   {immediateAbsHandler},
+                                   {},
+                                   {},
+                                   {},
+                                   {});
+    Scope immediateAbsScope(&immediateAbsScript, immediateAbsHandler, {});
+    ExecutionContext immediateAbsContext(immediateAbsScope,
+                                         immediateAbsHandler.instructions[0],
+                                         &registry,
+                                         &builtinContext,
+                                         callbacks);
+    immediateAbsContext.push(Datum::of(-12));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateAbsContext));
+    assert(immediateAbsScope.bytecodeIndex() == 1);
+    assert(immediateAbsContext.pop().intValue() == 12);
+
+    auto immediateNewHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 94);
+    ScriptChunk immediateNewScript(nullptr,
+                                   ChunkId(739),
+                                   ScriptChunkType::MovieScript,
+                                   0,
+                                   {immediateNewHandler},
+                                   {},
+                                   {},
+                                   {},
+                                   {});
+    int immediateNewPropertyLookups = 0;
+    builtinContext.scriptPropertyNamesResolver = [&immediateNewPropertyLookups](int castLib, int memberNum) {
+        ++immediateNewPropertyLookups;
+        assert(castLib == 6);
+        assert(memberNum == 12);
+        return std::vector<std::string>{"pInit"};
+    };
+    int immediateNewHandlerCalls = 0;
+    builtinContext.callTargetHandler = [&immediateNewHandlerCalls](const Datum& target,
+                                                                   const std::string& handlerName,
+                                                                   const std::vector<Datum>& args) {
+        ++immediateNewHandlerCalls;
+        assert(target.scriptInstanceValue().getProperty("pInit").isVoid());
+        assert(handlerName == "new");
+        assert(args.empty());
+        return Datum::voidValue();
+    };
+    Scope immediateNewScope(&immediateNewScript, immediateNewHandler, {});
+    ExecutionContext immediateNewContext(immediateNewScope,
+                                         immediateNewHandler.instructions[0],
+                                         &registry,
+                                         &builtinContext,
+                                         callbacks);
+    immediateNewContext.push(Datum::scriptRef(Datum::CastMemberRef{6, 12}));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateNewContext));
+    assert(immediateNewScope.bytecodeIndex() == 1);
+    assert(immediateNewPropertyLookups == 1);
+    assert(immediateNewHandlerCalls == 1);
+    const Datum immediateNewResult = immediateNewContext.pop();
+    assert(immediateNewResult.scriptInstanceValue().scriptRef()->castLib == 6);
+    assert(immediateNewResult.scriptInstanceValue().scriptRef()->memberNum() == 12);
+    assert(immediateNewResult.scriptInstanceValue().getProperty("pInit").isVoid());
+    assert(immediateNewResult.scriptInstanceValue().findExactPropertyIndex("pInit") >= 0);
+    Scope secondImmediateNewScope(&immediateNewScript, immediateNewHandler, {});
+    ExecutionContext secondImmediateNewContext(secondImmediateNewScope,
+                                               immediateNewHandler.instructions[0],
+                                               &registry,
+                                               &builtinContext,
+                                               callbacks);
+    secondImmediateNewContext.push(Datum::scriptRef(Datum::CastMemberRef{6, 12}));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, secondImmediateNewContext));
+    assert(immediateNewPropertyLookups == 1);
+    assert(immediateNewHandlerCalls == 2);
+    const Datum secondImmediateNewResult = secondImmediateNewContext.pop();
+    assert(secondImmediateNewResult.scriptInstanceValue().getProperty("pInit").isVoid());
+    assert(secondImmediateNewResult.scriptInstanceValue().findExactPropertyIndex("pInit") >= 0);
+    builtinContext.callTargetHandler = {};
+    builtinContext.scriptPropertyNamesResolver = {};
+
     auto immediateCountHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 70);
     ScriptChunk immediateCountScript(nullptr,
                                      ChunkId(705),
@@ -9788,6 +10140,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                                            callbacks);
     immediateCountContext.push(Datum::list({Datum::of(1), Datum::of(2), Datum::of(3)}));
     assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCountContext));
+    assert(immediateCountScope.bytecodeIndex() == 1);
     assert(immediateCountContext.pop().intValue() == 3);
 
     auto immediateLengthHandler = makeImmediateExtHandler(Opcode::PUSH_ARG_LIST, 1, 165);
@@ -9919,6 +10272,90 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateStringGetPropContext));
     assert(immediateStringGetPropContext.pop().stringValue() == "c");
 
+    Scope immediateFieldCharGetPropScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
+    ExecutionContext immediateFieldCharGetPropContext(immediateFieldCharGetPropScope,
+                                                      immediateStringGetPropHandler.instructions[0],
+                                                      &registry,
+                                                      &builtinContext,
+                                                      callbacks);
+    immediateFieldCharGetPropContext.push(Datum::fieldText("wxyz", 1, 4));
+    immediateFieldCharGetPropContext.push(Datum::symbol("char"));
+    immediateFieldCharGetPropContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateFieldCharGetPropContext));
+    assert(immediateFieldCharGetPropContext.pop().stringValue() == "x");
+
+    Scope immediateMissingCharGetPropScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
+    ExecutionContext immediateMissingCharGetPropContext(immediateMissingCharGetPropScope,
+                                                        immediateStringGetPropHandler.instructions[0],
+                                                        &registry,
+                                                        &builtinContext,
+                                                        callbacks);
+    immediateMissingCharGetPropContext.push(Datum::of(std::string("wxyz")));
+    immediateMissingCharGetPropContext.push(Datum::symbol("char"));
+    immediateMissingCharGetPropContext.push(Datum::of(9));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateMissingCharGetPropContext));
+    assert(immediateMissingCharGetPropContext.pop().stringValue().empty());
+
+    auto immediateStringLineCountHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 2, 70);
+    ScriptChunk immediateStringLineCountScript(nullptr,
+                                               ChunkId(740),
+                                               ScriptChunkType::MovieScript,
+                                               0,
+                                               {immediateStringLineCountHandler},
+                                               {},
+                                               {},
+                                               {},
+                                               {});
+    Scope immediateStringLineCountScope(&immediateStringLineCountScript, immediateStringLineCountHandler, {});
+    ExecutionContext immediateStringLineCountContext(immediateStringLineCountScope,
+                                                     immediateStringLineCountHandler.instructions[0],
+                                                     &registry,
+                                                     &builtinContext,
+                                                     callbacks);
+    immediateStringLineCountContext.push(Datum::fieldText("one\ntwo\nthree", 1, 3));
+    immediateStringLineCountContext.push(Datum::symbol("line"));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateStringLineCountContext));
+    assert(immediateStringLineCountScope.bytecodeIndex() == 1);
+    assert(immediateStringLineCountContext.pop().intValue() == 3);
+
+    Scope immediateCachedFieldLineCountScope(&immediateStringLineCountScript, immediateStringLineCountHandler, {});
+    ExecutionContext immediateCachedFieldLineCountContext(immediateCachedFieldLineCountScope,
+                                                          immediateStringLineCountHandler.instructions[0],
+                                                          &registry,
+                                                          &builtinContext,
+                                                          callbacks);
+    immediateCachedFieldLineCountContext.push(Datum::fieldText("alpha\nbeta\ngamma", 9, 12, 4));
+    immediateCachedFieldLineCountContext.push(Datum::symbol("line"));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCachedFieldLineCountContext));
+    assert(immediateCachedFieldLineCountContext.pop().intValue() == 3);
+    assert(builtinContext.fieldLineIndexCache.size() == 1);
+
+    Scope immediateCachedFieldLineGetScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
+    ExecutionContext immediateCachedFieldLineGetContext(immediateCachedFieldLineGetScope,
+                                                        immediateStringGetPropHandler.instructions[0],
+                                                        &registry,
+                                                        &builtinContext,
+                                                        callbacks);
+    immediateCachedFieldLineGetContext.push(Datum::fieldText("alpha\nbeta\ngamma", 9, 12, 4));
+    immediateCachedFieldLineGetContext.push(Datum::symbol("line"));
+    immediateCachedFieldLineGetContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateCachedFieldLineGetContext));
+    assert(immediateCachedFieldLineGetContext.pop().stringValue() == "beta");
+    assert(builtinContext.fieldLineIndexCache.size() == 1);
+
+    Scope immediateRevisedFieldLineGetScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
+    ExecutionContext immediateRevisedFieldLineGetContext(immediateRevisedFieldLineGetScope,
+                                                         immediateStringGetPropHandler.instructions[0],
+                                                         &registry,
+                                                         &builtinContext,
+                                                         callbacks);
+    immediateRevisedFieldLineGetContext.push(Datum::fieldText("first\nsecond", 9, 12, 5));
+    immediateRevisedFieldLineGetContext.push(Datum::symbol("line"));
+    immediateRevisedFieldLineGetContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateRevisedFieldLineGetContext));
+    assert(immediateRevisedFieldLineGetContext.pop().stringValue() == "second");
+    assert(builtinContext.fieldLineIndexCache.size() == 2);
+
     auto immediatePropListExtraArgGetAtHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 3, 64);
     ScriptChunk immediatePropListExtraArgGetAtScript(nullptr,
                                                      ChunkId(713),
@@ -9951,6 +10388,62 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .propListValue()
                .get(Datum::symbol("offsetx"))
                .intValue() == 37);
+
+    auto immediateScriptNestedGetAtHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 3, 64);
+    ScriptChunk immediateScriptNestedGetAtScript(nullptr,
+                                                 ChunkId(737),
+                                                 ScriptChunkType::MovieScript,
+                                                 0,
+                                                 {immediateScriptNestedGetAtHandler},
+                                                 {},
+                                                 {},
+                                                 {},
+                                                 {});
+    Scope immediateScriptNestedGetAtScope(&immediateScriptNestedGetAtScript,
+                                          immediateScriptNestedGetAtHandler,
+                                          {});
+    ExecutionContext immediateScriptNestedGetAtContext(immediateScriptNestedGetAtScope,
+                                                       immediateScriptNestedGetAtHandler.instructions[0],
+                                                       &registry,
+                                                       &builtinContext,
+                                                       callbacks);
+    auto nestedScript = Datum::scriptInstance("nested-script");
+    nestedScript.scriptInstanceValue().setProperty("pDigits", Datum::list({Datum::of(11), Datum::of(22)}));
+    immediateScriptNestedGetAtContext.push(nestedScript);
+    immediateScriptNestedGetAtContext.push(Datum::symbol("pDigits"));
+    immediateScriptNestedGetAtContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateScriptNestedGetAtContext));
+    assert(immediateScriptNestedGetAtScope.bytecodeIndex() == 1);
+    assert(immediateScriptNestedGetAtContext.pop().intValue() == 22);
+
+    auto immediateScriptNestedSetAtHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST_NO_RET, 4, 65);
+    ScriptChunk immediateScriptNestedSetAtScript(nullptr,
+                                                 ChunkId(738),
+                                                 ScriptChunkType::MovieScript,
+                                                 0,
+                                                 {immediateScriptNestedSetAtHandler},
+                                                 {},
+                                                 {},
+                                                 {},
+                                                 {});
+    Scope immediateScriptNestedSetAtScope(&immediateScriptNestedSetAtScript,
+                                          immediateScriptNestedSetAtHandler,
+                                          {});
+    ExecutionContext immediateScriptNestedSetAtContext(immediateScriptNestedSetAtScope,
+                                                       immediateScriptNestedSetAtHandler.instructions[0],
+                                                       &registry,
+                                                       &builtinContext,
+                                                       callbacks);
+    auto nestedSetScript = Datum::scriptInstance("nested-set-script");
+    nestedSetScript.scriptInstanceValue().setProperty("pDigits", Datum::list({Datum::of(11), Datum::of(22)}));
+    immediateScriptNestedSetAtContext.push(nestedSetScript);
+    immediateScriptNestedSetAtContext.push(Datum::symbol("pDigits"));
+    immediateScriptNestedSetAtContext.push(Datum::of(2));
+    immediateScriptNestedSetAtContext.push(Datum::of(44));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST_NO_RET, immediateScriptNestedSetAtContext));
+    assert(immediateScriptNestedSetAtScope.bytecodeIndex() == 1);
+    assert(immediateScriptNestedSetAtScope.stackSize() == 0);
+    assert(nestedSetScript.scriptInstanceValue().getProperty("pDigits").listValue().getAt(2).intValue() == 44);
 
     auto immediatePropListCountKeyHandler = makeImmediateObjHandler(Opcode::PUSH_ARG_LIST, 2, 70);
     ScriptChunk immediatePropListCountKeyScript(nullptr,
@@ -12238,6 +12731,8 @@ void testLingoVmRuntimeFoundation() {
     assert(externalGlobalLookups == 1);
     assert(vm.callHandler("externalStart").intValue() == 42);
     assert(externalGlobalLookups == 1);
+    assert(vm.callHandler("EXTERNALSTART").intValue() == 42);
+    assert(externalGlobalLookups == 1);
     vm.invalidateHandlerCache();
     assert(vm.callHandler("externalStart").intValue() == 77);
     assert(externalGlobalLookups == 2);
@@ -13713,6 +14208,8 @@ void testScoreNavigationFoundation() {
     assert(flatQuotedList.listValue().count() == 2);
     assert(flatQuotedList.listValue().items()[0].stringValue() == "Manager Template Class");
     assert(flatQuotedList.listValue().items()[1].stringValue() == "Variable Container Class");
+    assert(LingoValueParser::parseWithPartial("\"plain quoted text\"").stringValue() == "plain quoted text");
+    assert(LingoValueParser::parseWithPartial("\"escaped \\\"quoted\\\" text\"").stringValue() == "escaped \"quoted\" text");
 
     const Datum flatMixedList = LingoValueParser::parseWithPartial("[#core, 7, 3.5, \"Broker Manager Class\"]");
     assert(flatMixedList.isList());

@@ -124,6 +124,28 @@ constexpr int kMaxAncestorDepth = 100;
 
 } // namespace
 
+std::size_t TransparentCaseInsensitiveStringHash::operator()(std::string_view value) const noexcept {
+    std::size_t hash = 0;
+    for (const unsigned char ch : value) {
+        const auto lowered = static_cast<unsigned char>(std::tolower(ch));
+        hash ^= std::hash<unsigned char>{}(lowered) + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
+    }
+    return hash;
+}
+
+bool TransparentCaseInsensitiveStringEqual::operator()(std::string_view lhs, std::string_view rhs) const noexcept {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+        if (std::tolower(static_cast<unsigned char>(lhs[index])) !=
+            std::tolower(static_cast<unsigned char>(rhs[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 LingoException LingoException::typeMismatch(const std::string& expected, const std::string& actual) {
     return LingoException("Type mismatch: expected " + expected + ", got " + actual);
 }
@@ -323,8 +345,8 @@ Datum Datum::of(std::string value) {
     return Datum(Str{std::move(value)});
 }
 
-Datum Datum::fieldText(std::string value, int castLib, int memberNum) {
-    return Datum(FieldText{std::move(value), castLib, memberNum});
+Datum Datum::fieldText(std::string value, int castLib, int memberNum, std::uint64_t revision) {
+    return Datum(FieldText{std::move(value), castLib, memberNum, revision});
 }
 
 Datum Datum::symbol(std::string name) {
@@ -584,6 +606,7 @@ const Datum::Int* Datum::asInt() const { return std::get_if<Int>(&value_); }
 const Datum::DFloat* Datum::asFloat() const { return std::get_if<DFloat>(&value_); }
 const Datum::Str* Datum::asString() const { return std::get_if<Str>(&value_); }
 const Datum::FieldText* Datum::asFieldText() const { return std::get_if<FieldText>(&value_); }
+const Datum::StringChunk* Datum::asStringChunk() const { return std::get_if<StringChunk>(&value_); }
 const Datum::Symbol* Datum::asSymbol() const { return std::get_if<Symbol>(&value_); }
 const Datum::CastLibRef* Datum::asCastLibRef() const { return std::get_if<CastLibRef>(&value_); }
 const Datum::CastLibMemberAccessor* Datum::asCastLibMemberAccessor() const {
@@ -881,8 +904,12 @@ int Datum::PropList::findTypedKey(const Datum& key) const {
 }
 
 int Datum::PropList::findUntypedKey(const Datum& key) const {
+    return findUntypedKeyName(propListKeyName(key));
+}
+
+int Datum::PropList::findUntypedKeyName(std::string_view keyName) const {
     rebuildIndex();
-    const auto found = firstUntypedKeyIndex_.find(lowerAscii(propListKeyName(key)));
+    const auto found = firstUntypedKeyIndex_.find(keyName);
     return found != firstUntypedKeyIndex_.end() ? found->second : -1;
 }
 
@@ -903,6 +930,23 @@ std::vector<std::pair<Datum, Datum>>& Datum::PropList::properties() {
     return properties_;
 }
 
+void Datum::PropList::appendProperty(Datum key, Datum value) {
+    const bool indexWasClean = !indexDirty_;
+    properties_.emplace_back(std::move(key), std::move(value));
+    if (indexWasClean) {
+        indexEntry(properties_.size() - 1);
+    }
+}
+
+bool Datum::PropList::erasePropertyAt(int zeroBasedIndex) {
+    if (zeroBasedIndex < 0 || zeroBasedIndex >= static_cast<int>(properties_.size())) {
+        return false;
+    }
+    properties_.erase(properties_.begin() + zeroBasedIndex);
+    invalidateIndex();
+    return true;
+}
+
 void Datum::PropList::invalidateIndex() const {
     indexDirty_ = true;
 }
@@ -912,7 +956,7 @@ void Datum::PropList::indexEntry(std::size_t index) const {
     const auto& key = properties_[index].first;
     const std::string keyName = propListKeyName(key);
     firstSameTypeKeyIndex_.try_emplace(propListSameTypeKey(key), signedIndex);
-    firstUntypedKeyIndex_.try_emplace(lowerAscii(keyName), signedIndex);
+    firstUntypedKeyIndex_.try_emplace(keyName, signedIndex);
     firstCaseSensitiveKeyIndex_.try_emplace(keyName, signedIndex);
 }
 
@@ -970,10 +1014,9 @@ Datum Datum::ScriptInstanceRef::getProperty(const std::string& name) const {
 
     const auto* current = this;
     for (int depth = 0; current != nullptr && depth < kMaxAncestorDepth; ++depth) {
-        for (const auto& entry : current->properties_) {
-            if (equalsIgnoreCase(entry.first, name)) {
-                return entry.second;
-            }
+        const int propertyIndex = current->findPropertyIndex(name);
+        if (propertyIndex >= 0) {
+            return current->properties_[static_cast<std::size_t>(propertyIndex)].second;
         }
         current = current->ancestor_.get();
     }
@@ -991,34 +1034,34 @@ void Datum::ScriptInstanceRef::setProperty(const std::string& name, Datum value)
         return;
     }
 
-    for (auto& entry : properties_) {
-        if (equalsIgnoreCase(entry.first, name)) {
-            entry.second = std::move(value);
-            return;
-        }
+    const int localIndex = findPropertyIndex(name);
+    if (localIndex >= 0) {
+        properties_[static_cast<std::size_t>(localIndex)].second = std::move(value);
+        return;
     }
 
     auto* current = ancestor_.get();
     for (int depth = 1; current != nullptr && depth < kMaxAncestorDepth; ++depth) {
-        for (auto& entry : current->properties_) {
-            if (equalsIgnoreCase(entry.first, name)) {
-                entry.second = std::move(value);
-                return;
-            }
+        const int inheritedIndex = current->findPropertyIndex(name);
+        if (inheritedIndex >= 0) {
+            current->properties_[static_cast<std::size_t>(inheritedIndex)].second = std::move(value);
+            return;
         }
         current = current->ancestor_.get();
     }
 
+    const bool indexWasClean = !propertyIndexDirty_;
     properties_.emplace_back(name, std::move(value));
+    if (indexWasClean) {
+        indexPropertyEntry(properties_.size() - 1);
+    }
 }
 
 bool Datum::ScriptInstanceRef::hasProperty(const std::string& name) const {
     const auto* current = this;
     for (int depth = 0; current != nullptr && depth < kMaxAncestorDepth; ++depth) {
-        for (const auto& entry : current->properties_) {
-            if (equalsIgnoreCase(entry.first, name)) {
-                return true;
-            }
+        if (current->findPropertyIndex(name) >= 0) {
+            return true;
         }
         current = current->ancestor_.get();
     }
@@ -1026,12 +1069,87 @@ bool Datum::ScriptInstanceRef::hasProperty(const std::string& name) const {
     return false;
 }
 
+int Datum::ScriptInstanceRef::findExactPropertyIndex(std::string_view name) const {
+    rebuildPropertyIndex();
+    const auto found = firstExactPropertyIndex_.find(name);
+    return found != firstExactPropertyIndex_.end() ? found->second : -1;
+}
+
+int Datum::ScriptInstanceRef::findCaseInsensitivePropertyIndex(std::string_view name) const {
+    rebuildPropertyIndex();
+    const auto found = firstCaseInsensitivePropertyIndex_.find(name);
+    return found != firstCaseInsensitivePropertyIndex_.end() ? found->second : -1;
+}
+
+int Datum::ScriptInstanceRef::findPropertyIndex(std::string_view name) const {
+    const int exactIndex = findExactPropertyIndex(name);
+    return exactIndex >= 0 ? exactIndex : findCaseInsensitivePropertyIndex(name);
+}
+
 const std::vector<std::pair<std::string, Datum>>& Datum::ScriptInstanceRef::properties() const {
     return properties_;
 }
 
 std::vector<std::pair<std::string, Datum>>& Datum::ScriptInstanceRef::properties() {
+    invalidatePropertyIndex();
     return properties_;
+}
+
+void Datum::ScriptInstanceRef::reserveLocalProperties(std::size_t additionalCount) {
+    properties_.reserve(properties_.size() + additionalCount);
+}
+
+void Datum::ScriptInstanceRef::appendLocalProperty(std::string name, Datum value) {
+    const bool indexWasClean = !propertyIndexDirty_;
+    properties_.emplace_back(std::move(name), std::move(value));
+    if (indexWasClean) {
+        indexPropertyEntry(properties_.size() - 1);
+    }
+}
+
+void Datum::ScriptInstanceRef::putLocalPropertyExact(std::string name, Datum value) {
+    const int index = findExactPropertyIndex(name);
+    if (index >= 0) {
+        properties_[static_cast<std::size_t>(index)].second = std::move(value);
+        return;
+    }
+    appendLocalProperty(std::move(name), std::move(value));
+}
+
+bool Datum::ScriptInstanceRef::eraseLocalPropertyExact(std::string_view name) {
+    const int index = findExactPropertyIndex(name);
+    if (index < 0) {
+        return false;
+    }
+    properties_.erase(properties_.begin() + index);
+    invalidatePropertyIndex();
+    return true;
+}
+
+void Datum::ScriptInstanceRef::invalidatePropertyIndex() const {
+    propertyIndexDirty_ = true;
+}
+
+void Datum::ScriptInstanceRef::indexPropertyEntry(std::size_t index) const {
+    const int signedIndex = static_cast<int>(index);
+    const auto& key = properties_[index].first;
+    firstExactPropertyIndex_.try_emplace(key, signedIndex);
+    firstCaseInsensitivePropertyIndex_.try_emplace(key, signedIndex);
+}
+
+void Datum::ScriptInstanceRef::rebuildPropertyIndex() const {
+    if (!propertyIndexDirty_) {
+        return;
+    }
+
+    firstExactPropertyIndex_.clear();
+    firstCaseInsensitivePropertyIndex_.clear();
+    firstExactPropertyIndex_.reserve(properties_.size());
+    firstCaseInsensitivePropertyIndex_.reserve(properties_.size());
+    for (std::size_t index = 0; index < properties_.size(); ++index) {
+        indexPropertyEntry(index);
+    }
+    propertyIndexDirty_ = false;
 }
 
 Datum::ArgList::ArgList(std::vector<Datum> args) : args_(std::move(args)) {}

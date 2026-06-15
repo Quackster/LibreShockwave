@@ -267,6 +267,7 @@ if(EMSCRIPTEN)
         "_lsw_set_external_params"
         "_lsw_set_preload_casts"
         "_lsw_set_debug_playback_enabled"
+        "_lsw_set_slow_handler_warning_ms"
         "_lsw_set_tempo_override"
         "_lsw_tempo"
         "_lsw_base_tempo"

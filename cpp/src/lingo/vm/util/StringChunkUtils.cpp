@@ -364,4 +364,52 @@ std::string getLineRangeDirect(std::string_view value, int start, int end) {
         : "";
 }
 
+LineIndex buildLineIndex(std::string_view value) {
+    LineIndex index;
+    index.delimiter = pickLineDelimiter(value);
+    index.starts.push_back(0);
+
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const std::size_t found = value.find(index.delimiter, start);
+        if (found == std::string_view::npos) {
+            index.ends.push_back(value.size());
+            break;
+        }
+        index.ends.push_back(found);
+        start = found + index.delimiter.size();
+        index.starts.push_back(start);
+    }
+    return index;
+}
+
+int lineCount(const LineIndex& index) {
+    return static_cast<int>(index.starts.size());
+}
+
+std::string getLineRange(std::string_view value, const LineIndex& index, int start, int end) {
+    if (value.empty() || start < 1) {
+        return "";
+    }
+    if (end < 0) {
+        end = lineCount(index);
+    } else if (end == 0) {
+        end = start;
+    }
+    if (end < start) {
+        return "";
+    }
+
+    const int clampedEnd = std::min(end, lineCount(index));
+    if (start > clampedEnd) {
+        return "";
+    }
+
+    const std::size_t rangeStart = index.starts[static_cast<std::size_t>(start - 1)];
+    const std::size_t rangeEnd = index.ends[static_cast<std::size_t>(clampedEnd - 1)];
+    return rangeEnd >= rangeStart
+        ? std::string(value.substr(rangeStart, rangeEnd - rangeStart))
+        : "";
+}
+
 } // namespace libreshockwave::lingo::vm::util

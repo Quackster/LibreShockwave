@@ -29,6 +29,7 @@ constexpr int MAX_CALL_STACK_DEPTH = 50;
 constexpr int SAFEPOINT_CHECK_INTERVAL = 0x10000;
 constexpr std::int64_t GC_SAFEPOINT_INTERVAL_MS = 1000;
 constexpr std::int64_t HANDLER_TIMEOUT_MS = 180000;
+constexpr std::int64_t SLOW_HANDLER_WARNING_MS = 1000;
 constexpr std::int64_t RANDOM_MULTIPLIER = 0x5DEECE66DLL;
 constexpr std::int64_t RANDOM_ADDEND = 0xBLL;
 constexpr std::int64_t RANDOM_MASK = (1LL << 48) - 1;
@@ -144,6 +145,21 @@ std::optional<int> parseInitialRandomSeed(const char* rawValue) {
     return static_cast<int>(parsed);
 }
 
+std::int64_t defaultSlowHandlerWarningThresholdMs() {
+    const char* rawValue = std::getenv("LS_SLOW_HANDLER_WARNING_MS");
+    if (rawValue == nullptr || *rawValue == '\0') {
+        return SLOW_HANDLER_WARNING_MS;
+    }
+
+    char* end = nullptr;
+    errno = 0;
+    const long parsed = std::strtol(rawValue, &end, 10);
+    if (errno == ERANGE || end == rawValue || *end != '\0' || parsed < 0) {
+        return SLOW_HANDLER_WARNING_MS;
+    }
+    return parsed;
+}
+
 Datum scriptInstanceOrVoid(std::shared_ptr<Datum::ScriptInstanceRef> instance) {
     return instance ? Datum::scriptInstanceRef(std::move(instance)) : Datum::voidValue();
 }
@@ -155,6 +171,7 @@ std::function<void()> LingoVM::gcCallback_;
 LingoVM::LingoVM(DirectorFile* file)
     : file_(file) {
     setHandlerTimeoutMs(HANDLER_TIMEOUT_MS);
+    setSlowHandlerWarningThresholdMs(defaultSlowHandlerWarningThresholdMs());
     setRandomSeed(0);
     if (const auto initialRandomSeed = parseInitialRandomSeed(std::getenv("LS_INITIAL_RANDOM_SEED"))) {
         setRandomSeed(*initialRandomSeed);
@@ -323,6 +340,14 @@ void LingoVM::setHandlerTimeoutMs(std::int64_t milliseconds) {
 
 std::int64_t LingoVM::handlerTimeoutMs() const {
     return handlerTimeoutMs_;
+}
+
+void LingoVM::setSlowHandlerWarningThresholdMs(std::int64_t milliseconds) {
+    slowHandlerWarningThresholdMs_ = std::max<std::int64_t>(0, milliseconds);
+}
+
+std::int64_t LingoVM::slowHandlerWarningThresholdMs() const {
+    return slowHandlerWarningThresholdMs_;
 }
 
 void LingoVM::armTickDeadline() {
@@ -580,11 +605,10 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
         return std::nullopt;
     }
 
-    const std::string cacheKey = normalizeLookupName(handlerNameValue);
-    if (const auto found = handlerCache_.find(cacheKey); found != handlerCache_.end()) {
+    if (const auto found = handlerCache_.find(handlerNameValue); found != handlerCache_.end()) {
         return found->second;
     }
-    if (missingHandlerCache_.contains(cacheKey)) {
+    if (missingHandlerCache_.contains(handlerNameValue)) {
         return std::nullopt;
     }
 
@@ -596,7 +620,7 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
             if (auto handler = findHandler(*script, handlerNameValue)) {
                 handler->scriptOwner = script;
                 handler->scriptType = script->resolvedScriptType();
-                handlerCache_[cacheKey] = *handler;
+                handlerCache_.emplace(std::string(handlerNameValue), *handler);
                 return handler;
             }
         }
@@ -604,12 +628,12 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
 
     if (globalHandlerFinder_) {
         if (auto handler = globalHandlerFinder_(handlerNameValue); handler && handler->script != nullptr) {
-            handlerCache_[cacheKey] = *handler;
+            handlerCache_.emplace(std::string(handlerNameValue), *handler);
             return handler;
         }
     }
 
-    missingHandlerCache_.insert(cacheKey);
+    missingHandlerCache_.insert(std::string(handlerNameValue));
     return std::nullopt;
 }
 
@@ -640,6 +664,7 @@ void LingoVM::invalidateHandlerCache() {
     handlerCache_.clear();
     missingHandlerCache_.clear();
     handlerMetadataCache_.clear();
+    builtinContext_.scriptPropertyNamesCache.clear();
 }
 
 Datum LingoVM::callHandler(std::string_view handlerNameValue, const std::vector<Datum>& args) {
@@ -763,6 +788,12 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
         effectiveArgs = args;
     }
 
+    if (callStack_.empty()) {
+        builtinContext_.aliasRefreshRegistryIds.clear();
+        builtinContext_.registryMemberSlotCache.clear();
+        builtinContext_.scriptInstanceHandlerCache.clear();
+    }
+
     callStack_.emplace_back(&script,
                             &handler,
                             std::move(effectiveArgs),
@@ -777,11 +808,20 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
     Datum result = Datum::voidValue();
     std::optional<TraceListener::HandlerInfo> handlerInfo;
     bool alertHookDepthIncremented = false;
+    const std::int64_t handlerStartTime = currentTimeMillis();
+    int executedSteps = 0;
     if (isAlertHookHandler) {
         alertHookHandler_.incrementDepth();
         alertHookDepthIncremented = true;
     }
     auto leaveHandler = [&] {
+        const std::int64_t handlerElapsedMs = currentTimeMillis() - handlerStartTime;
+        if (handlerElapsedMs >= slowHandlerWarningThresholdMs_ && builtinContext_.outputHandler) {
+            builtinContext_.outputHandler(
+                "WARNING",
+                "handler " + currentHandlerName + " took " + std::to_string(handlerElapsedMs) +
+                    "ms (" + std::to_string(executedSteps) + " instructions)");
+        }
         if (traceListener_ && handlerInfo.has_value()) {
             traceListener_->onHandlerExit(*handlerInfo, result);
         }
@@ -822,16 +862,15 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
                                      std::move(callbacks),
                                      variableMultiplierForScript(script),
                                      traceInstruction);
-            int steps = 0;
             const std::int64_t startTime = currentTimeMillis();
             std::int64_t lastGcTime = startTime;
             while (scope.hasMoreInstructions() && !scope.returned()) {
-                ++steps;
-                if (stepLimit_ > 0 && steps > stepLimit_) {
+                ++executedSteps;
+                if (stepLimit_ > 0 && executedSteps > stepLimit_) {
                     throw LingoException("Step limit exceeded (" + std::to_string(stepLimit_) +
                                          " instructions) in handler '" + currentHandlerName + "'");
                 }
-                if ((steps % SAFEPOINT_CHECK_INTERVAL) == 0) {
+                if ((executedSteps % SAFEPOINT_CHECK_INTERVAL) == 0) {
                     const std::int64_t now = currentTimeMillis();
                     if (now - lastGcTime >= GC_SAFEPOINT_INTERVAL_MS) {
                         if (gcCallback_) {
@@ -841,12 +880,12 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
                     }
                     if (handlerTimeoutMs_ > 0 && now - startTime > handlerTimeoutMs_) {
                         throw LingoException("Handler timeout (" + std::to_string(handlerTimeoutMs_ / 1000) +
-                                             "s, " + std::to_string(steps) +
+                                             "s, " + std::to_string(executedSteps) +
                                              " instructions) in handler '" + currentHandlerName + "'");
                     }
                     if (tickDeadline_ > 0 && now > tickDeadline_) {
                         throw LingoException("Tick deadline exceeded in handler '" + currentHandlerName +
-                                             "' (" + std::to_string(steps) + " instructions)");
+                                             "' (" + std::to_string(executedSteps) + " instructions)");
                     }
                 }
                 executeInstruction(scope, context, traceInstruction);
@@ -1129,11 +1168,38 @@ bool LingoVM::skipDisabledTraceScriptPrologue(
         return false;
     }
 
+    HandlerMetadataKey metadataKey{
+        &script,
+        &scope.handler(),
+        fileOwner.get(),
+        scriptNamesOwner.get()
+    };
+    auto metadata = handlerMetadataCache_.find(metadataKey);
+    if (metadata != handlerMetadataCache_.end() && metadata->second->disabledTraceScriptPrologueLength >= 0) {
+        const int cachedLength = metadata->second->disabledTraceScriptPrologueLength;
+        if (cachedLength > 0) {
+            scope.setBytecodeIndex(cachedLength);
+            return true;
+        }
+        return false;
+    }
+
+    auto cacheResult = [&](int length) {
+        if (metadata != handlerMetadataCache_.end()) {
+            metadata->second->disabledTraceScriptPrologueLength = length;
+        }
+        if (length > 0) {
+            scope.setBytecodeIndex(length);
+            return true;
+        }
+        return false;
+    };
+
     const auto& handler = scope.handler();
     const auto& instructions = handler.instructions;
     constexpr int prologueLength = 13;
     if (static_cast<int>(instructions.size()) <= prologueLength) {
-        return false;
+        return cacheResult(0);
     }
 
     auto opcodeAt = [&](int index, Opcode opcode) {
@@ -1161,11 +1227,10 @@ bool LingoVM::skipDisabledTraceScriptPrologue(
         !opcodeAt(10, Opcode::GET_TOP_LEVEL_PROP) || !nameAt(10, "_player") ||
         !opcodeAt(11, Opcode::PUSH_ZERO) ||
         !opcodeAt(12, Opcode::SET_OBJ_PROP) || !nameAt(12, "traceScript")) {
-        return false;
+        return cacheResult(0);
     }
 
-    scope.setBytecodeIndex(prologueLength);
-    return true;
+    return cacheResult(prologueLength);
 }
 
 void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context, bool traceInstruction) {

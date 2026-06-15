@@ -84,6 +84,7 @@ public:
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> createDynamicMember(
         const std::string& memberName,
         const std::string& memberType);
+    [[nodiscard]] bool hasMemberNumber(int memberNumber);
     [[nodiscard]] bool hasMemberNamedExact(const std::string& memberName);
     [[nodiscard]] int getMemberNumber(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScript(int memberNumber);
@@ -123,6 +124,8 @@ private:
     [[nodiscard]] int nextAvailableDynamicMemberNumber();
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> findMemberChunkByNameExact(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findMemberByNameExact(const std::string& memberName);
+    void invalidateMemberNameIndex() const;
+    void rebuildMemberNameIndex() const;
 
     [[nodiscard]] static std::optional<std::string> sourcePrefixedLookupName(const std::string& requestedName);
     [[nodiscard]] static libreshockwave::cast::MemberType dynamicMemberTypeFor(const std::string& typeName);
@@ -152,6 +155,9 @@ private:
     std::unordered_map<const chunks::ScriptChunk*, chunks::ScriptChunkType> scriptTypesByPointer_;
     std::unordered_map<int, chunks::ScriptChunkType> scriptTypesById_;
     std::vector<std::shared_ptr<chunks::ScriptChunk>> cachedScripts_;
+    mutable bool memberNameIndexDirty_ = true;
+    mutable std::unordered_map<std::string, int> memberChunkNameIndex_;
+    mutable std::unordered_map<std::string, int> runtimeMemberNameIndex_;
     int totalSlotCount_ = 0;
     int nextDynamicMember_ = 10000;
 };

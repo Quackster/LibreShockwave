@@ -8,6 +8,12 @@
 
 namespace libreshockwave::lingo::vm::util {
 
+struct LineIndex {
+    std::string delimiter;
+    std::vector<std::size_t> starts;
+    std::vector<std::size_t> ends;
+};
+
 [[nodiscard]] std::string pickLineDelimiter(std::string_view value);
 [[nodiscard]] std::string chunkDelimiter(StringChunkType chunkType, char itemDelimiter = ',');
 [[nodiscard]] std::vector<std::string> splitIntoChunks(std::string_view value,
@@ -32,5 +38,8 @@ namespace libreshockwave::lingo::vm::util {
                                              char itemDelimiter = ',');
 [[nodiscard]] std::string getWordRangeDirect(std::string_view value, int start, int end);
 [[nodiscard]] std::string getLineRangeDirect(std::string_view value, int start, int end);
+[[nodiscard]] LineIndex buildLineIndex(std::string_view value);
+[[nodiscard]] int lineCount(const LineIndex& index);
+[[nodiscard]] std::string getLineRange(std::string_view value, const LineIndex& index, int start, int end);
 
 } // namespace libreshockwave::lingo::vm::util

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -82,6 +83,7 @@ public:
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);
+    [[nodiscard]] std::uint64_t textRevision() const;
     [[nodiscard]] const std::string& textFont() const;
     void setTextFont(std::string font);
     [[nodiscard]] int textFontSize() const;
@@ -171,6 +173,7 @@ private:
     int bitmapAlphaThreshold_ = 0;
     bool regPointPinnedToMember_ = true;
     std::optional<std::string> dynamicText_;
+    std::uint64_t textRevision_ = 0;
     std::string textFont_ = "Arial";
     int textFontSize_ = 12;
     std::string textFontStyle_ = "plain";

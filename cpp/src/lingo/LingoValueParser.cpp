@@ -61,19 +61,6 @@ bool isIdentifier(std::string_view value) {
     });
 }
 
-bool isIntegerLiteral(std::string_view value) {
-    if (value.empty()) {
-        return false;
-    }
-    std::size_t start = value.front() == '-' ? 1 : 0;
-    if (start == value.size()) {
-        return false;
-    }
-    return std::all_of(value.begin() + static_cast<std::ptrdiff_t>(start), value.end(), [](char ch) {
-        return std::isdigit(static_cast<unsigned char>(ch));
-    });
-}
-
 bool isFloatLiteral(std::string_view value) {
     if (value.empty()) {
         return false;
@@ -98,7 +85,7 @@ bool isFloatLiteral(std::string_view value) {
 
 std::optional<int> parseInt(std::string_view value) {
     value = trimView(value);
-    if (!isIntegerLiteral(value)) {
+    if (value.empty()) {
         return std::nullopt;
     }
 
@@ -125,6 +112,10 @@ std::optional<float> parseFloat(std::string_view value) {
 }
 
 std::string unescapeString(std::string_view value) {
+    if (value.find('\\') == std::string_view::npos) {
+        return std::string(value);
+    }
+
     std::string result;
     result.reserve(value.size());
     for (std::size_t i = 0; i < value.size(); ++i) {
@@ -146,9 +137,16 @@ std::string unescapeString(std::string_view value) {
     return result;
 }
 
-std::vector<std::string_view> splitListElements(std::string_view content) {
-    std::vector<std::string_view> elements;
+struct ListElement {
+    std::string_view value;
+    int colonIndex = -1;
+};
+
+std::vector<ListElement> splitListElements(std::string_view content) {
+    std::vector<ListElement> elements;
+    elements.reserve(std::min<std::size_t>(content.size() / 8 + 1, 1024));
     std::size_t elementStart = 0;
+    int elementColonIndex = -1;
     int bracketDepth = 0;
     int parenDepth = 0;
     bool inQuote = false;
@@ -166,15 +164,18 @@ std::vector<std::string_view> splitListElements(std::string_view content) {
                 ++parenDepth;
             } else if (ch == ')') {
                 --parenDepth;
+            } else if (ch == ':' && bracketDepth == 0 && parenDepth == 0 && elementColonIndex < 0) {
+                elementColonIndex = static_cast<int>(i - elementStart);
             } else if (ch == ',' && bracketDepth == 0 && parenDepth == 0) {
-                elements.push_back(content.substr(elementStart, i - elementStart));
+                elements.push_back(ListElement{content.substr(elementStart, i - elementStart), elementColonIndex});
                 elementStart = i + 1;
+                elementColonIndex = -1;
             }
         }
     }
 
     if (elementStart < content.size()) {
-        elements.push_back(content.substr(elementStart));
+        elements.push_back(ListElement{content.substr(elementStart), elementColonIndex});
     }
     return elements;
 }
@@ -208,12 +209,11 @@ int findPropListColon(std::string_view element) {
 std::optional<Datum> tryParseComplete(std::string_view expression,
                                       const IdentifierResolver& identifierResolver);
 
-bool isPropListElement(std::string_view element) {
-    const int colonIndex = findPropListColon(element);
-    if (colonIndex < 0) {
+bool isPropListElement(const ListElement& element) {
+    if (element.colonIndex < 0) {
         return false;
     }
-    const std::string_view rawKey = trimView(element.substr(0, static_cast<std::size_t>(colonIndex)));
+    const std::string_view rawKey = trimView(element.value.substr(0, static_cast<std::size_t>(element.colonIndex)));
     if (rawKey.empty()) {
         return true;
     }
@@ -260,11 +260,11 @@ Datum parseListOrPropList(std::string_view content, const IdentifierResolver& id
         return Datum::list();
     }
 
-    if (isPropListElement(trimView(elements.front()))) {
+    if (isPropListElement(elements.front())) {
         Datum props = Datum::propList();
         for (const auto& rawElement : elements) {
-            const std::string_view element = trimView(rawElement);
-            const int colonIndex = findPropListColon(element);
+            const std::string_view element = rawElement.value;
+            const int colonIndex = rawElement.colonIndex;
             if (colonIndex <= 0) {
                 continue;
             }
@@ -281,7 +281,7 @@ Datum parseListOrPropList(std::string_view content, const IdentifierResolver& id
     std::vector<Datum> items;
     items.reserve(elements.size());
     for (const auto& element : elements) {
-        items.push_back(LingoValueParser::parseWithPartial(trimView(element), identifierResolver));
+        items.push_back(LingoValueParser::parseWithPartial(trimView(element.value), identifierResolver));
     }
     return Datum::list(std::move(items));
 }
@@ -302,7 +302,7 @@ std::optional<Datum> parseNumericCall(std::string_view expression, std::string_v
     std::vector<int> values;
     values.reserve(parts.size());
     for (const auto& part : parts) {
-        const auto parsed = parseInt(trimView(part));
+        const auto parsed = parseInt(trimView(part.value));
         if (!parsed.has_value()) {
             return std::nullopt;
         }
@@ -344,7 +344,7 @@ std::optional<Datum> parseRgb(std::string_view expression) {
 
     const auto parts = splitListElements(inner);
     if (parts.size() == 1) {
-        const auto parsed = parseInt(trimView(parts[0]));
+        const auto parsed = parseInt(trimView(parts[0].value));
         if (parsed.has_value()) {
             const unsigned int value = static_cast<unsigned int>(*parsed);
             return Datum::colorRef(static_cast<int>((value >> 16U) & 0xFFU),
@@ -355,7 +355,7 @@ std::optional<Datum> parseRgb(std::string_view expression) {
     if (parts.size() == 3) {
         std::vector<int> values;
         for (const auto& part : parts) {
-            const auto parsed = parseInt(trimView(part));
+            const auto parsed = parseInt(trimView(part.value));
             if (!parsed.has_value()) {
                 return std::nullopt;
             }
@@ -453,6 +453,12 @@ Datum parseFirstValidExpression(std::string_view expression,
     }
 
     if (first == '"') {
+        const std::size_t closingQuote = expr.find('"', 1);
+        if (closingQuote != std::string_view::npos &&
+            expr.substr(1, closingQuote - 1).find('\\') == std::string_view::npos) {
+            return Datum::of(std::string(expr.substr(1, closingQuote - 1)));
+        }
+
         std::string value;
         for (++pos; pos < expr.size(); ++pos) {
             if (expr[pos] == '\\' && pos + 1 < expr.size()) {

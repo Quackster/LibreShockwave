@@ -245,7 +245,7 @@ bool lingoEquals(const Datum& a, const Datum& b) {
 }
 
 Datum getPropListKey(const Datum::PropList& propList, std::string_view keyName) {
-    const int index = propList.findUntypedKey(Datum::of(std::string(keyName)));
+    const int index = propList.findUntypedKeyName(keyName);
     return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second : Datum::voidValue();
 }
 
@@ -307,8 +307,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
     }
     if (equalsIgnoreCase(methodName, "addProp")) {
         if (args.size() >= 2) {
-            auto& properties = propList.properties();
-            properties.emplace_back(args[0], args[1]);
+            propList.appendProperty(args[0], args[1]);
         }
         return Datum::voidValue();
     }
@@ -360,8 +359,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
         if (!args.empty()) {
             const int index = findPropIndexTypedKey(propList, args[0]);
             if (index >= 0) {
-                auto& properties = propList.properties();
-                properties.erase(properties.begin() + index);
+                (void)propList.erasePropertyAt(index);
             }
         }
         return Datum::voidValue();
@@ -386,10 +384,7 @@ Datum PropListMethodDispatcher::dispatch(Datum::PropList& propList,
     if (equalsIgnoreCase(methodName, "deleteAt")) {
         if (!args.empty()) {
             const int index = toIntLikeJava(args[0]) - 1;
-            auto& properties = propList.properties();
-            if (index >= 0 && index < static_cast<int>(properties.size())) {
-                properties.erase(properties.begin() + index);
-            }
+            (void)propList.erasePropertyAt(index);
         }
         return Datum::voidValue();
     }

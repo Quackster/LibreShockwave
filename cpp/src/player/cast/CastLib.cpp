@@ -402,6 +402,7 @@ void CastLib::reloadFromFile(std::shared_ptr<DirectorFile> file) {
     state_ = State::None;
     memberChunks_.clear();
     members_.clear();
+    invalidateMemberNameIndex();
     scripts_.clear();
     scriptTypesByPointer_.clear();
     scriptTypesById_.clear();
@@ -648,6 +649,7 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(c
         if (const auto found = members_.find(memberNumber);
             found != members_.end() && found->second && found->second->isReusableDynamicSlot()) {
             found->second->reuseAs(type);
+            invalidateMemberNameIndex();
             return found->second;
         }
     }
@@ -657,6 +659,7 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(c
         memberNumber,
         type);
     members_[memberNumber] = member;
+    invalidateMemberNameIndex();
     return member;
 }
 
@@ -666,12 +669,24 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(
     auto member = createDynamicMember(memberType);
     if (member) {
         member->setName(memberName);
+        invalidateMemberNameIndex();
     }
     return member;
 }
 
 bool CastLib::hasMemberNamedExact(const std::string& memberName) {
     return findMemberChunkByNameExact(memberName) != nullptr || findMemberByNameExact(memberName) != nullptr;
+}
+
+bool CastLib::hasMemberNumber(int memberNumber) {
+    if (!isLoaded()) {
+        load();
+    }
+    if (memberChunks_.contains(memberNumber)) {
+        return true;
+    }
+    const auto found = members_.find(memberNumber);
+    return found != members_.end() && found->second != nullptr;
 }
 
 int CastLib::getMemberNumber(const std::shared_ptr<chunks::CastMemberChunk>& member) {
@@ -947,6 +962,7 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
     const auto prop = lower(propName);
     if (prop == "name") {
         member->setName(value.stringValue());
+        invalidateMemberNameIndex();
         return true;
     }
     if (prop == "regpoint") {
@@ -1164,6 +1180,7 @@ bool CastLib::setExternalData(const std::vector<std::uint8_t>& data) {
         state_ = State::None;
         memberChunks_.clear();
         members_.clear();
+        invalidateMemberNameIndex();
         scripts_.clear();
         scriptTypesByPointer_.clear();
         scriptTypesById_.clear();
@@ -1333,6 +1350,7 @@ void CastLib::invalidateFileBackedBinding() {
     nameLoadedFromExternalFile_ = false;
     memberChunks_.clear();
     members_.clear();
+    invalidateMemberNameIndex();
     scripts_.clear();
     scriptTypesByPointer_.clear();
     scriptTypesById_.clear();
@@ -1417,29 +1435,57 @@ std::shared_ptr<chunks::CastMemberChunk> CastLib::findMemberChunkByNameExact(con
     if (memberName.empty()) {
         return nullptr;
     }
-    for (const auto& [_, member] : memberChunks_) {
-        if (member && equalsIgnoreCase(member->name(), memberName)) {
-            return member;
-        }
+    rebuildMemberNameIndex();
+    const auto foundIndex = memberChunkNameIndex_.find(lower(memberName));
+    if (foundIndex == memberChunkNameIndex_.end()) {
+        return nullptr;
     }
-    return nullptr;
+    const auto foundMember = memberChunks_.find(foundIndex->second);
+    return foundMember == memberChunks_.end() ? nullptr : foundMember->second;
 }
 
 std::shared_ptr<libreshockwave::cast::CastMember> CastLib::findMemberByNameExact(const std::string& memberName) {
     if (memberName.empty()) {
         return nullptr;
     }
+    rebuildMemberNameIndex();
+    const auto key = lower(memberName);
+    const auto foundChunkIndex = memberChunkNameIndex_.find(key);
+    if (foundChunkIndex != memberChunkNameIndex_.end()) {
+        return getMember(foundChunkIndex->second);
+    }
+    const auto foundRuntimeIndex = runtimeMemberNameIndex_.find(key);
+    if (foundRuntimeIndex == runtimeMemberNameIndex_.end()) {
+        return nullptr;
+    }
+    const auto foundMember = members_.find(foundRuntimeIndex->second);
+    return foundMember == members_.end() ? nullptr : foundMember->second;
+}
+
+void CastLib::invalidateMemberNameIndex() const {
+    memberNameIndexDirty_ = true;
+}
+
+void CastLib::rebuildMemberNameIndex() const {
+    if (!memberNameIndexDirty_) {
+        return;
+    }
+
+    memberChunkNameIndex_.clear();
+    runtimeMemberNameIndex_.clear();
+    memberChunkNameIndex_.reserve(memberChunks_.size());
+    runtimeMemberNameIndex_.reserve(members_.size());
     for (const auto& [number, member] : memberChunks_) {
-        if (member && equalsIgnoreCase(member->name(), memberName)) {
-            return getMember(number);
+        if (member && !member->name().empty()) {
+            memberChunkNameIndex_.try_emplace(lower(member->name()), number);
         }
     }
-    for (const auto& [_, member] : members_) {
-        if (member && equalsIgnoreCase(member->name(), memberName)) {
-            return member;
+    for (const auto& [number, member] : members_) {
+        if (member && !member->name().empty()) {
+            runtimeMemberNameIndex_.try_emplace(lower(member->name()), number);
         }
     }
-    return nullptr;
+    memberNameIndexDirty_ = false;
 }
 
 std::optional<std::string> CastLib::sourcePrefixedLookupName(const std::string& requestedName) {

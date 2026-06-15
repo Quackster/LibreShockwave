@@ -67,6 +67,7 @@ struct WasmPlayerContext {
     std::string lastStatus;
     std::string scratch;
     bool debugPlaybackEnabled{false};
+    int slowHandlerWarningMs{SLOW_WASM_OPERATION_WARNING_MS};
     std::vector<std::pair<std::string, std::string>> debugMessages;
 };
 
@@ -551,9 +552,11 @@ void processHostXtraCallbacks(WasmPlayerContext& ctx) {
     if (ctx.player == nullptr || ctx.player->isVmRunning()) {
         return;
     }
+    const auto started = std::chrono::steady_clock::now();
     WasmScriptDeadlineGuard scriptDeadline(ctx.player.get());
     ctx.player->xtraManager().tickAll();
     ctx.player->vm().flushDeferredTasks();
+    queueSlowOperationMessage(ctx, "host xtra callbacks", started);
 }
 
 std::string operationError(std::string_view operation, std::string_view detail) {
@@ -692,6 +695,7 @@ EMSCRIPTEN_KEEPALIVE int lsw_load_movie(int handle,
         ctx->multiuserBridge = std::move(multiuserBridge);
         ctx->player = std::move(player);
         ctx->player->setDebugEnabled(ctx->debugPlaybackEnabled);
+        ctx->player->setSlowHandlerWarningThresholdMs(ctx->slowHandlerWarningMs);
         applyTempo(*ctx);
 
         if (ctx->preloadCasts) {
@@ -735,6 +739,17 @@ EMSCRIPTEN_KEEPALIVE void lsw_set_debug_playback_enabled(int handle, int enabled
         if (ctx->player != nullptr) {
             guardedVoid(*ctx, "set debug playback", [&]() {
                 ctx->player->setDebugEnabled(ctx->debugPlaybackEnabled);
+            });
+        }
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE void lsw_set_slow_handler_warning_ms(int handle, int milliseconds) {
+    if (auto* ctx = getContext(handle)) {
+        ctx->slowHandlerWarningMs = std::max(0, milliseconds);
+        if (ctx->player != nullptr) {
+            guardedVoid(*ctx, "set slow handler warning threshold", [&]() {
+                ctx->player->setSlowHandlerWarningThresholdMs(ctx->slowHandlerWarningMs);
             });
         }
     }
@@ -1029,9 +1044,11 @@ EMSCRIPTEN_KEEPALIVE void lsw_multiuser_message_bytes(int handle,
         return;
     }
     guardedVoid(*ctx, "multiuser message", [&]() {
+        const auto deliverStarted = std::chrono::steady_clock::now();
         ctx->multiuserBridge->deliverMessageBytes(
             instanceId,
             std::vector<std::uint8_t>(bytes, bytes + byteCount));
+        queueSlowOperationMessage(*ctx, "multiuser message delivery", deliverStarted);
         processHostXtraCallbacks(*ctx);
     });
 }

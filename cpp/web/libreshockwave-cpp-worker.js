@@ -12,6 +12,7 @@ let movieUrl = "";
 let paramsText = "";
 let tempoOverride = 0;
 let debugPlaybackEnabled = false;
+let slowHandlerWarningMs = 1000;
 let socketProxy = [];
 let websocketPath = "";
 let websocketSsl = null;
@@ -81,6 +82,7 @@ function ensureModule() {
       setParams: Module.cwrap("lsw_set_external_params", null, ["number", "string"]),
       setPreloadCasts: Module.cwrap("lsw_set_preload_casts", null, ["number", "number"]),
       setDebugPlayback: Module.cwrap("lsw_set_debug_playback_enabled", null, ["number", "number"]),
+      setSlowHandlerWarningMs: Module.cwrap("lsw_set_slow_handler_warning_ms", null, ["number", "number"]),
       setTempoOverride: Module.cwrap("lsw_set_tempo_override", null, ["number", "number"]),
       tempo: Module.cwrap("lsw_tempo", "number", ["number"]),
       baseTempo: Module.cwrap("lsw_base_tempo", "number", ["number"]),
@@ -583,10 +585,12 @@ async function init(message) {
   paramsText = paramsObjectToText(message.params);
   tempoOverride = Number(message.tempoOverride || 0);
   debugPlaybackEnabled = Boolean(message.debugPlaybackEnabled);
+  slowHandlerWarningMs = Math.max(0, Number(message.slowHandlerWarningMs || 1000));
   bridgeCall("set params", () => api.setParams(handle, paramsText));
   bridgeCall("set tempo override", () => api.setTempoOverride(handle, tempoOverride));
   bridgeCall("set preload casts", () => api.setPreloadCasts(handle, message.preloadCasts === false ? 0 : 1));
   bridgeCall("set debug playback", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
+  bridgeCall("set slow handler warning threshold", () => api.setSlowHandlerWarningMs(handle, slowHandlerWarningMs));
   emitDebugMessages();
   if (message.autoload && message.url) {
     playing = message.autoplay !== false;
@@ -609,9 +613,13 @@ self.addEventListener("message", (event) => {
         if (typeof message.debugPlaybackEnabled === "boolean") {
           debugPlaybackEnabled = message.debugPlaybackEnabled;
         }
+        if (Number.isFinite(Number(message.slowHandlerWarningMs))) {
+          slowHandlerWarningMs = Math.max(0, Number(message.slowHandlerWarningMs));
+        }
         paramsText = paramsObjectToText(message.params ?? paramsText);
         bridgeCall("set params", () => api.setParams(handle, paramsText));
         bridgeCall("set debug playback", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
+        bridgeCall("set slow handler warning threshold", () => api.setSlowHandlerWarningMs(handle, slowHandlerWarningMs));
         emitDebugMessages();
         playing = message.autoplay !== false;
         await loadMovie(message.url, playing, message.requestId || 0);
@@ -644,6 +652,11 @@ self.addEventListener("message", (event) => {
       case "debugPlayback":
         debugPlaybackEnabled = Boolean(message.enabled);
         bridgeCall("set debug playback", () => api.setDebugPlayback(handle, debugPlaybackEnabled ? 1 : 0));
+        emitDebugMessages();
+        break;
+      case "slowHandlerWarningMs":
+        slowHandlerWarningMs = Math.max(0, Number(message.milliseconds || 0));
+        bridgeCall("set slow handler warning threshold", () => api.setSlowHandlerWarningMs(handle, slowHandlerWarningMs));
         emitDebugMessages();
         break;
       case "params":

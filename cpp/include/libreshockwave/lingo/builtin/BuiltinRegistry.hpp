@@ -1,16 +1,19 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/net/NetManager.hpp"
@@ -100,7 +103,7 @@ struct BuiltinContext {
                                                     const std::string& methodName,
                                                     const std::vector<Datum>& args)>;
     using FieldResolver = std::function<Datum(const Datum& identifier, int castLib)>;
-    using FieldParsedValueResolver = std::function<Datum(int castLib, int memberNum)>;
+    using FieldParsedValueResolver = std::function<Datum(int castLib, int memberNum, std::uint64_t revision)>;
     using FieldSetter = std::function<void(const Datum& identifier, int castLib, const std::string& value)>;
     using XtraRegisteredResolver = std::function<bool(const std::string& xtraName)>;
     using XtraInstanceCreator = std::function<Datum(const std::string& xtraName, const std::vector<Datum>& args)>;
@@ -194,6 +197,12 @@ struct BuiltinContext {
     AlertHandler alertHandler;
     ImagePaletteResolver imagePaletteResolver;
     ImportFileIntoHandler importFileIntoHandler;
+    std::unordered_map<std::string, Datum> scriptResolutionCache;
+    mutable std::unordered_set<std::uint64_t> aliasRefreshRegistryIds;
+    mutable std::unordered_map<std::string, int> registryMemberSlotCache;
+    mutable std::unordered_map<std::string, std::optional<ScriptHandlerLocation>> scriptInstanceHandlerCache;
+    mutable std::unordered_map<std::string, vm::util::LineIndex> fieldLineIndexCache;
+    mutable std::unordered_map<std::uint64_t, std::vector<std::string>> scriptPropertyNamesCache;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
