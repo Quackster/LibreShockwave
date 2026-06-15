@@ -9181,6 +9181,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 51});
     chainedContext.push(Datum::list({Datum::of(4), Datum::of(5)}));
     assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 2);
+    chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 53});
+    chainedContext.push(Datum::list({Datum::of(4), Datum::of(5)}));
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
     assert(chainedContext.pop().isVoid());
     chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 54});
     chainedContext.push(Datum::of(std::string("abc")));
@@ -9213,6 +9217,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
     assert(chainedContext.pop().intValue() == 31);
     chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 51});
+    chainedContext.push(chainedProps);
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 1);
+    chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 53});
     chainedContext.push(chainedProps);
     assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
     assert(chainedContext.pop().isVoid());

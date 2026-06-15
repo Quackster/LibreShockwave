@@ -858,10 +858,10 @@ Datum getChainedObjectProperty(ExecutionContext& context, const Datum& object, s
         if (numericIndex.has_value() && *numericIndex >= 1 && *numericIndex <= object.listValue().count()) {
             return object.listValue().getAt(*numericIndex);
         }
-        return Datum::voidValue();
+        return numericIndex.has_value() ? Datum::voidValue() : getListProp(object.listValue(), propName);
     }
     if (object.isPropList()) {
-        return getPropListKey(object.propListValue(), propName);
+        return getPropListProp(object.propListValue(), propName);
     }
     if (const auto* str = object.asString()) {
         return propName == "length" ? Datum::of(static_cast<int>(str->value.size())) : Datum::voidValue();
