@@ -84,6 +84,27 @@ struct HandlerLookupKeyHash {
     }
 };
 
+struct ScriptHandlerFinderKey {
+    int castLib{0};
+    int memberNum{0};
+    std::string handlerName;
+
+    bool operator==(const ScriptHandlerFinderKey& other) const {
+        return castLib == other.castLib &&
+               memberNum == other.memberNum &&
+               handlerName == other.handlerName;
+    }
+};
+
+struct ScriptHandlerFinderKeyHash {
+    std::size_t operator()(const ScriptHandlerFinderKey& key) const {
+        const auto castHash = std::hash<int>{}(key.castLib);
+        const auto memberHash = std::hash<int>{}(key.memberNum);
+        const auto nameHash = std::hash<std::string>{}(key.handlerName);
+        return castHash ^ (memberHash << 1U) ^ (nameHash << 2U);
+    }
+};
+
 std::string lowerAscii(std::string_view value) {
     std::string lowered(value);
     std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
@@ -1098,6 +1119,11 @@ void Player::wireComponents() {
 
     auto handlerLookupCache =
         std::make_shared<std::unordered_map<HandlerLookupKey, lingo::vm::HandlerRef, HandlerLookupKeyHash>>();
+    auto scriptHandlerFinderCache =
+        std::make_shared<std::unordered_map<
+            ScriptHandlerFinderKey,
+            std::optional<lingo::builtin::BuiltinContext::ScriptHandlerLocation>,
+            ScriptHandlerFinderKeyHash>>();
     auto scriptRefTargetCache = std::make_shared<std::unordered_map<std::uint64_t, ResolvedScriptTarget>>();
     auto scriptInstanceTargetCache = std::make_shared<std::unordered_map<std::uint64_t, ResolvedScriptTarget>>();
 
@@ -1272,11 +1298,17 @@ void Player::wireComponents() {
         return std::nullopt;
     };
 
-    context.scriptHandlerFinder = [findHandlerInScript, resolveScriptRef, canonicalScriptRefCandidates](
+    context.scriptHandlerFinder = [findHandlerInScript, resolveScriptRef, canonicalScriptRefCandidates, scriptHandlerFinderCache](
         int castLib,
         int memberNum,
         const std::string& handlerName)
         -> std::optional<lingo::builtin::BuiltinContext::ScriptHandlerLocation> {
+        const ScriptHandlerFinderKey key{castLib > 0 ? castLib : 1, memberNum, lowerAscii(handlerName)};
+        if (const auto cached = scriptHandlerFinderCache->find(key); cached != scriptHandlerFinderCache->end()) {
+            return cached->second;
+        }
+
+        std::optional<lingo::builtin::BuiltinContext::ScriptHandlerLocation> result;
         for (const auto& [candidateCastLib, candidateMember] : canonicalScriptRefCandidates(castLib, memberNum)) {
             const auto resolved = resolveScriptRef(candidateCastLib, candidateMember);
             if (!resolved.has_value()) {
@@ -1290,7 +1322,7 @@ void Player::wireComponents() {
             if (!handler || handler->script == nullptr || handler->handler == nullptr) {
                 continue;
             }
-            return lingo::builtin::BuiltinContext::ScriptHandlerLocation{
+            result = lingo::builtin::BuiltinContext::ScriptHandlerLocation{
                 handler->script,
                 handler->handler,
                 handler->scriptOwner,
@@ -1298,8 +1330,10 @@ void Player::wireComponents() {
                 handler->scriptNamesOwner,
                 handler->scriptType
             };
+            break;
         }
-        return std::nullopt;
+        scriptHandlerFinderCache->emplace(std::move(key), result);
+        return result;
     };
 
     auto executeTarget = [this, findEventHandler](const event::EventTarget& target,

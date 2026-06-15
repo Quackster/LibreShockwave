@@ -128,7 +128,7 @@ void probeQueuedMultiuserBridge() {
     bridge.deliverMessageBytes(7, {'A', 0x00, 0xFF});
     messages = bridge.pollMessages(7);
     require(messages.size() == 1, "multiuser delivered byte message missing");
-    require(messages[0].senderID == "System" && messages[0].subject == "String",
+    require(messages[0].senderID.empty() && messages[0].subject.empty(),
             "multiuser delivered byte message metadata mismatch");
     require(messages[0].content.stringValue() == std::string({'A', '\0', static_cast<char>(0xFF)}),
             "multiuser delivered byte content mismatch");

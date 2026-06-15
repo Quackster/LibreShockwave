@@ -2224,6 +2224,7 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
                 util::setProperty(instance, propName, localProp);
             }
             scriptInstanceSetNestedProperty(localProp, args[1], args[2]);
+            util::setProperty(instance, propName, std::move(localProp));
         }
         return Datum::voidValue();
     }
@@ -6250,6 +6251,7 @@ std::optional<Datum> fastScriptInstanceObjectCall(std::string_view methodName, c
                 util::setProperty(instance, propName, localProp);
             }
             scriptInstanceSetNestedProperty(localProp, args[2], args[3]);
+            util::setProperty(instance, propName, std::move(localProp));
         }
         return Datum::voidValue();
     }

@@ -7199,8 +7199,8 @@ void testSocketMultiuserBridgeFoundation() {
     }));
     assert(messages.size() == 1);
     assert(messages[0].errorCode == 0);
-    assert(messages[0].senderID == "System");
-    assert(messages[0].subject == "String");
+    assert(messages[0].senderID.empty());
+    assert(messages[0].subject.empty());
     assert(messages[0].content.stringValue() == "server-payload");
 
     bridge.requestDisconnect(instanceId);
@@ -7215,8 +7215,6 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(QueuedMultiuserBridge::serializeWireContent("subject", "") == "subject");
     assert(QueuedMultiuserBridge::serializeWireContent("subject", "body") == "subject body");
     assert(QueuedMultiuserBridge::decodeShockwaveCommand('C', 'D') == 196);
-    assert(QueuedMultiuserBridge::isLegacyPlaintextKeepalive(std::string("@r", 2) + char(1)));
-    assert(!QueuedMultiuserBridge::isLegacyPlaintextKeepalive(std::string("@r", 2)));
     assert(QueuedMultiuserBridge::isLegacyPlaintextPong("@@BCD"));
     assert(!QueuedMultiuserBridge::isLegacyPlaintextPong("@@BCE"));
     assert(bridge.getRequest(0) == nullptr);
@@ -7262,11 +7260,12 @@ void testQueuedMultiuserBridgeFoundation() {
     assert(messages[0].subject == "keepalive");
     assert(messages[0].content.stringValue() == std::string("@r", 2) + char(1));
 
-    const auto pendingBeforeSuppressedPong = bridge.pendingRequests().size();
+    const auto pendingBeforeKeepalivePong = bridge.pendingRequests().size();
     bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong);
+    assert(bridge.pendingRequests().size() == pendingBeforeKeepalivePong + 1);
+    assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
     bridge.requestSend(7, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
-    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong + 1);
+    assert(bridge.pendingRequests().size() == pendingBeforeKeepalivePong + 2);
     assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
 
     bridge.requestConnect(8, "challenge.example", 30100, 1, chatOptions);
@@ -7275,6 +7274,8 @@ void testQueuedMultiuserBridgeFoundation() {
     bridge.deliverMessageBytes(8, {'D', 'U', '1', '2', '3', '4'});
     messages = bridge.pollMessages(8);
     assert(messages.size() == 1);
+    assert(messages[0].senderID.empty());
+    assert(messages[0].subject.empty());
     assert(messages[0].content.stringValue() == "DU1234");
     const auto pendingBeforeChallengePong = bridge.pendingRequests().size();
     bridge.requestSend(8, Datum::of(std::string("room")), "0", Datum::of(std::string("@@BCD")));
@@ -7285,16 +7286,16 @@ void testQueuedMultiuserBridgeFoundation() {
     messages = bridge.pollMessages(7);
     assert(messages.size() == 1);
     assert(messages[0].errorCode == 0);
-    assert(messages[0].senderID == "System");
-    assert(messages[0].subject == "String");
+    assert(messages[0].senderID.empty());
+    assert(messages[0].subject.empty());
     assert(messages[0].content.stringValue() == std::string({'@', '@', '\x01'}));
 
     bridge.deliverMessageBytes(7, {'D', 'U', '8', '6', '5', '7', '6', '3', '0', '7', '7', '3', '4', '1',
                                    '0', '6', '7', '2', '8', '2', '5', '9', '5', '6', '1', '8', 0x02, 'I', 0x01});
     messages = bridge.pollMessages(7);
     assert(messages.size() == 1);
-    assert(messages[0].senderID == "System");
-    assert(messages[0].subject == "String");
+    assert(messages[0].senderID.empty());
+    assert(messages[0].subject.empty());
     assert(messages[0].content.stringValue() == std::string({'D', 'U', '8', '6', '5', '7', '6', '3', '0', '7', '7', '3', '4', '1',
                                                              '0', '6', '7', '2', '8', '2', '5', '9', '5', '6', '1', '8', 0x02, 'I', 0x01}));
 
@@ -12458,6 +12459,57 @@ void testLingoVmRuntimeFoundation() {
     fastListItems.push_back(Datum::of(99));
     assert(fastListDuplicate.listValue().count() == 3);
     assert(fastListDuplicate.listValue().getAt(2).intValue() == 55);
+
+    auto scriptInstanceNestedSetPropHandler = makeHandler(33, {
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::PUSH_CONS, 0},
+        {Opcode::PUSH_INT8, 2},
+        {Opcode::PUSH_INT8, 99},
+        {Opcode::PUSH_ARG_LIST_NO_RET, 4},
+        {Opcode::OBJ_CALL, 2},
+        {Opcode::GET_GLOBAL, 1},
+        {Opcode::PUSH_CONS, 0},
+        {Opcode::PUSH_INT8, 2},
+        {Opcode::PUSH_ARG_LIST, 3},
+        {Opcode::OBJ_CALL, 3},
+        {Opcode::RET, 0}
+    });
+    ScriptChunk scriptInstanceNestedSetPropScript(nullptr,
+                                                  ChunkId(980),
+                                                  ScriptChunkType::MovieScript,
+                                                  0,
+                                                  {scriptInstanceNestedSetPropHandler},
+                                                  {ScriptChunk::LiteralEntry{1, 0, std::string("data"), 0.0}},
+                                                  {},
+                                                  {ScriptChunk::GlobalEntry{1}},
+                                                  {});
+    auto scriptInstanceNestedSetPropNames = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(981),
+        std::vector<std::string>{
+            "scriptInstanceNestedSetProp",
+            "box",
+            "setProp",
+            "getProp"
+        });
+    LingoVM scriptInstanceNestedSetPropVm;
+    Datum scriptInstanceBox = Datum::scriptInstance("box");
+    scriptInstanceBox.scriptInstanceValue().setProperty("data", Datum::list({Datum::of(1), Datum::of(2), Datum::of(3)}));
+    scriptInstanceNestedSetPropVm.setGlobal("box", scriptInstanceBox);
+    const Datum scriptInstanceNestedSetPropResult = scriptInstanceNestedSetPropVm.executeHandler(
+        HandlerRef{&scriptInstanceNestedSetPropScript,
+                   &scriptInstanceNestedSetPropScript.handlers().front(),
+                   nullptr,
+                   nullptr,
+                   scriptInstanceNestedSetPropNames});
+    assert(scriptInstanceNestedSetPropResult.intValue() == 99);
+    const Datum updatedScriptInstanceBox = scriptInstanceNestedSetPropVm.getGlobal("box");
+    const auto& updatedScriptInstanceData =
+        updatedScriptInstanceBox.scriptInstanceValue().getProperty("data").listValue().items();
+    assert(updatedScriptInstanceData.size() == 3);
+    assert(updatedScriptInstanceData[0].intValue() == 1);
+    assert(updatedScriptInstanceData[1].intValue() == 99);
+    assert(updatedScriptInstanceData[2].intValue() == 3);
 
     auto childAncestorHandler = makeHandler(6, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto parentAncestorHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});

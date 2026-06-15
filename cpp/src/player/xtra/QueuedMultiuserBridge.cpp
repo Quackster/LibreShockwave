@@ -358,13 +358,6 @@ void QueuedMultiuserBridge::requestSend(int instanceId,
                                         const std::string& subject,
                                         const lingo::Datum& content) {
     const auto contentString = safeDatumString(content);
-    if (!isSmusInstance(instanceId) && isLegacyPlaintextPong(contentString)) {
-        if (pendingLegacyPlaintextPongSuppressions_.contains(instanceId)) {
-            pendingLegacyPlaintextPongSuppressions_.erase(instanceId);
-            return;
-        }
-    }
-
     const auto recipientList = recipientsFromDatum(recipients);
     const std::string senderID = senderForInstance(instanceId);
 
@@ -389,7 +382,6 @@ void QueuedMultiuserBridge::requestDisconnect(int instanceId) {
     connected_.erase(instanceId);
     modes_.erase(instanceId);
     senderIDs_.erase(instanceId);
-    pendingLegacyPlaintextPongSuppressions_.erase(instanceId);
 }
 
 bool QueuedMultiuserBridge::isConnected(int instanceId) const {
@@ -412,7 +404,6 @@ void QueuedMultiuserBridge::destroyInstance(int instanceId) {
     messageQueues_.erase(instanceId);
     modes_.erase(instanceId);
     senderIDs_.erase(instanceId);
-    pendingLegacyPlaintextPongSuppressions_.erase(instanceId);
 }
 
 const std::vector<QueuedMultiuserBridge::PendingRequest>& QueuedMultiuserBridge::pendingRequests() const {
@@ -447,7 +438,6 @@ void QueuedMultiuserBridge::notifyConnected(int instanceId) {
 
 void QueuedMultiuserBridge::notifyDisconnected(int instanceId) {
     connected_.erase(instanceId);
-    pendingLegacyPlaintextPongSuppressions_.erase(instanceId);
 }
 
 void QueuedMultiuserBridge::notifyError(int instanceId, int errorCode) {
@@ -463,9 +453,6 @@ void QueuedMultiuserBridge::deliverMessage(int instanceId,
         deliverSmusMessage(instanceId, bytesFromString(content));
         return;
     }
-    if (isLegacyPlaintextKeepalive(content)) {
-        pendingLegacyPlaintextPongSuppressions_.insert(instanceId);
-    }
     queueMessage(instanceId, NetMessage{errorCode, std::move(senderID), std::move(subject), lingo::Datum::of(std::move(content))});
 }
 
@@ -474,7 +461,7 @@ void QueuedMultiuserBridge::deliverMessageBytes(int instanceId, const std::vecto
         deliverSmusMessage(instanceId, data);
         return;
     }
-    deliverMessage(instanceId, 0, "System", "String", stringFromBytes(data));
+    deliverMessage(instanceId, 0, "", "", stringFromBytes(data));
 }
 
 std::string QueuedMultiuserBridge::serializeWireContent(std::string_view subject, std::string_view content) {
@@ -489,13 +476,6 @@ std::string QueuedMultiuserBridge::serializeWireContent(std::string_view subject
 
 int QueuedMultiuserBridge::decodeShockwaveCommand(char high, char low) {
     return ((static_cast<unsigned char>(high) & 63) * 64) | (static_cast<unsigned char>(low) & 63);
-}
-
-bool QueuedMultiuserBridge::isLegacyPlaintextKeepalive(std::string_view content) {
-    return content.size() == 3 &&
-           content[0] == '@' &&
-           content[1] == 'r' &&
-           static_cast<unsigned char>(content[2]) == 1;
 }
 
 bool QueuedMultiuserBridge::isLegacyPlaintextPong(std::string_view content) {
