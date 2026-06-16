@@ -2597,15 +2597,17 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
         return Datum::voidValue();
     }
 
-    std::vector<Datum> constructorArgs(args.begin() + 1, args.end());
+    const auto constructorArgs = [&args]() {
+        return std::vector<Datum>(args.begin() + 1, args.end());
+    };
     if (const auto* xtraRef = target.asXtra()) {
-        return XtraBuiltins::createInstance(context, *xtraRef, constructorArgs);
+        return XtraBuiltins::createInstance(context, *xtraRef, constructorArgs());
     }
     if (context.newInstanceHandler) {
-        return context.newInstanceHandler(target, constructorArgs);
+        return context.newInstanceHandler(target, constructorArgs());
     }
     if (const auto* scriptRef = target.asScriptRef()) {
-        return createScriptInstanceFromRef(context, scriptRef->memberRef, constructorArgs);
+        return createScriptInstanceFromRef(context, scriptRef->memberRef, constructorArgs());
     }
     return Datum::voidValue();
 }
