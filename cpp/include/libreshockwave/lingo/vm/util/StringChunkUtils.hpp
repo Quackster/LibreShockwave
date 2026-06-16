@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -10,6 +11,8 @@ namespace libreshockwave::lingo::vm::util {
 
 struct LineIndex {
     std::string delimiter;
+    std::size_t sourceSize = 0;
+    std::size_t sourceHash = 0;
     std::vector<std::size_t> starts;
     std::vector<std::size_t> ends;
 };

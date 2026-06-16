@@ -10572,6 +10572,31 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(immediateCachedFieldLineGetContext.pop().stringValue() == "beta");
     assert(builtinContext.fieldLineIndexCache.size() == 1);
 
+    Scope immediateStaleFieldLineGetScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
+    ExecutionContext immediateStaleFieldLineGetContext(immediateStaleFieldLineGetScope,
+                                                       immediateStringGetPropHandler.instructions[0],
+                                                       &registry,
+                                                       &builtinContext,
+                                                       callbacks);
+    immediateStaleFieldLineGetContext.push(Datum::fieldText("short", 9, 12, 4));
+    immediateStaleFieldLineGetContext.push(Datum::symbol("line"));
+    immediateStaleFieldLineGetContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateStaleFieldLineGetContext));
+    assert(immediateStaleFieldLineGetContext.pop().stringValue().empty());
+    assert(builtinContext.fieldLineIndexCache.size() == 1);
+
+    Scope immediateStaleFieldLineCountScope(&immediateStringLineCountScript, immediateStringLineCountHandler, {});
+    ExecutionContext immediateStaleFieldLineCountContext(immediateStaleFieldLineCountScope,
+                                                         immediateStringLineCountHandler.instructions[0],
+                                                         &registry,
+                                                         &builtinContext,
+                                                         callbacks);
+    immediateStaleFieldLineCountContext.push(Datum::fieldText("solo", 9, 12, 4));
+    immediateStaleFieldLineCountContext.push(Datum::symbol("line"));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, immediateStaleFieldLineCountContext));
+    assert(immediateStaleFieldLineCountContext.pop().intValue() == 1);
+    assert(builtinContext.fieldLineIndexCache.size() == 1);
+
     Scope immediateRevisedFieldLineGetScope(&immediateStringGetPropScript, immediateStringGetPropHandler, {});
     ExecutionContext immediateRevisedFieldLineGetContext(immediateRevisedFieldLineGetScope,
                                                          immediateStringGetPropHandler.instructions[0],
@@ -12670,6 +12695,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runGetChunk(Datum::of(std::string("top\r\nmiddle")), 0, 0, 0, 0, 0, 0, 2, 0).stringValue() == "middle");
     assert(runGetChunk(Datum::of(std::string("alpha beta\nred green blue")), 2, 4, 2, 0, 0, 0, 2, 0).stringValue() == "ree");
     assert(runGetChunk(Datum::of(std::string("short")), 9, 0, 0, 0, 0, 0, 0, 0).stringValue().empty());
+    assert(runGetChunk(Datum::of(std::string("abc")), 4, 3, 0, 0, 0, 0, 0, 0).stringValue().empty());
+    assert(runGetChunk(Datum::of(std::string("abc")), 4, 99, 0, 0, 0, 0, 0, 0).stringValue().empty());
     assert(runBinary(Opcode::JOIN_STR, Datum::of(12), Datum::of(std::string("px"))).stringValue() == "12px");
     assert(runBinary(Opcode::JOIN_STR, Datum::voidValue(), Datum::of(std::string("tail"))).stringValue() == "tail");
     assert(runBinary(Opcode::JOIN_PAD_STR, Datum::of(std::string("hello")), Datum::of(std::string("world"))).stringValue() == "hello world");

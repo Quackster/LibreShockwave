@@ -1,6 +1,7 @@
 #include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 
 namespace libreshockwave::lingo::vm::util {
@@ -367,6 +368,8 @@ std::string getLineRangeDirect(std::string_view value, int start, int end) {
 LineIndex buildLineIndex(std::string_view value) {
     LineIndex index;
     index.delimiter = pickLineDelimiter(value);
+    index.sourceSize = value.size();
+    index.sourceHash = std::hash<std::string_view>{}(value);
     index.starts.push_back(0);
 
     std::size_t start = 0;
@@ -391,10 +394,15 @@ std::string getLineRange(std::string_view value, const LineIndex& index, int sta
     if (value.empty() || start < 1) {
         return "";
     }
+    if (end == 0) {
+        end = start;
+    }
+    if (index.sourceSize != value.size() ||
+        index.sourceHash != std::hash<std::string_view>{}(value)) {
+        return getLineRangeDirect(value, start, end);
+    }
     if (end < 0) {
         end = lineCount(index);
-    } else if (end == 0) {
-        end = start;
     }
     if (end < start) {
         return "";
@@ -404,9 +412,15 @@ std::string getLineRange(std::string_view value, const LineIndex& index, int sta
     if (start > clampedEnd) {
         return "";
     }
+    if (index.starts.size() != index.ends.size()) {
+        return getLineRangeDirect(value, start, end);
+    }
 
     const std::size_t rangeStart = index.starts[static_cast<std::size_t>(start - 1)];
     const std::size_t rangeEnd = index.ends[static_cast<std::size_t>(clampedEnd - 1)];
+    if (rangeStart > value.size() || rangeEnd > value.size()) {
+        return getLineRangeDirect(value, start, end);
+    }
     return rangeEnd >= rangeStart
         ? std::string(value.substr(rangeStart, rangeEnd - rangeStart))
         : "";

@@ -1258,6 +1258,11 @@ std::string fieldLineIndexCacheKey(const Datum::FieldText& field) {
            std::to_string(field.revision);
 }
 
+bool lineIndexMatches(std::string_view value, const util::LineIndex& index) {
+    return index.sourceSize == value.size() &&
+           index.sourceHash == std::hash<std::string_view>{}(value);
+}
+
 const util::LineIndex* cachedFieldLineIndex(const Datum& target, builtin::BuiltinContext* builtinContext) {
     const auto* field = target.asFieldText();
     if (field == nullptr || field->revision == 0 || builtinContext == nullptr) {
@@ -1274,6 +1279,8 @@ const util::LineIndex* cachedFieldLineIndex(const Datum& target, builtin::Builti
         found = builtinContext->fieldLineIndexCache
             .emplace(key, util::buildLineIndex(field->value))
             .first;
+    } else if (!lineIndexMatches(field->value, found->second)) {
+        found->second = util::buildLineIndex(field->value);
     }
     return &found->second;
 }
