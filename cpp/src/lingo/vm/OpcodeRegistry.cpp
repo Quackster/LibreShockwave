@@ -2335,7 +2335,7 @@ std::optional<builtin::BuiltinContext::ScriptHandlerLocation> findScriptInstance
     auto* current = &instance;
     std::shared_ptr<Datum::ScriptInstanceRef> currentOwner;
     for (int depth = 0; current != nullptr && depth < util::MAX_ANCESTOR_DEPTH; ++depth) {
-        cacheKey += std::to_string(current->identityId());
+        appendInt(cacheKey, current->identityId());
         cacheKey.push_back('/');
         currentOwner = current->ancestor();
         current = currentOwner.get();
