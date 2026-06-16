@@ -542,15 +542,22 @@ std::string LingoVM::formatCallStack() const {
 
     std::ostringstream out;
     out << "Lingo call stack:\n";
-    for (const auto& frame : callStack()) {
-        out << "  at " << frame.handlerName << '(';
-        for (std::size_t index = 0; index < frame.arguments.size(); ++index) {
+    for (auto it = callStack_.rbegin(); it != callStack_.rend(); ++it) {
+        const Scope& scope = *it;
+        out << "  at "
+            << (scope.script() != nullptr
+                    ? handlerName(*scope.script(), scope.handler(), scope.fileOwner(), scope.scriptNamesOwner())
+                    : std::string())
+            << '(';
+        const int displayArgCount = scope.displayArgumentCount();
+        for (int index = 0; index < displayArgCount; ++index) {
             if (index > 0) {
                 out << ", ";
             }
-            out << frame.arguments[index];
+            out << formatTraceArgument(scope.displayArgument(index));
         }
-        out << ") (" << frame.scriptName << ") [bytecode " << frame.bytecodeIndex << "]\n";
+        out << ") (script#" << (scope.script() != nullptr ? scope.script()->id().value() : 0)
+            << ") [bytecode " << scope.bytecodeIndex() << "]\n";
     }
     return out.str();
 }
@@ -808,19 +815,22 @@ Datum LingoVM::executeHandler(const HandlerRef& handlerRef,
     Datum result = Datum::voidValue();
     std::optional<TraceListener::HandlerInfo> handlerInfo;
     bool alertHookDepthIncremented = false;
-    const std::int64_t handlerStartTime = currentTimeMillis();
+    const bool emitSlowHandlerWarnings = static_cast<bool>(builtinContext_.outputHandler);
+    const std::int64_t handlerStartTime = emitSlowHandlerWarnings ? currentTimeMillis() : 0;
     int executedSteps = 0;
     if (isAlertHookHandler) {
         alertHookHandler_.incrementDepth();
         alertHookDepthIncremented = true;
     }
     auto leaveHandler = [&] {
-        const std::int64_t handlerElapsedMs = currentTimeMillis() - handlerStartTime;
-        if (handlerElapsedMs >= slowHandlerWarningThresholdMs_ && builtinContext_.outputHandler) {
-            builtinContext_.outputHandler(
-                "WARNING",
-                "handler " + currentHandlerName + " took " + std::to_string(handlerElapsedMs) +
-                    "ms (" + std::to_string(executedSteps) + " instructions)");
+        if (emitSlowHandlerWarnings) {
+            const std::int64_t handlerElapsedMs = currentTimeMillis() - handlerStartTime;
+            if (handlerElapsedMs >= slowHandlerWarningThresholdMs_) {
+                builtinContext_.outputHandler(
+                    "WARNING",
+                    "handler " + currentHandlerName + " took " + std::to_string(handlerElapsedMs) +
+                        "ms (" + std::to_string(executedSteps) + " instructions)");
+            }
         }
         if (traceListener_ && handlerInfo.has_value()) {
             traceListener_->onHandlerExit(*handlerInfo, result);
@@ -1372,10 +1382,10 @@ bool LingoVM::shouldSuppressConsoleInstruction(int offset) {
 
 LingoVM::CallStackFrame LingoVM::toCallStackFrame(const Scope& scope) const {
     std::vector<std::string> args;
-    const auto displayArgs = scope.displayArguments();
-    args.reserve(displayArgs.size());
-    for (const auto& arg : displayArgs) {
-        args.push_back(formatTraceArgument(arg));
+    const int displayArgCount = scope.displayArgumentCount();
+    args.reserve(static_cast<std::size_t>(displayArgCount));
+    for (int index = 0; index < displayArgCount; ++index) {
+        args.push_back(formatTraceArgument(scope.displayArgument(index)));
     }
 
     return CallStackFrame{

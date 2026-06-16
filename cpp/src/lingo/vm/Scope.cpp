@@ -70,24 +70,32 @@ const std::vector<Datum>& Scope::arguments() const {
     return arguments_;
 }
 
+int Scope::displayArgumentCount() const {
+    return std::max(0, static_cast<int>(arguments_.size()) - displayArgumentOffset());
+}
+
+Datum Scope::displayArgument(int index) const {
+    if (index < 0 || index >= displayArgumentCount()) {
+        return Datum::voidValue();
+    }
+    const auto modifiedIndex = static_cast<std::size_t>(index);
+    if (modifiedIndex < modifiedParams_.size() && modifiedParams_[modifiedIndex]) {
+        return *modifiedParams_[modifiedIndex];
+    }
+
+    const int originalIndex = index + displayArgumentOffset();
+    if (originalIndex >= 0 && originalIndex < static_cast<int>(arguments_.size())) {
+        return arguments_[static_cast<std::size_t>(originalIndex)];
+    }
+    return Datum::voidValue();
+}
+
 std::vector<Datum> Scope::displayArguments() const {
-    const int offset = displayArgumentOffset();
-    const int explicitCount = std::max(0, static_cast<int>(arguments_.size()) - offset);
+    const int explicitCount = displayArgumentCount();
     std::vector<Datum> result;
     result.reserve(static_cast<std::size_t>(explicitCount));
     for (int index = 0; index < explicitCount; ++index) {
-        const auto modifiedIndex = static_cast<std::size_t>(index);
-        if (modifiedIndex < modifiedParams_.size() && modifiedParams_[modifiedIndex]) {
-            result.push_back(*modifiedParams_[modifiedIndex]);
-            continue;
-        }
-
-        const int originalIndex = index + offset;
-        if (originalIndex >= 0 && originalIndex < static_cast<int>(arguments_.size())) {
-            result.push_back(arguments_[static_cast<std::size_t>(originalIndex)]);
-        } else {
-            result.push_back(Datum::voidValue());
-        }
+        result.push_back(displayArgument(index));
     }
     return result;
 }

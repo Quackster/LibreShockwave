@@ -77,6 +77,15 @@ struct TransparentCaseInsensitiveStringEqual {
     [[nodiscard]] bool operator()(std::string_view lhs, const char* rhs) const noexcept {
         return (*this)(lhs, std::string_view(rhs));
     }
+    [[nodiscard]] bool operator()(const char* lhs, const std::string& rhs) const noexcept {
+        return (*this)(std::string_view(lhs), std::string_view(rhs));
+    }
+    [[nodiscard]] bool operator()(const std::string& lhs, const char* rhs) const noexcept {
+        return (*this)(std::string_view(lhs), std::string_view(rhs));
+    }
+    [[nodiscard]] bool operator()(const char* lhs, const char* rhs) const noexcept {
+        return (*this)(std::string_view(lhs), std::string_view(rhs));
+    }
 };
 
 enum class DatumType {

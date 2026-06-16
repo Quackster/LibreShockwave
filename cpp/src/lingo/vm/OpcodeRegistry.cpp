@@ -101,6 +101,13 @@ std::string lowerAscii(std::string_view value) {
     return lowered;
 }
 
+void appendLowerAscii(std::string& target, std::string_view value) {
+    target.reserve(target.size() + value.size());
+    for (const unsigned char ch : value) {
+        target.push_back(static_cast<char>(std::tolower(ch)));
+    }
+}
+
 std::string_view trimView(std::string_view value) {
     while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
         value.remove_prefix(1);
@@ -2311,6 +2318,7 @@ std::optional<builtin::BuiltinContext::ScriptHandlerLocation> findScriptInstance
     }
 
     std::string cacheKey;
+    cacheKey.reserve(static_cast<std::size_t>(util::MAX_ANCESTOR_DEPTH * 4) + methodName.size());
     auto* current = &instance;
     std::shared_ptr<Datum::ScriptInstanceRef> currentOwner;
     for (int depth = 0; current != nullptr && depth < util::MAX_ANCESTOR_DEPTH; ++depth) {
@@ -2319,7 +2327,7 @@ std::optional<builtin::BuiltinContext::ScriptHandlerLocation> findScriptInstance
         currentOwner = current->ancestor();
         current = currentOwner.get();
     }
-    cacheKey += lowerAscii(methodName);
+    appendLowerAscii(cacheKey, methodName);
     if (const auto cached = builtinContext->scriptInstanceHandlerCache.find(cacheKey);
         cached != builtinContext->scriptInstanceHandlerCache.end()) {
         return cached->second;
@@ -4354,6 +4362,11 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     return Datum::voidValue();
 }
 
+const std::vector<Datum>& emptyDatumArgs() {
+    static const std::vector<Datum> empty;
+    return empty;
+}
+
 bool pushZero(ExecutionContext& context) {
     context.push(Datum::of(0));
     return true;
@@ -5821,19 +5834,22 @@ bool localCall(ExecutionContext& context) {
 
     const Datum argListDatum = context.pop();
     const bool noReturn = isNoReturnArgList(argListDatum);
-    std::vector<Datum> args = argListItems(argListDatum);
+    std::vector<Datum> argStorage;
+    const std::vector<Datum>* args = &argListItemsRef(argListDatum, argStorage);
+    std::vector<Datum> adjustedArgs;
     Datum receiver = context.scope().receiver();
-    if (!receiver.isVoid() && !receiver.isNull() && !args.empty() && args.front() == receiver) {
+    if (!receiver.isVoid() && !receiver.isNull() && !args->empty() && args->front() == receiver) {
         bool handlerDeclaresMe = false;
         if (!targetHandler->argNameIds.empty()) {
             handlerDeclaresMe = equalsIgnoreCase(context.resolveNameRef(targetHandler->argNameIds.front()), "me");
         }
         if (handlerDeclaresMe) {
-            args.erase(args.begin());
+            adjustedArgs.assign(args->begin() + 1, args->end());
         } else {
-            receiver = args.front();
-            args.erase(args.begin());
+            receiver = args->front();
+            adjustedArgs.assign(args->begin() + 1, args->end());
         }
+        args = &adjustedArgs;
     }
 
     const Datum result = safeExecuteHandler(
@@ -5845,7 +5861,7 @@ bool localCall(ExecutionContext& context) {
             context.scope().fileOwner(),
             context.scope().scriptNamesOwner()
         },
-        args,
+        *args,
         receiver);
     if (!noReturn) {
         context.push(result);
@@ -6865,9 +6881,10 @@ bool executeObjCallWithArgs(ExecutionContext& context,
         const std::span<const Datum> methodArgs(args.data() + 1, args.size() - 1);
         result = scriptInstanceObjectMethod(context, target, methodName, methodArgs);
     } else {
-        std::vector<Datum> methodArgs;
-        if (!args.empty()) {
-            methodArgs.assign(args.begin() + 1, args.end());
+        std::vector<Datum> methodArgsStorage;
+        const std::vector<Datum>& methodArgs = args.size() <= 1 ? emptyDatumArgs() : methodArgsStorage;
+        if (args.size() > 1) {
+            methodArgsStorage.assign(args.begin() + 1, args.end());
         }
         result = dispatchObjectMethod(context, std::move(target), methodName, methodArgs);
     }
@@ -7393,7 +7410,11 @@ bool executeExtCallWithArgs(ExecutionContext& context,
         result = *builtinResult;
     } else if (!args.empty()) {
         Datum target = args.front();
-        std::vector<Datum> methodArgs(args.begin() + 1, args.end());
+        std::vector<Datum> methodArgsStorage;
+        const std::vector<Datum>& methodArgs = args.size() <= 1 ? emptyDatumArgs() : methodArgsStorage;
+        if (args.size() > 1) {
+            methodArgsStorage.assign(args.begin() + 1, args.end());
+        }
         result = dispatchObjectMethod(context, std::move(target), handlerName, methodArgs);
     } else if (args.empty()) {
         result = builtinConstant(handlerName).value_or(Datum::voidValue());

@@ -206,6 +206,10 @@ struct BuiltinContext {
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
+using BuiltinMap = std::unordered_map<std::string,
+                                      BuiltinFunction,
+                                      TransparentCaseInsensitiveStringHash,
+                                      TransparentCaseInsensitiveStringEqual>;
 
 class BuiltinRegistry {
 public:
@@ -221,12 +225,12 @@ public:
     [[nodiscard]] const BuiltinFunction* get(std::string_view name) const;
 
     void registerBuiltin(std::string_view name, BuiltinFunction function);
-    [[nodiscard]] const std::unordered_map<std::string, BuiltinFunction>& map() const;
+    [[nodiscard]] const BuiltinMap& map() const;
 
     [[nodiscard]] static std::string normalizeName(std::string_view name);
 
 private:
-    std::unordered_map<std::string, BuiltinFunction> builtins_;
+    BuiltinMap builtins_;
 };
 
 class MathBuiltins {

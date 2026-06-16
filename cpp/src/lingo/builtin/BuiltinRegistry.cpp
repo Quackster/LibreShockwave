@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <span>
 #include <sstream>
 #include <utility>
 
@@ -611,7 +612,7 @@ Datum snapshotStructArgForCall(const Datum& arg) {
     return arg.deepCopy();
 }
 
-std::vector<Datum> snapshotStructArgsForCall(const std::vector<Datum>& args) {
+std::vector<Datum> snapshotStructArgsForCall(std::span<const Datum> args) {
     std::vector<Datum> snapshot;
     snapshot.reserve(args.size());
     for (const auto& arg : args) {
@@ -767,7 +768,7 @@ BuiltinRegistry::BuiltinRegistry() {
 }
 
 bool BuiltinRegistry::contains(std::string_view name) const {
-    return builtins_.contains(normalizeName(name));
+    return builtins_.contains(name);
 }
 
 Datum BuiltinRegistry::invoke(std::string_view name,
@@ -782,8 +783,7 @@ Datum BuiltinRegistry::invoke(std::string_view name,
 std::optional<Datum> BuiltinRegistry::invokeIfPresent(std::string_view name,
                                                       BuiltinContext& context,
                                                       const std::vector<Datum>& args) const {
-    const auto normalizedName = normalizeName(name);
-    const auto found = builtins_.find(normalizedName);
+    const auto found = builtins_.find(name);
     if (found == builtins_.end()) {
         return std::nullopt;
     }
@@ -791,7 +791,7 @@ std::optional<Datum> BuiltinRegistry::invokeIfPresent(std::string_view name,
 }
 
 const BuiltinFunction* BuiltinRegistry::get(std::string_view name) const {
-    const auto found = builtins_.find(normalizeName(name));
+    const auto found = builtins_.find(name);
     return found == builtins_.end() ? nullptr : &found->second;
 }
 
@@ -799,7 +799,7 @@ void BuiltinRegistry::registerBuiltin(std::string_view name, BuiltinFunction fun
     builtins_[normalizeName(name)] = std::move(function);
 }
 
-const std::unordered_map<std::string, BuiltinFunction>& BuiltinRegistry::map() const {
+const BuiltinMap& BuiltinRegistry::map() const {
     return builtins_;
 }
 
@@ -2292,6 +2292,12 @@ Datum XtraBuiltins::callInstanceGlobalHandler(BuiltinContext& context,
     if (instance == nullptr) {
         return Datum::voidValue();
     }
+    if (!context.xtraHandler) {
+        debugPlaybackMessage(context,
+                             "Cannot call Xtra handler without an Xtra manager: " + instance->xtraName +
+                                 "." + std::string(handlerName));
+        return Datum::voidValue();
+    }
     std::vector<Datum> methodArgs(args.begin() + 1, args.end());
     return callHandler(context, *instance, handlerName, methodArgs);
 }
@@ -2376,13 +2382,12 @@ Datum ControlFlowBuiltins::go(BuiltinContext& context, const std::vector<Datum>&
         return Datum::voidValue();
     }
     if (const auto* symbol = target.asSymbol()) {
-        const std::string command = BuiltinRegistry::normalizeName(symbol->name);
         const int frame = context.movieProperties->getMovieProp("frame").intValue();
-        if (command == "next") {
+        if (equalsIgnoreCase(symbol->name, "next")) {
             context.movieProperties->goToFrame(frame + 1);
-        } else if (command == "previous") {
+        } else if (equalsIgnoreCase(symbol->name, "previous")) {
             context.movieProperties->goToFrame(std::max(1, frame - 1));
-        } else if (command == "loop") {
+        } else if (equalsIgnoreCase(symbol->name, "loop")) {
             context.movieProperties->goToFrame(frame);
         } else {
             context.movieProperties->goToLabel(symbol->name);
@@ -2406,7 +2411,7 @@ Datum ControlFlowBuiltins::call(BuiltinContext& context, const std::vector<Datum
     }
 
     const std::string handlerName = args[0].asSymbol() != nullptr ? args[0].asSymbol()->name : toStringLikeJava(args[0]);
-    const std::vector<Datum> extraArgs(args.begin() + 2, args.end());
+    const std::span<const Datum> extraArgs(args.data() + 2, args.size() - 2);
     const Datum& target = args[1];
     Datum lastResult = Datum::voidValue();
 
@@ -2570,21 +2575,17 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
     }
 
     const Datum& target = args.front();
-    std::vector<Datum> constructorArgs(args.begin() + 1, args.end());
-    if (const auto* xtraRef = target.asXtra()) {
-        return XtraBuiltins::createInstance(context, *xtraRef, constructorArgs);
-    }
     if (const auto* typeSymbol = target.asSymbol();
-        typeSymbol != nullptr && !constructorArgs.empty() && constructorArgs.front().asCastLibRef() != nullptr) {
+        typeSymbol != nullptr && args.size() >= 2 && args[1].asCastLibRef() != nullptr) {
         if (context.castMemberCreator) {
             context.scriptResolutionCache.clear();
             context.registryMemberSlotCache.clear();
-            return context.castMemberCreator(constructorArgs.front().asCastLibRef()->castLib, typeSymbol->name);
+            return context.castMemberCreator(args[1].asCastLibRef()->castLib, typeSymbol->name);
         }
         return Datum::voidValue();
     }
     if (const auto* typeSymbol = target.asSymbol();
-        typeSymbol != nullptr && !constructorArgs.empty() && constructorArgs.front().isVoid()) {
+        typeSymbol != nullptr && args.size() >= 2 && args[1].isVoid()) {
         if (context.castMemberCreator) {
             context.scriptResolutionCache.clear();
             context.registryMemberSlotCache.clear();
@@ -2593,6 +2594,10 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
         return Datum::voidValue();
     }
 
+    std::vector<Datum> constructorArgs(args.begin() + 1, args.end());
+    if (const auto* xtraRef = target.asXtra()) {
+        return XtraBuiltins::createInstance(context, *xtraRef, constructorArgs);
+    }
     if (context.newInstanceHandler) {
         return context.newInstanceHandler(target, constructorArgs);
     }
@@ -2751,25 +2756,28 @@ Datum TypeBuiltins::ilk(BuiltinContext&, const std::vector<Datum>& args) {
         return Datum::symbol(typeName);
     }
 
-    const std::string typeKey = BuiltinRegistry::normalizeName(typeName);
-    const std::string checkKey = BuiltinRegistry::normalizeName(keyName(args[1]));
-    if (typeKey == checkKey) {
+    const std::string checkName = keyName(args[1]);
+    if (equalsIgnoreCase(typeName, checkName)) {
         return Datum::TRUE;
     }
-    if (checkKey == "list" && (typeKey == "proplist" || typeKey == "rect" || typeKey == "point")) {
+    if (equalsIgnoreCase(checkName, "list") &&
+        (equalsIgnoreCase(typeName, "proplist") || equalsIgnoreCase(typeName, "rect") ||
+         equalsIgnoreCase(typeName, "point"))) {
         return Datum::TRUE;
     }
-    if (checkKey == "linearlist" && typeKey == "list") {
+    if (equalsIgnoreCase(checkName, "linearlist") && equalsIgnoreCase(typeName, "list")) {
         return Datum::TRUE;
     }
-    if (checkKey == "number" && (typeKey == "integer" || typeKey == "float")) {
+    if (equalsIgnoreCase(checkName, "number") &&
+        (equalsIgnoreCase(typeName, "integer") || equalsIgnoreCase(typeName, "float"))) {
         return Datum::TRUE;
     }
-    if (checkKey == "object" &&
-        (typeKey == "instance" || typeKey == "member" || typeKey == "xtra" || typeKey == "xtrainstance" ||
-         typeKey == "script" || typeKey == "castlib" || typeKey == "sprite" || typeKey == "stage" ||
-         typeKey == "sound" ||
-         typeKey == "image")) {
+    if (equalsIgnoreCase(checkName, "object") &&
+        (equalsIgnoreCase(typeName, "instance") || equalsIgnoreCase(typeName, "member") ||
+         equalsIgnoreCase(typeName, "xtra") || equalsIgnoreCase(typeName, "xtrainstance") ||
+         equalsIgnoreCase(typeName, "script") || equalsIgnoreCase(typeName, "castlib") ||
+         equalsIgnoreCase(typeName, "sprite") || equalsIgnoreCase(typeName, "stage") ||
+         equalsIgnoreCase(typeName, "sound") || equalsIgnoreCase(typeName, "image"))) {
         return Datum::TRUE;
     }
     return Datum::FALSE;
@@ -2805,11 +2813,11 @@ Datum TypeBuiltins::symbol(BuiltinContext&, const std::vector<Datum>& args) {
     if (!args[0].isString()) {
         return Datum::voidValue();
     }
-    std::string value = args[0].stringValue();
+    std::string_view value = args[0].stringValue();
     if (!value.empty() && value.front() == '#') {
-        value.erase(value.begin());
+        value.remove_prefix(1);
     }
-    return Datum::symbol(std::move(value));
+    return Datum::symbol(std::string(value));
 }
 
 Datum TypeBuiltins::callAncestor(BuiltinContext& context, const std::vector<Datum>& args) {

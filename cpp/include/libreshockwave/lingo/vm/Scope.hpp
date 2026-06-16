@@ -43,6 +43,8 @@ public:
     [[nodiscard]] const std::shared_ptr<const chunks::ScriptNamesChunk>& scriptNamesOwner() const;
     [[nodiscard]] const chunks::ScriptChunk::Handler& handler() const;
     [[nodiscard]] const std::vector<Datum>& arguments() const;
+    [[nodiscard]] int displayArgumentCount() const;
+    [[nodiscard]] Datum displayArgument(int index) const;
     [[nodiscard]] std::vector<Datum> displayArguments() const;
     [[nodiscard]] const Datum& receiver() const;
 
