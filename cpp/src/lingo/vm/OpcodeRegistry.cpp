@@ -5513,7 +5513,8 @@ bool pushList(ExecutionContext& context) {
 
 bool pushPropList(ExecutionContext& context) {
     const Datum argListDatum = context.pop();
-    const std::vector<Datum> items = argListItems(argListDatum);
+    std::vector<Datum> itemStorage;
+    const std::vector<Datum>& items = argListItemsRef(argListDatum, itemStorage);
     Datum propList = Datum::propList();
     auto& properties = propList.propListValue().properties();
     for (std::size_t index = 0; index + 1 < items.size(); index += 2) {
