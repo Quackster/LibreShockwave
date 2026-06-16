@@ -494,10 +494,6 @@ Datum LingoVM::callAncestor(const std::vector<Datum>& args) {
         return Datum::voidValue();
     }
 
-    std::vector<Datum> callArgs;
-    callArgs.reserve(args.size() > 2 ? args.size() - 2 : 0);
-    callArgs.insert(callArgs.end(), args.begin() + 2, args.end());
-
     const auto* current = &ancestor.scriptInstanceValue();
     for (int depth = 0; current != nullptr && depth < util::MAX_ANCESTOR_DEPTH; ++depth) {
         if (const auto& scriptRef = current->scriptRef(); scriptRef.has_value()) {
@@ -505,6 +501,9 @@ Datum LingoVM::callAncestor(const std::vector<Datum>& args) {
             const int memberNum = scriptRef->memberNum();
             auto location = builtinContext_.scriptHandlerFinder(castLib, memberNum, handlerName);
             if (location.has_value() && location->script != nullptr && location->handler != nullptr) {
+                std::vector<Datum> callArgs;
+                callArgs.reserve(args.size() > 2 ? args.size() - 2 : 0);
+                callArgs.insert(callArgs.end(), args.begin() + 2, args.end());
                 return executeHandler(
                     HandlerRef{
                         location->script,
