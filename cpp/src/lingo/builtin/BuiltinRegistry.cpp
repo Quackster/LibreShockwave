@@ -2821,7 +2821,8 @@ Datum TypeBuiltins::symbol(BuiltinContext&, const std::vector<Datum>& args) {
     if (!args[0].isString()) {
         return Datum::voidValue();
     }
-    std::string_view value = args[0].stringValue();
+    const std::string text = args[0].stringValue();
+    std::string_view value = text;
     if (!value.empty() && value.front() == '#') {
         value.remove_prefix(1);
     }
