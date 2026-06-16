@@ -37,6 +37,12 @@ bool isMovieRef(const Datum& datum) {
     return datum.type() == DatumType::MovieRef;
 }
 
+void appendLowercase(std::string& output, std::string_view value) {
+    for (const unsigned char ch : value) {
+        output.push_back(static_cast<char>(std::tolower(ch)));
+    }
+}
+
 bool isResetPaletteArg(const Datum& datum) {
     if (!datum.isInt()) {
         return false;
@@ -2698,7 +2704,10 @@ Datum TypeBuiltins::script(BuiltinContext& context, const std::vector<Datum>& ar
     }
     if (identifier.isString() || identifier.isSymbol()) {
         const std::string scriptName = keyName(identifier);
-        const std::string cacheKey = std::to_string(scopedCastLib) + ":" + BuiltinRegistry::normalizeName(scriptName);
+        std::string cacheKey = std::to_string(scopedCastLib);
+        cacheKey.reserve(cacheKey.size() + 1 + scriptName.size());
+        cacheKey.push_back(':');
+        appendLowercase(cacheKey, scriptName);
         if (const auto cached = context.scriptResolutionCache.find(cacheKey);
             cached != context.scriptResolutionCache.end()) {
             return cached->second;
