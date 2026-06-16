@@ -4603,7 +4603,8 @@ bool newObj(ExecutionContext& context) {
     }
 
     const Datum argListDatum = context.pop();
-    const std::vector<Datum> args = argListItems(argListDatum);
+    std::vector<Datum> argStorage;
+    const std::vector<Datum>& args = argListItemsRef(argListDatum, argStorage);
     if (args.empty()) {
         context.push(Datum::voidValue());
         return true;
