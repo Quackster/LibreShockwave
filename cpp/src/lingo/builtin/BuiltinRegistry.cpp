@@ -1600,10 +1600,9 @@ Datum TimeoutBuiltins::handleMethod(BuiltinContext& context,
                                     const Datum::TimeoutRef& ref,
                                     std::string_view methodName,
                                     const std::vector<Datum>& args) {
-    const std::string method = BuiltinRegistry::normalizeName(methodName);
     auto* manager = context.timeoutManager;
 
-    if (method == "new") {
+    if (equalsIgnoreCase(methodName, "new")) {
         if (manager == nullptr) {
             return Datum::voidValue();
         }
@@ -1624,7 +1623,7 @@ Datum TimeoutBuiltins::handleMethod(BuiltinContext& context,
         return manager->createTimeout(name, periodMs, handler, target);
     }
 
-    if (method == "forget") {
+    if (equalsIgnoreCase(methodName, "forget")) {
         if (manager != nullptr && !ref.name.empty()) {
             manager->forgetTimeout(ref.name);
         }
