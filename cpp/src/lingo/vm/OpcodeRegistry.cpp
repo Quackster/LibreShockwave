@@ -1259,10 +1259,23 @@ int countChunks(std::string_view value, StringChunkType type, char itemDelimiter
     return util::countChunks(value, type, itemDelimiter);
 }
 
+void appendInt(std::string& output, int value) {
+    std::array<char, 16> buffer{};
+    const auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    if (ec == std::errc{}) {
+        output.append(buffer.data(), ptr);
+    }
+}
+
 std::string fieldLineIndexCacheKey(const Datum::FieldText& field) {
-    return std::to_string(field.castLib) + ":" +
-           std::to_string(field.memberNum) + ":" +
-           std::to_string(field.revision);
+    std::string key;
+    key.reserve(32);
+    appendInt(key, field.castLib);
+    key.push_back(':');
+    appendInt(key, field.memberNum);
+    key.push_back(':');
+    appendInt(key, field.revision);
+    return key;
 }
 
 bool lineIndexMatches(std::string_view value, const util::LineIndex& index) {
