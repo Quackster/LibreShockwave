@@ -3210,6 +3210,132 @@ void testPlayerInputFoundation() {
 
     InputHandler inputHandler(&handlerState, &stageRenderer, &dispatcher);
     assert(inputHandler.hitTestExact(5, 5) == 2);
+
+    auto makeNativeAlphaSpecificData = [](int alphaThreshold) {
+        return std::vector<std::uint8_t>{
+            0x80, 0x0C,
+            0x00, 0x00,
+            0x00, 0x00,
+            0x00, 0x03,
+            0x00, 0x03,
+            static_cast<std::uint8_t>(alphaThreshold & 0xFF),
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+            0x00, 0x00,
+            0x10,
+            0x20,
+            0x00, 0x00,
+            0x00, 0x00
+        };
+    };
+    auto transparentTopBitmap = std::make_shared<Bitmap>(20, 20, 32);
+    transparentTopBitmap->fill(0xFFFF0000U);
+    transparentTopBitmap->setPixel(5, 5, 0x00000000U);
+    transparentTopBitmap->setNativeAlpha(true);
+    auto transparentTopMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                                  ChunkId(320),
+                                                                  MemberType::Bitmap,
+                                                                  0,
+                                                                  28,
+                                                                  std::vector<std::uint8_t>{},
+                                                                  makeNativeAlphaSpecificData(128),
+                                                                  "transparentTop",
+                                                                  0,
+                                                                  0,
+                                                                  0);
+    auto lowerInteractive = stageRenderer.spriteRegistry().getOrCreateDynamic(4);
+    lowerInteractive->setScriptInstanceList({Datum::scriptInstance("lowerInteractive")});
+    auto upperInteractive = stageRenderer.spriteRegistry().getOrCreateDynamic(5);
+    upperInteractive->setScriptInstanceList({Datum::scriptInstance("upperInteractive")});
+    auto lowerOpaqueBitmap =
+        std::make_shared<Bitmap>(20, 20, 32, std::vector<std::uint32_t>(400, 0xFF00FF00U));
+    stageRenderer.setLastBakedSprites({
+        RenderSprite(4,
+                     0,
+                     0,
+                     20,
+                     20,
+                     1,
+                     true,
+                     SpriteType::Bitmap,
+                     nullptr,
+                     nullptr,
+                     0,
+                     0,
+                     false,
+                     false,
+                     0,
+                     100,
+                     false,
+                     false,
+                     lowerOpaqueBitmap,
+                     true),
+        RenderSprite(5,
+                     0,
+                     0,
+                     20,
+                     20,
+                     2,
+                     true,
+                     SpriteType::Bitmap,
+                     transparentTopMember,
+                     nullptr,
+                     0,
+                     0,
+                     false,
+                     false,
+                     0,
+                     100,
+                     false,
+                     false,
+                     transparentTopBitmap,
+                     true),
+    });
+    assert(HitTester::hitTest(stageRenderer.lastBakedSprites(), 5, 5) == 4);
+    assert(inputHandler.hitTestExact(5, 5) == 5);
+
+    stageRenderer.setLastBakedSprites({
+        RenderSprite(1,
+                     0,
+                     0,
+                     20,
+                     20,
+                     1,
+                     true,
+                     SpriteType::Shape,
+                     nullptr,
+                     nullptr,
+                     0,
+                     0,
+                     false,
+                     false,
+                     0,
+                     100,
+                     false,
+                     false,
+                     nullptr,
+                     false),
+        RenderSprite(2,
+                     0,
+                     0,
+                     20,
+                     20,
+                     2,
+                     true,
+                     SpriteType::Shape,
+                     nullptr,
+                     nullptr,
+                     0,
+                     0,
+                     false,
+                     false,
+                     0,
+                     100,
+                     false,
+                     false,
+                     nullptr,
+                     true),
+    });
     inputHandler.onMouseMove(5, 5);
     assert(handlerState.mouseH() == 5);
     assert(handlerState.mouseV() == 5);
@@ -3803,18 +3929,7 @@ void testPlayerFacadeFoundation() {
                                     {Datum::symbol("eventProcRoom"),
                                      Datum::symbol("room_interface"),
                                      Datum::symbol("mouseDown")})
-               .boolValue());
-    auto playerBrokerScripts = player.spriteProperties().getScriptInstanceList(12);
-    assert(playerBrokerScripts.has_value());
-    assert(playerBrokerScripts->size() == 1);
-    assert((*playerBrokerScripts)[0].type() == DatumType::ScriptInstanceRef);
-    const auto playerBrokerProcList =
-        (*playerBrokerScripts)[0].scriptInstanceValue().getProperty("pProcList");
-    assert(playerBrokerProcList.isPropList());
-    const auto playerBrokerMouseDown =
-        playerBrokerProcList.propListValue().get(Datum::symbol("mouseDown"));
-    assert(playerBrokerMouseDown.listValue().getAt(1).asSymbol()->name == "eventProcRoom");
-    assert(playerBrokerMouseDown.listValue().getAt(2).asSymbol()->name == "room_interface");
+               .isVoid());
     assert(player.builtinRegistry().contains("puppetTempo"));
     assert(player.builtinRegistry().contains("preloadNetThing"));
     assert(player.builtinRegistry().invoke("externalParamCount", player.builtinContext()).intValue() == 0);
@@ -8256,6 +8371,120 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::LOCAL_CALL, explicitMeContext));
     assert(explicitMeCallChecked);
     assert(explicitMeContext.pop().stringValue() == "local-call-ok");
+
+    auto makeBytecodeHandler = [](int nameId,
+                                  std::vector<std::pair<Opcode, int>> ops,
+                                  int localCount,
+                                  std::vector<int> argNameIds) {
+        std::vector<ScriptChunk::Instruction> instructions;
+        std::unordered_map<int, int> indexMap;
+        instructions.reserve(ops.size());
+        for (std::size_t index = 0; index < ops.size(); ++index) {
+            const int offset = static_cast<int>(index);
+            const auto [opcode, argument] = ops[index];
+            indexMap[offset] = static_cast<int>(index);
+            instructions.push_back(ScriptChunk::Instruction{
+                offset,
+                opcode,
+                libreshockwave::lingo::code(opcode),
+                argument
+            });
+        }
+        return ScriptChunk::Handler{nameId,
+                                    0,
+                                    static_cast<int>(instructions.size()),
+                                    0,
+                                    static_cast<int>(argNameIds.size()),
+                                    localCount,
+                                    0,
+                                    0,
+                                    std::move(argNameIds),
+                                    {},
+                                    std::move(instructions),
+                                    std::move(indexMap)};
+    };
+
+    auto brokerRegisterHandler = makeBytecodeHandler(
+        185,
+        {
+            {Opcode::GET_PROP, 180},
+            {Opcode::GET_PARAM, 3},
+            {Opcode::GET_PARAM, 1},
+            {Opcode::GET_PARAM, 2},
+            {Opcode::PUSH_ARG_LIST, 2},
+            {Opcode::PUSH_LIST, 0},
+            {Opcode::PUSH_ARG_LIST_NO_RET, 3},
+            {Opcode::OBJ_CALL, 65},
+            {Opcode::PUSH_INT8, 1},
+            {Opcode::RET, 0},
+        },
+        0,
+        {181, 182, 183, 184});
+    auto brokerReadClientHandler = makeBytecodeHandler(
+        186,
+        {
+            {Opcode::GET_PROP, 180},
+            {Opcode::GET_PARAM, 1},
+            {Opcode::PUSH_ARG_LIST, 2},
+            {Opcode::OBJ_CALL, 64},
+            {Opcode::PUSH_INT8, 2},
+            {Opcode::PUSH_ARG_LIST, 2},
+            {Opcode::OBJ_CALL, 64},
+            {Opcode::RET, 0},
+        },
+        0,
+        {181, 184});
+    ScriptChunk brokerScript(nullptr,
+                             ChunkId(704),
+                             ScriptChunkType::Behavior,
+                             0,
+                             {brokerRegisterHandler, brokerReadClientHandler},
+                             {},
+                             {ScriptChunk::PropertyEntry{180}},
+                             {},
+                             {});
+    std::vector<std::string> brokerNames(187);
+    brokerNames[64] = "getAt";
+    brokerNames[65] = "setAt";
+    brokerNames[180] = "pEventRoutes";
+    brokerNames[181] = "me";
+    brokerNames[182] = "tMethod";
+    brokerNames[183] = "tClientID";
+    brokerNames[184] = "tEvent";
+    brokerNames[185] = "registerProcedure";
+    brokerNames[186] = "readClient";
+    auto brokerScriptNames = std::make_shared<ScriptNamesChunk>(nullptr, ChunkId(705), brokerNames);
+    auto eventBroker = Datum::scriptInstance("Event Broker Behavior", Datum::CastMemberRef{7, 3});
+    eventBroker.scriptInstanceValue().setProperty("pEventRoutes", Datum::propList());
+    LingoVM brokerVm;
+    const HandlerRef brokerRegisterRef{
+        &brokerScript,
+        &brokerScript.handlers()[0],
+        nullptr,
+        nullptr,
+        brokerScriptNames,
+        ScriptChunkType::Behavior};
+    const HandlerRef brokerReadClientRef{
+        &brokerScript,
+        &brokerScript.handlers()[1],
+        nullptr,
+        nullptr,
+        brokerScriptNames,
+        ScriptChunkType::Behavior};
+    assert(brokerVm.executeHandler(brokerRegisterRef,
+                                   {Datum::symbol("eventProcDefault"),
+                                    Datum::of(std::string("navigator")),
+                                    Datum::symbol("mouseUp")},
+                                   eventBroker)
+               .intValue() == 1);
+    const Datum registeredProc = eventBroker.scriptInstanceValue()
+                                     .getProperty("pEventRoutes")
+                                     .propListValue()
+                                     .get(Datum::symbol("mouseUp"));
+    assert(registeredProc.listValue().getAt(1).asSymbol()->name == "eventProcDefault");
+    assert(registeredProc.listValue().getAt(2).stringValue() == "navigator");
+    assert(brokerVm.executeHandler(brokerReadClientRef, {Datum::symbol("mouseUp")}, eventBroker).stringValue() ==
+           "navigator");
 
     const auto moviePropName = PropertyIdMappings::getMoviePropName(0x00);
     assert(moviePropName.has_value() && *moviePropName == "floatPrecision");
@@ -14783,7 +15012,9 @@ void testSpritePropertiesFoundation() {
                                   {Datum::symbol("eventProcRoom"),
                                    Datum::symbol("room_interface"),
                                    Datum::symbol("mouseDown")})
-               .boolValue());
+               .isVoid());
+    assert(!props.getScriptInstanceList(42).has_value());
+    assert(props.callSpriteMethod(42, "setID", {Datum::of(std::string("sprite-id"))}).boolValue());
     auto brokerScripts = props.getScriptInstanceList(42);
     assert(brokerScripts.has_value());
     assert(brokerScripts->size() == 1);
@@ -14791,48 +15022,16 @@ void testSpritePropertiesFoundation() {
     const auto syntheticBroker = (*brokerScripts)[0];
     assert(syntheticBroker.scriptInstanceValue().getProperty("spritenum").intValue() == 42);
     assert(syntheticBroker.scriptInstanceValue().getProperty("__spriteEventBroker__").boolValue());
-    const auto brokerProcListDatum = syntheticBroker.scriptInstanceValue().getProperty("pProcList");
-    assert(brokerProcListDatum.isPropList());
-    const auto mouseDownEntry = brokerProcListDatum.propListValue().get(Datum::symbol("mouseDown"));
-    assert(mouseDownEntry.isList());
-    assert(mouseDownEntry.listValue().getAt(1).asSymbol()->name == "eventProcRoom");
-    assert(mouseDownEntry.listValue().getAt(2).asSymbol()->name == "room_interface");
-    assert(props.callSpriteMethod(42, "setID", {Datum::of(std::string("sprite-id"))}).boolValue());
     assert(props.callSpriteMethod(42, "getID", {}).stringValue() == "sprite-id");
     assert(props.callSpriteMethod(42, "setLink", {Datum::of(std::string("link-id"))}).boolValue());
     assert(props.callSpriteMethod(42, "getLink", {}).stringValue() == "link-id");
 
     const auto clientId = Datum::symbol("login_a");
     assert(props.callSpriteMethod(43, "registerProcedure", {Datum::voidValue(), clientId, Datum::voidValue()})
-               .boolValue());
-    auto expandedBrokerScripts = props.getScriptInstanceList(43);
-    assert(expandedBrokerScripts.has_value());
-    const auto expandedProcListDatum =
-        (*expandedBrokerScripts)[0].scriptInstanceValue().getProperty("pProcList");
-    assert(expandedProcListDatum.isPropList());
-    for (const auto* eventName : {
-             "mouseEnter",
-             "mouseLeave",
-             "mouseWithin",
-             "mouseDown",
-             "mouseUp",
-             "mouseUpOutSide",
-             "keyDown",
-             "keyUp"
-         }) {
-        const auto entry = expandedProcListDatum.propListValue().get(Datum::symbol(eventName));
-        assert(entry.isList());
-        assert(entry.listValue().getAt(1).asSymbol()->name == eventName);
-        assert(entry.listValue().getAt(2).asSymbol()->name == "login_a");
-    }
-    assert(props.callSpriteMethod(43, "removeProcedure", {Datum::symbol("mouseDown")}).boolValue());
-    const auto removedMouseDown = (*expandedBrokerScripts)[0]
-                                      .scriptInstanceValue()
-                                      .getProperty("pProcList")
-                                      .propListValue()
-                                      .get(Datum::symbol("mouseDown"));
-    assert(removedMouseDown.listValue().getAt(1).asSymbol()->name == "null");
-    assert(removedMouseDown.listValue().getAt(2).intValue() == 0);
+               .isVoid());
+    assert(!props.getScriptInstanceList(43).has_value());
+    assert(props.callSpriteMethod(43, "removeProcedure", {Datum::symbol("mouseDown")}).isVoid());
+    assert(!props.getScriptInstanceList(43).has_value());
 
     assert(props.setSpriteProp(3, "cursor", Datum::list({
         Datum::castMemberRef(CastLibId(2), MemberId(9)),

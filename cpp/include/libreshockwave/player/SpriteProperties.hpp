@@ -81,17 +81,12 @@ private:
 
     static void applyEmptyMemberOverride(sprite::SpriteState& sprite);
     static void resetReleasedEmptyChannel(sprite::SpriteState& sprite);
-    [[nodiscard]] static lingo::Datum createProcListTemplate();
     [[nodiscard]] static lingo::Datum createSyntheticBroker(int spriteNum);
     [[nodiscard]] static std::vector<lingo::Datum> retainSyntheticBrokerInstances(
         const std::vector<lingo::Datum>& scriptInstances);
 
     [[nodiscard]] std::vector<lingo::Datum>* getOrCreateBrokerScriptList(int spriteNum);
     [[nodiscard]] lingo::Datum* primaryBroker(int spriteNum);
-    [[nodiscard]] static lingo::Datum::PropList& ensureProcList(lingo::Datum& broker);
-    [[nodiscard]] static std::string keyName(const lingo::Datum& datum);
-    static void putProcEntry(lingo::Datum::PropList& procList, const lingo::Datum& key, lingo::Datum value);
-    [[nodiscard]] static bool hasProcEntry(const lingo::Datum::PropList& procList, std::string_view key);
 
     render::SpriteRegistry* registry_{nullptr};
     MemberInfoResolver memberInfoResolver_;
