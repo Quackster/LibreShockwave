@@ -45,7 +45,6 @@ public:
     [[nodiscard]] const std::vector<Datum>& arguments() const;
     [[nodiscard]] int displayArgumentCount() const;
     [[nodiscard]] Datum displayArgument(int index) const;
-    [[nodiscard]] std::vector<Datum> displayArguments() const;
     [[nodiscard]] const Datum& receiver() const;
 
     [[nodiscard]] int bytecodeIndex() const;

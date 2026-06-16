@@ -90,16 +90,6 @@ Datum Scope::displayArgument(int index) const {
     return Datum::voidValue();
 }
 
-std::vector<Datum> Scope::displayArguments() const {
-    const int explicitCount = displayArgumentCount();
-    std::vector<Datum> result;
-    result.reserve(static_cast<std::size_t>(explicitCount));
-    for (int index = 0; index < explicitCount; ++index) {
-        result.push_back(displayArgument(index));
-    }
-    return result;
-}
-
 const Datum& Scope::receiver() const {
     return receiver_;
 }

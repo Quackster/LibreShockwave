@@ -7666,16 +7666,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     const auto receiver = Datum::scriptInstance("receiver");
     Scope receiverScope(&script, handler, {receiver, Datum::of(7)}, receiver);
     assert(receiverScope.getParam(0).intValue() == 7);
-    assert(receiverScope.displayArguments().size() == 1);
-    assert(receiverScope.displayArguments()[0].intValue() == 7);
+    assert(receiverScope.displayArgumentCount() == 1);
+    assert(receiverScope.displayArgument(0).intValue() == 7);
     receiverScope.setParam(0, Datum::of(8));
     assert(receiverScope.getParam(0).intValue() == 8);
-    assert(receiverScope.displayArguments()[0].intValue() == 8);
+    assert(receiverScope.displayArgument(0).intValue() == 8);
 
     Scope firstParamMeScope(&script, handler, {receiver, Datum::of(7)}, receiver, true);
     assert(firstParamMeScope.getParam(0) == receiver);
-    assert(firstParamMeScope.displayArguments().size() == 1);
-    assert(firstParamMeScope.displayArguments()[0].intValue() == 7);
+    assert(firstParamMeScope.displayArgumentCount() == 1);
+    assert(firstParamMeScope.displayArgument(0).intValue() == 7);
 
     ScriptChunk::Handler traceHandler{
         20,
@@ -13407,13 +13407,12 @@ void testLingoVmRuntimeFoundation() {
         assert(activeScope != nullptr);
         assert(activeScope->receiver() == childInstance);
         const int scriptId = activeScope->script()->id().value();
-        const auto displayArgs = activeScope->displayArguments();
         if (scriptId == 970) {
-            assert(displayArgs.empty());
+            assert(activeScope->displayArgumentCount() == 0);
         } else {
             assert(scriptId == 971);
-            assert(displayArgs.size() == 1);
-            assert(displayArgs.front().intValue() == 970);
+            assert(activeScope->displayArgumentCount() == 1);
+            assert(activeScope->displayArgument(0).intValue() == 970);
         }
         context.push(ancestorVm.builtinRegistry().invoke(
             "callAncestor",
@@ -13436,9 +13435,8 @@ void testLingoVmRuntimeFoundation() {
             assert(scope->receiver() == implicitReceiver);
             assert(context.scope().receiver() == implicitReceiver);
             assert(scope->getParam(0).intValue() == 9);
-            const auto displayArgs = scope->displayArguments();
-            assert(displayArgs.size() == 1);
-            assert(displayArgs[0].intValue() == 9);
+            assert(scope->displayArgumentCount() == 1);
+            assert(scope->displayArgument(0).intValue() == 9);
             context.push(Datum::of(91));
             return true;
         });
