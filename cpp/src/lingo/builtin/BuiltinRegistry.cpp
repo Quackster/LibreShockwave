@@ -1909,58 +1909,58 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
                                   const Datum::SoundChannel& channel,
                                   std::string_view methodName,
                                   const std::vector<Datum>& args) {
-    const std::string method = BuiltinRegistry::normalizeName(methodName);
     auto* manager = context.soundManager;
     const int channelNum = channel.channel;
 
-    if (method == "play") {
+    if (equalsIgnoreCase(methodName, "play")) {
         if (manager != nullptr && !args.empty()) {
             manager->play(channelNum, args[0]);
         }
         return Datum::voidValue();
     }
-    if (method == "queue") {
+    if (equalsIgnoreCase(methodName, "queue")) {
         if (manager != nullptr && !args.empty()) {
             manager->queue(channelNum, args[0]);
         }
         return Datum::voidValue();
     }
-    if (method == "stop" || method == "fadeout") {
+    if (equalsIgnoreCase(methodName, "stop") || equalsIgnoreCase(methodName, "fadeout")) {
         if (manager != nullptr) {
             manager->stop(channelNum);
         }
         return Datum::voidValue();
     }
-    if (method == "setplaylist") {
+    if (equalsIgnoreCase(methodName, "setplaylist")) {
         if (manager != nullptr) {
             manager->setPlaylist(channelNum, args.empty() ? Datum::voidValue() : args[0]);
         }
         return Datum::voidValue();
     }
-    if (method == "pause" || method == "resume" || method == "unpause" ||
-        method == "playfile" || method == "breakloop" ||
-        method == "rewind" || method == "fadein" || method == "fadeto") {
+    if (equalsIgnoreCase(methodName, "pause") || equalsIgnoreCase(methodName, "resume") ||
+        equalsIgnoreCase(methodName, "unpause") || equalsIgnoreCase(methodName, "playfile") ||
+        equalsIgnoreCase(methodName, "breakloop") || equalsIgnoreCase(methodName, "rewind") ||
+        equalsIgnoreCase(methodName, "fadein") || equalsIgnoreCase(methodName, "fadeto")) {
         return Datum::voidValue();
     }
-    if (method == "playnext") {
+    if (equalsIgnoreCase(methodName, "playnext")) {
         if (manager != nullptr) {
             manager->playNext(channelNum);
         }
         return Datum::voidValue();
     }
-    if (method == "isbusy") {
+    if (equalsIgnoreCase(methodName, "isbusy")) {
         return boolDatum(manager != nullptr && manager->isPlaying(channelNum));
     }
-    if (method == "status") {
+    if (equalsIgnoreCase(methodName, "status")) {
         return Datum::of(manager != nullptr && manager->isPlaying(channelNum) ? 1 : 0);
     }
-    if (method == "elapsedtime" || method == "currenttime") {
+    if (equalsIgnoreCase(methodName, "elapsedtime") || equalsIgnoreCase(methodName, "currenttime")) {
         return Datum::of(manager != nullptr ? manager->getElapsedTime(channelNum) : 0);
     }
-    if (method == "getplaylist") {
+    if (equalsIgnoreCase(methodName, "getplaylist")) {
         return Datum::list(manager != nullptr ? manager->getPlaylist(channelNum) : std::vector<Datum>{});
     }
-    if (method == "volume") {
+    if (equalsIgnoreCase(methodName, "volume")) {
         if (!args.empty()) {
             if (manager != nullptr) {
                 manager->setVolume(channelNum, toIntLikeJava(args[0]));
@@ -1969,7 +1969,7 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         }
         return Datum::of(manager != nullptr ? manager->getVolume(channelNum) : 255);
     }
-    if (method == "pan") {
+    if (equalsIgnoreCase(methodName, "pan")) {
         if (!args.empty()) {
             if (manager != nullptr) {
                 manager->setPan(channelNum, toIntLikeJava(args[0]));
@@ -1978,7 +1978,7 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         }
         return Datum::of(manager != nullptr ? manager->getPan(channelNum) : 0);
     }
-    if (method == "member") {
+    if (equalsIgnoreCase(methodName, "member")) {
         if (!args.empty()) {
             if (manager != nullptr) {
                 if (const auto* member = args[0].asCastMemberRef()) {
@@ -1994,7 +1994,7 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         }
         return Datum::voidValue();
     }
-    if (method == "ilk") {
+    if (equalsIgnoreCase(methodName, "ilk")) {
         return Datum::symbol("instance");
     }
     return Datum::voidValue();
@@ -2003,20 +2003,19 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
 Datum SoundBuiltins::getProperty(BuiltinContext& context,
                                  const Datum::SoundChannel& channel,
                                  std::string_view propName) {
-    const std::string prop = BuiltinRegistry::normalizeName(propName);
     auto* manager = context.soundManager;
     const int channelNum = channel.channel;
 
-    if (prop == "volume") {
+    if (equalsIgnoreCase(propName, "volume")) {
         return Datum::of(manager != nullptr ? manager->getVolume(channelNum) : 255);
     }
-    if (prop == "pan") {
+    if (equalsIgnoreCase(propName, "pan")) {
         return Datum::of(manager != nullptr ? manager->getPan(channelNum) : 0);
     }
-    if (prop == "status") {
+    if (equalsIgnoreCase(propName, "status")) {
         return Datum::of(manager != nullptr && manager->isPlaying(channelNum) ? 1 : 0);
     }
-    if (prop == "member") {
+    if (equalsIgnoreCase(propName, "member")) {
         if (manager != nullptr) {
             if (auto member = manager->getMember(channelNum)) {
                 return Datum::castMemberRef(*member);
@@ -2024,22 +2023,22 @@ Datum SoundBuiltins::getProperty(BuiltinContext& context,
         }
         return Datum::voidValue();
     }
-    if (prop == "loopcount") {
+    if (equalsIgnoreCase(propName, "loopcount")) {
         return Datum::of(manager != nullptr ? manager->getLoopCount(channelNum) : 1);
     }
-    if (prop == "starttime") {
+    if (equalsIgnoreCase(propName, "starttime")) {
         return Datum::of(manager != nullptr ? manager->getStartTime(channelNum) : 0);
     }
-    if (prop == "endtime") {
+    if (equalsIgnoreCase(propName, "endtime")) {
         return Datum::of(manager != nullptr ? manager->getEndTime(channelNum) : 0);
     }
-    if (prop == "loopstarttime") {
+    if (equalsIgnoreCase(propName, "loopstarttime")) {
         return Datum::of(manager != nullptr ? manager->getLoopStartTime(channelNum) : 0);
     }
-    if (prop == "loopendtime") {
+    if (equalsIgnoreCase(propName, "loopendtime")) {
         return Datum::of(manager != nullptr ? manager->getLoopEndTime(channelNum) : 0);
     }
-    if (prop == "elapsedtime" || prop == "currenttime") {
+    if (equalsIgnoreCase(propName, "elapsedtime") || equalsIgnoreCase(propName, "currenttime")) {
         return Datum::of(manager != nullptr ? manager->getElapsedTime(channelNum) : 0);
     }
     return Datum::voidValue();
@@ -2049,26 +2048,25 @@ bool SoundBuiltins::setProperty(BuiltinContext& context,
                                 const Datum::SoundChannel& channel,
                                 std::string_view propName,
                                 Datum value) {
-    const std::string prop = BuiltinRegistry::normalizeName(propName);
-    if (prop == "volume") {
+    if (equalsIgnoreCase(propName, "volume")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setVolume(channel.channel, toIntLikeJava(value));
         }
         return true;
     }
-    if (prop == "loopcount") {
+    if (equalsIgnoreCase(propName, "loopcount")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setLoopCount(channel.channel, toIntLikeJava(value));
         }
         return true;
     }
-    if (prop == "pan") {
+    if (equalsIgnoreCase(propName, "pan")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setPan(channel.channel, toIntLikeJava(value));
         }
         return true;
     }
-    if (prop == "member") {
+    if (equalsIgnoreCase(propName, "member")) {
         const auto* member = value.asCastMemberRef();
         if (member == nullptr) {
             return false;
@@ -2078,25 +2076,25 @@ bool SoundBuiltins::setProperty(BuiltinContext& context,
         }
         return true;
     }
-    if (prop == "starttime") {
+    if (equalsIgnoreCase(propName, "starttime")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setStartTime(channel.channel, toIntLikeJava(value));
         }
         return true;
     }
-    if (prop == "endtime") {
+    if (equalsIgnoreCase(propName, "endtime")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setEndTime(channel.channel, toIntLikeJava(value));
         }
         return true;
     }
-    if (prop == "loopstarttime") {
+    if (equalsIgnoreCase(propName, "loopstarttime")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setLoopStartTime(channel.channel, toIntLikeJava(value));
         }
         return true;
     }
-    if (prop == "loopendtime") {
+    if (equalsIgnoreCase(propName, "loopendtime")) {
         if (context.soundManager != nullptr) {
             context.soundManager->setLoopEndTime(channel.channel, toIntLikeJava(value));
         }
