@@ -1,0 +1,17 @@
+{
+  "name": "@libreshockwave/runtime-template",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hand-written TypeScript/PixiJS re-implementation of the LibreShockwave C++ render pipeline. Source of truth that is copied verbatim into each exported project's src/runtime/.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.6",
+    "@types/node": "^20.11.0"
+  }
+}

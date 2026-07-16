@@ -1,0 +1,23 @@
+{
+  "name": "libreshockwave-exported-movie",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained TypeScript/PixiJS project exported from a Director movie by libreshockwave_export_ts. The runtime under src/runtime/ is copied verbatim from the LibreShockwave ts/runtime-template/ source of truth.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pixi.js": "^8.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vite": "^8.1.4",
+    "vitest": "^3.2.6",
+    "@types/node": "^20.11.0"
+  }
+}
